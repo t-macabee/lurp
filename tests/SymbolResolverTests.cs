@@ -280,7 +280,7 @@ public sealed class SymbolResolverTests : IntegrationTestBase
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpFindSymbol(symbol: "Ns.Foo.Do"));
 
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-        Assert.Equal(cliResult.Failure!.Message, ex.Message);
+        Assert.Equal("ERROR: " + ex.Message, cliResult.Failure!.Message);
     }
 
     [Fact]

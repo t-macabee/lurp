@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Xml.Linq;
+using Lurp.Mcp;
 using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol.Server;
@@ -98,61 +99,37 @@ public sealed class CliMcpContractSnapshotTests
     }
 
     [Fact]
-    public void CliModeRegistry_CountIs20()
-    {
-        Assert.Equal(20, Program.ModeRegistry.Length);
-    }
-
-    [Fact]
     public void McpToolSurface_SnapshotMatchesExpected()
     {
         var actual = GetMcpSurface()
             .OrderBy(s => s, StringComparer.Ordinal)
             .ToArray();
 
-        // Expected snapshot — update deliberately when adding/removing tools or params.
-        // Format: "tool_name(param1,param2,...)" where params are in declared order
-        // (method signature order) and names are snake_case as exposed to callers.
-        // Tool names are MCP-facing (McpServerTool.Name), not C# method names.
+        // Parameters appear in declaration order; ! marks required inputs.
+        // dest= appears for write tools only. The SDK defaults Destructive to true, so the value says nothing on a read-only tool.
         var expected = new[]
         {
-            "lurp_context(symbol,file,line,intent,content_budget,max_hops,scope,affected_project,include_generated,completeness_detail,tier,tier_limit,cursor,snapshot_id)",
-            "lurp_dead_candidates(limit,cursor,snapshot_id,project,document,kind,include_public,include_generated,include_tests)",
-            "lurp_diagnostics(document,project,severity,id,limit,cursor,include_generated,snapshot_id)",
-            "lurp_diff(from_snapshot,to_snapshot)",
-            "lurp_find_symbol(symbol,include_generated,snapshot_id)",
-            "lurp_get_annotations(symbol,document,kind,limit,cursor,snapshot_id)",
-            "lurp_get_source(document,start_line,end_line,context_lines,snapshot_id,outline)",
-            "lurp_get_symbol(symbol,view,context_lines,include_generated,snapshot_id)",
-            "lurp_grep(query,limit,cursor,ignore_case,include_generated,snapshot_id)",
-            "lurp_impact(symbol,direction,kinds,provenance,max_depth,limit,cursor,snapshot_id)",
-            "lurp_index(strategy,force,operation_id,cancel)",
-            "lurp_navigate(file,line,include_generated,snapshot_id)",
-            "lurp_outline(document,include_generated,limit,cursor,snapshot_id)",
-            "lurp_refresh(ack,snapshot_id)",
-            "lurp_retract_annotation(annotation_id,snapshot_id)",
-            "lurp_search(query,type,kind,limit,snippet_tokens,cursor,include_generated,snapshot_id)",
-            "lurp_status(snapshot_id,detail,sections,max_documents,max_mismatches,documents,full,projects,max_bytes)",
-            "lurp_timings(snapshot_id)",
+            "lurp_context[ro=true,open=false](symbol:string,file:string,line:int,intent:string,content_budget:int,max_hops:int,scope:string,affected_project:string[],include_generated:bool,completeness_detail:bool,tier:string,tier_limit:int,cursor:string,snapshot_id:string)",
+            "lurp_dead_candidates[ro=true,open=false](limit:int,cursor:string,snapshot_id:string,project:string,document:string,kind:string,include_public:bool,include_generated:bool,include_tests:bool)",
+            "lurp_diagnostics[ro=true,open=false](document:string,project:string,severity:string,id:string,limit:int,cursor:string,include_generated:bool,snapshot_id:string)",
+            "lurp_diff[ro=true,open=false](from_snapshot:string!,to_snapshot:string!)",
+            "lurp_find_symbol[ro=true,open=false](symbol:string!,include_generated:bool,snapshot_id:string)",
+            "lurp_get_annotations[ro=true,open=false](symbol:string,document:string,kind:string,limit:int,cursor:string,snapshot_id:string)",
+            "lurp_get_source[ro=true,open=false](document:string!,start_line:int,end_line:int,context_lines:int,snapshot_id:string,outline:bool)",
+            "lurp_get_symbol[ro=true,open=false](symbol:string!,view:string,context_lines:int,include_generated:bool,snapshot_id:string)",
+            "lurp_grep[ro=true,open=false](query:string!,limit:int,cursor:string,ignore_case:bool,include_generated:bool,snapshot_id:string)",
+            "lurp_impact[ro=true,open=false](symbol:string!,direction:string,kinds:string[],provenance:string[],max_depth:int,limit:int,cursor:string,snapshot_id:string)",
+            "lurp_index[ro=false,dest=true,open=false](strategy:string,force:bool,operation_id:string,cancel:bool)",
+            "lurp_navigate[ro=true,open=false](file:string!,line:int!,include_generated:bool,snapshot_id:string)",
+            "lurp_outline[ro=true,open=false](document:string!,include_generated:bool,limit:int,cursor:string,snapshot_id:string)",
+            "lurp_refresh[ro=true,open=false](ack:string,snapshot_id:string)",
+            "lurp_retract_annotation[ro=false,dest=true,open=false](annotation_id:long!,snapshot_id:string)",
+            "lurp_search[ro=true,open=false](query:string!,type:string,kind:string,limit:int,snippet_tokens:int,cursor:string,include_generated:bool,snapshot_id:string)",
+            "lurp_status[ro=true,open=false](snapshot_id:string,detail:object,sections:string,max_documents:int,max_mismatches:int,documents:string[],full:bool,projects:string[],max_bytes:int)",
+            "lurp_timings[ro=true,open=false](snapshot_id:string)",
         };
 
         Assert.Equal(expected, actual);
-    }
-
-    [Fact]
-    public void McpToolSurface_CountIs18()
-    {
-        Assert.Equal(18, GetMcpSurface().Count());
-    }
-
-    [Fact]
-    public void McpToolSurface_AllNamesAreLurpPrefixed()
-    {
-        foreach (var entry in GetMcpSurface())
-        {
-            var name = entry[..entry.IndexOf('(')];
-            Assert.StartsWith("lurp_", name);
-        }
     }
 
     private static IEnumerable<string> GetMcpSurface()
@@ -169,12 +146,28 @@ public sealed class CliMcpContractSnapshotTests
             foreach (var method in methods)
             {
                 var attr = method.GetCustomAttribute<McpServerToolAttribute>()!;
-                var paramNames = method.GetParameters()
-                    .Where(p => p.ParameterType != typeof(System.Threading.CancellationToken))
-                    .Select(p => p.Name!)
-                    .ToArray();
-                yield return $"{attr.Name}({string.Join(",", paramNames)})";
+                var parameters = method.GetParameters()
+                    .Where(p => p.ParameterType != typeof(CancellationToken))
+                    .Select(p => $"{p.Name}:{ParameterTypeName(p.ParameterType)}{(p.IsDefined(typeof(McpRequiredAttribute)) ? "!" : "")}");
+                var annotations = (attr.ReadOnly
+                    ? $"ro=true,open={attr.OpenWorld}"
+                    : $"ro=false,dest={attr.Destructive},open={attr.OpenWorld}").ToLowerInvariant();
+                yield return $"{attr.Name}[{annotations}]({string.Join(",", parameters)})";
             }
         }
+    }
+
+    private static string ParameterTypeName(Type type)
+    {
+        if (type.IsArray)
+            return ParameterTypeName(type.GetElementType()!) + "[]";
+
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        if (type == typeof(string)) return "string";
+        if (type == typeof(int)) return "int";
+        if (type == typeof(long)) return "long";
+        if (type == typeof(bool)) return "bool";
+        if (type == typeof(object)) return "object";
+        return type.FullName ?? type.Name;
     }
 }

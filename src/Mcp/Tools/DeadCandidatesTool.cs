@@ -28,14 +28,9 @@ internal sealed class DeadCandidatesTool
         bool? include_public = null,
         bool? include_generated = null,
         bool? include_tests = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             if (!string.IsNullOrEmpty(kind) && !DeadCandidateLiveness.IsCandidateKind(kind!))
                 throw new McpProtocolException($"kind must be one of: {DeadCandidateLiveness.CandidateKindsText}. Got '{kind}'.", McpErrorCode.InvalidParams);
 
@@ -53,18 +48,9 @@ internal sealed class DeadCandidatesTool
             var includeGenerated = include_generated ?? false;
             var includeTests = include_tests ?? false;
 
-            var limitVal = limit ?? DeadCandidateLiveness.DefaultPageSize;
-            if (limitVal < 1)
-                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(limitVal, McpLimits.MaxDeadCandidatesLimit, "limit");
+            var limitVal = McpLimits.RequirePositiveAtMost(limit, DeadCandidateLiveness.DefaultPageSize, McpLimits.MaxDeadCandidatesLimit, "limit");
 
-            DeadCandidateCursor? cursorObj = null;
-            if (!string.IsNullOrEmpty(cursor))
-            {
-                cursorObj = DeadCandidateCursor.TryDecode(cursor);
-                if (cursorObj == null)
-                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
-            }
+            var cursorObj = McpSessionContext.DecodeCursor(cursor, DeadCandidateCursor.TryDecode);
 
             DeadCandidatePage page;
             try
@@ -96,18 +82,5 @@ internal sealed class DeadCandidatesTool
             }
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

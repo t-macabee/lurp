@@ -19,7 +19,7 @@ internal sealed class SearchTool
     [McpServerTool(Name = "lurp_search", Title = "Lurp Search", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Search source or symbols in the pinned snapshot. Type picks the store: source, symbol, or all. Uses FTS5 phrase quoting verbatim and cursor pagination for symbol search.")]
     public string LurpSearch(
-        string? query = null,
+        [McpRequired] string? query = null,
         string? type = null,
         string? kind = null,
         int? limit = null,
@@ -27,14 +27,9 @@ internal sealed class SearchTool
         string? cursor = null,
         bool? include_generated = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             if (string.IsNullOrEmpty(query))
                 throw new McpProtocolException("query is required.", McpErrorCode.InvalidParams);
 
@@ -47,15 +42,9 @@ internal sealed class SearchTool
                 throw new McpProtocolException($"kind must be one of: {DeadCandidateLiveness.CandidateKindsText}. Got '{kind}'.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
-            var limitVal = limit ?? SearchHandler.DefaultLimit;
-            if (limitVal < 1)
-                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
+            var limitVal = McpLimits.RequirePositiveAtMost(limit, SearchHandler.DefaultLimit, McpLimits.MaxLimit, "limit");
 
-            var snippetTokens = snippet_tokens ?? SearchHandler.DefaultSnippetTokens;
-            if (snippetTokens < 1)
-                throw new McpProtocolException("snippet_tokens must be a positive integer.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(snippet_tokens, McpLimits.MaxSnippetTokens, "snippet_tokens");
+            var snippetTokens = McpLimits.RequirePositiveAtMost(snippet_tokens, SearchHandler.DefaultSnippetTokens, McpLimits.MaxSnippetTokens, "snippet_tokens");
 
             if (!string.IsNullOrEmpty(cursor) && typeArg != "symbol")
                 throw new McpProtocolException("cursor is only supported with type=symbol.", McpErrorCode.InvalidParams);
@@ -76,13 +65,7 @@ internal sealed class SearchTool
 
             if (typeArg is "symbol" or "all")
             {
-                SearchCursor? cursorObj = null;
-                if (typeArg == "symbol" && !string.IsNullOrEmpty(cursor))
-                {
-                    cursorObj = SearchCursor.TryDecode(cursor);
-                    if (cursorObj == null)
-                        throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
-                }
+                var cursorObj = McpSessionContext.DecodeCursor(cursor, SearchCursor.TryDecode);
 
                 SymbolSearchPage page;
                 try
@@ -115,18 +98,5 @@ internal sealed class SearchTool
             };
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

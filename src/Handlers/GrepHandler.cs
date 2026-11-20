@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -9,8 +8,7 @@ internal static class GrepHandler
 
     public static void Run(string[] args, IOutputSink output)
     {
-        var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
-        if (string.IsNullOrEmpty(queryArg)) HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=grep.");
+        var queryArg = HandlerBootstrap.RequireFlag(args, FlagCatalog.Query, "grep");
 
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var includeGenerated = args.Contains("--include-generated");
@@ -21,12 +19,7 @@ internal static class GrepHandler
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            TextSearchCursor? cursor = null;
-            if (!string.IsNullOrEmpty(cursorArg))
-            {
-                cursor = TextSearchCursor.TryDecode(cursorArg);
-                if (cursor == null) HandlerBootstrap.Fail("ERROR: --cursor is not a valid cursor for this database.");
-            }
+            var cursor = HandlerBootstrap.DecodeCursor(cursorArg, TextSearchCursor.TryDecode);
 
             TextSearchPage page;
             try
@@ -68,38 +61,28 @@ internal static class GrepHandler
                 freshness = FreshnessJson.Cheap(freshness)
             };
 
-            switch (outputMode)
+            CliOutputWriter.Write(outputMode, output, () =>
             {
-                case OutputMode.Summary:
-                    foreach (var line in summaryLines)
-                        output.WriteLine(line);
-                    if (page.NextCursor != null)
-                        output.WriteLine($"-- {page.Items.Count}/{page.TotalCount} match(es); more available (--cursor)");
-                    else
-                        output.WriteLine($"-- {page.TotalCount} match(es)");
-                    break;
-
-                case OutputMode.Jsonl:
-                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-                    foreach (var result in results)
-                        output.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
-                    break;
-
-                default:
-                    output.WriteLine(JsonSerializer.Serialize(
-                        new
-                        {
-                            snapshot_id = snapshotId,
-                            query = queryArg,
-                            ignore_case = ignoreCase,
-                            results,
-                            match_count = page.TotalCount,
-                            next_cursor = page.NextCursor,
-                            freshness = FreshnessJson.Cheap(freshness)
-                        },
-                        HandlerBootstrap.IndentedJson));
-                    break;
-            }
+                foreach (var line in summaryLines)
+                    output.WriteLine(line);
+                if (page.NextCursor != null)
+                    output.WriteLine($"-- {page.Items.Count}/{page.TotalCount} match(es); more available (--cursor)");
+                else
+                    output.WriteLine($"-- {page.TotalCount} match(es)");
+            },
+            () => new
+            {
+                snapshot_id = snapshotId,
+                query = queryArg,
+                ignore_case = ignoreCase,
+                results,
+                match_count = page.TotalCount,
+                next_cursor = page.NextCursor,
+                freshness = FreshnessJson.Cheap(freshness)
+            },
+            () => meta,
+            CliOutputWriter.JsonlItemTypes["grep"],
+            results);
         }, output);
     }
 }

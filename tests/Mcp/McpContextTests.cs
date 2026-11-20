@@ -36,6 +36,26 @@ public sealed class McpContextTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Context_CapsuleAndTier_EmitTheSameTopLevelKeys()
+    {
+        await IndexFixtureAndGetSnapshot();
+        var (session, tool) = CreateSessionTool();
+        await using (session)
+        {
+            const string symbol = "CtxProj.Foo.Bar";
+            using var capsule = JsonDocument.Parse(tool.LurpContext(symbol: symbol));
+            using var tier = JsonDocument.Parse(tool.LurpContext(symbol: symbol, tier: "direct_callers"));
+            string[] expectedKeys = ["snapshot_id", "freshness", "pinned", "capsule", "tier_page"];
+            Assert.Equal(expectedKeys, capsule.RootElement.EnumerateObject().Select(p => p.Name));
+            Assert.Equal(expectedKeys, tier.RootElement.EnumerateObject().Select(p => p.Name));
+            Assert.Equal(JsonValueKind.Object, capsule.RootElement.GetProperty("capsule").ValueKind);
+            Assert.Equal(JsonValueKind.Null, capsule.RootElement.GetProperty("tier_page").ValueKind);
+            Assert.Equal(JsonValueKind.Null, tier.RootElement.GetProperty("capsule").ValueKind);
+            Assert.Equal(JsonValueKind.Object, tier.RootElement.GetProperty("tier_page").ValueKind);
+        }
+    }
+
+    [Fact]
     public async Task ThreeSymbolForms_ResolveIdentically()
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();

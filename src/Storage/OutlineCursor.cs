@@ -13,7 +13,7 @@ public sealed record OutlineCursor(string SnapshotId, string Fingerprint, int La
 {
     public static string ComputeFingerprint(string document, bool includeGenerated)
     {
-        return $"{document}\u0001{includeGenerated}";
+        return CursorUtils.JoinFingerprint(document, includeGenerated);
     }
 
     public string Encode()

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
 using ModelContextProtocol;
@@ -97,6 +98,7 @@ public sealed class McpGetSymbolTests : IntegrationTestBase
         Assert.Equal("snapshot 'bad' not found.", ex1.Message);
         var ex2 = Assert.Throws<McpProtocolException>(() => tool.LurpGetSymbol(symbol: "NonExistent.Symbol"));
         Assert.Equal(McpErrorCode.InvalidParams, ex2.ErrorCode);
+        Assert.Equal($"Symbol 'NonExistent.Symbol' not found in snapshot '{snap}'. {HandlerBootstrap.AcceptedSymbolFormsText}", ex2.Message);
         var ex3 = Assert.Throws<McpProtocolException>(() => tool.LurpGetSymbol(symbol: barId, view: "invalid"));
         Assert.Equal(McpErrorCode.InvalidParams, ex3.ErrorCode);
     }

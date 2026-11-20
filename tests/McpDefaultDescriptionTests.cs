@@ -36,6 +36,6 @@ public sealed class McpDefaultDescriptionTests
         var description = parameter.GetCustomAttribute<DescriptionAttribute>()?.Description
             ?? method.GetCustomAttribute<DescriptionAttribute>()!.Description;
 
-        Assert.Contains(expected.ToString(CultureInfo.InvariantCulture), description);
+        Assert.Matches($"(?<![0-9]){expected.ToString(CultureInfo.InvariantCulture)}(?![0-9])", description);
     }
 }

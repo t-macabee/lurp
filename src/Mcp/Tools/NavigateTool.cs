@@ -19,18 +19,13 @@ internal sealed class NavigateTool
     [McpServerTool(Name = "lurp_navigate", Title = "Lurp Navigate", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Navigate to the declaration containing a file+line in the pinned snapshot. Null target is success, not an error.")]
     public string LurpNavigate(
-        string? file = null,
-        int? line = null,
+        [McpRequired] string? file = null,
+        [McpRequired] int? line = null,
         bool? include_generated = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             var normalized = HandlerBootstrap.NormalizeDocumentPath(file);
             if (string.IsNullOrEmpty(normalized) || !line.HasValue)
                 throw new McpProtocolException("file and line are required.", McpErrorCode.InvalidParams);
@@ -53,18 +48,5 @@ internal sealed class NavigateTool
             };
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

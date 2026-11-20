@@ -20,20 +20,30 @@ internal static class McpArgumentGuard
 
     internal static McpRequestHandler<CallToolRequestParams, CallToolResult> Filter(
         McpRequestHandler<CallToolRequestParams, CallToolResult> next) =>
-        (context, cancellationToken) =>
+        async (context, cancellationToken) =>
         {
+            if (context.MatchedPrimitive is not McpServerTool tool)
+                return await next(context, cancellationToken);
+
             var arguments = context.Params?.Arguments;
-            if (arguments is { Count: > 0 } && context.MatchedPrimitive is McpServerTool tool)
+            if (arguments is { Count: > 0 })
             {
                 var schema = tool.ProtocolTool.InputSchema;
                 var unknown = FindUnknownArgument(schema, arguments.Keys);
                 if (unknown != null)
-                    throw new McpProtocolException(
+                    return McpErrorMapper.ToToolResult(new McpProtocolException(
                         $"unknown parameter '{unknown}' for {tool.ProtocolTool.Name}. Valid parameters: {string.Join(", ", DeclaredNames(schema))}.",
-                        McpErrorCode.InvalidParams);
+                        McpErrorCode.InvalidParams));
             }
 
-            return next(context, cancellationToken);
+            try
+            {
+                return await next(context, cancellationToken);
+            }
+            catch (McpProtocolException ex)
+            {
+                return McpErrorMapper.ToToolResult(ex);
+            }
         };
 
     private static HashSet<string> DeclaredNames(JsonElement inputSchema) =>

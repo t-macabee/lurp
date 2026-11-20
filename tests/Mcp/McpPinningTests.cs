@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Lurp.Mcp;
+using Lurp.Mcp.Tools;
 using Lurp.Storage;
 using ModelContextProtocol;
 
@@ -6,6 +8,49 @@ namespace Lurp.Tests.Mcp;
 
 public sealed class McpPinningTests : IntegrationTestBase
 {
+    [Fact]
+    public async Task LatestAlias_ResolvesToPinnedSnapshot_AcrossReadToolsAndDiff()
+    {
+        var snapshot1 = await IndexFullAsync("PinnedProj", new Dictionary<string, string>
+        {
+            ["A.cs"] = "namespace PinnedProj; public class A {}"
+        });
+        await using var session = McpSessionContext.Create([$"--output-dir={TestDir}", $"--solution={SolutionPath}"]);
+        WriteFile("PinnedProj", "A.cs", "namespace PinnedProj; public class A { public int Count { get; set; } }");
+        var snapshot2 = await RunFullIndexNoDeleteAsync(DbPath);
+        Assert.NotEqual(snapshot1, snapshot2);
+
+        string docPath;
+        using (var store = OpenStore(DbPath))
+            docPath = Assert.Single(store.GetDocumentVersionIdsByPath(snapshot1).Keys);
+        var timings = new TimingsTool(session);
+        var source = new GetSourceTool(session);
+        foreach (var json in new[] { timings.LurpTimings(snapshot_id: "latest"),
+            timings.LurpTimings(snapshot_id: "LATEST"), source.LurpGetSource(document: docPath, snapshot_id: "latest") })
+        {
+            using var read = JsonDocument.Parse(json);
+            Assert.Equal(snapshot1, read.RootElement.GetProperty("snapshot_id").GetString());
+        }
+
+        using var refresh = JsonDocument.Parse(new RefreshTool(session).LurpRefresh(snapshot_id: "latest"));
+        Assert.Equal(snapshot1, refresh.RootElement.GetProperty("old_snapshot_id").GetString());
+        Assert.Equal(snapshot2, refresh.RootElement.GetProperty("new_snapshot_id").GetString());
+        Assert.Equal(snapshot1, session.PinnedSnapshotId);
+
+        var diff = new DiffTool(session);
+        using var from = JsonDocument.Parse(diff.LurpDiff(from_snapshot: "latest", to_snapshot: snapshot2));
+        Assert.Equal(snapshot1, from.RootElement.GetProperty("from_snapshot").GetString());
+        Assert.Equal(snapshot2, from.RootElement.GetProperty("snapshot_id").GetString());
+        Assert.False(from.RootElement.GetProperty("pinned").GetBoolean());
+        using var to = JsonDocument.Parse(diff.LurpDiff(from_snapshot: snapshot1, to_snapshot: "latest"));
+        Assert.Equal(snapshot1, to.RootElement.GetProperty("to_snapshot").GetString());
+        Assert.Equal(snapshot1, to.RootElement.GetProperty("snapshot_id").GetString());
+        Assert.True(to.RootElement.GetProperty("pinned").GetBoolean());
+
+        var mismatch = Assert.Throws<McpProtocolException>(() => timings.LurpTimings(snapshot_id: snapshot2));
+        Assert.Equal($"snapshot mismatch: session pinned to {snapshot1}; call lurp_refresh to advance.", mismatch.Message);
+    }
+
     [Fact]
     public async Task Pin_DoesNotMove_AfterSecondIndexRunMutatesDb()
     {

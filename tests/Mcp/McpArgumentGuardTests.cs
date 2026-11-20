@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Parity.Shared;
 
@@ -30,39 +31,42 @@ public sealed class McpArgumentGuardTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Serve_UnknownArgument_IsInvalidParams_AndDeclaredArgumentsStillWork()
+    public async Task Serve_ToolErrors_ReturnIsErrorResult_AndUnknownToolStaysProtocolError()
     {
-        CreateProject("GuardProj", new Dictionary<string, string>
-        {
-            ["Models.cs"] = """
-                namespace GuardProj {
-                    public class Foo { public void Bar() {} }
-                }
-                """
-        });
-        await RunFullIndexAsync(DbPath);
+        IndexedDirFixture.Create(1, stalePin: false, out _, out var snapshotId, outputDir: TestDir);
 
-        var server = McpServeProcess.Start(
-            LurpTool.Argv("--mode=serve", $"--output-dir={Path.GetDirectoryName(DbPath)!}", $"--solution={SolutionPath}"),
-            _ => { });
-        try
-        {
-            var timeout = TimeSpan.FromSeconds(15);
-            var init = await server.Client.InitializeAsync("test", timeout);
-            Assert.True(init.TryGetProperty("result", out _), "initialize must return result");
+        using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", $"--output-dir={TestDir}"));
+        var timeout = TimeSpan.FromSeconds(30);
+        await server.Client.InitializeAsync("test", timeout);
 
-            var bad = await server.Client.SendAsync("tools/call", new { name = "lurp_search", arguments = new { query = "Foo", bogus = 1 } }, timeout);
-            Assert.True(bad.TryGetProperty("error", out var error), $"expected a JSON-RPC error, got: {bad}");
-            Assert.Equal(-32602, error.GetProperty("code").GetInt32());
-            Assert.Contains("unknown parameter 'bogus'", error.GetProperty("message").GetString());
+        Task<JsonElement> Call(string name, object arguments) =>
+            server.Client.SendAsync("tools/call", new { name, arguments }, timeout);
 
-            var good = await server.Client.SendAsync("tools/call", new { name = "lurp_search", arguments = new { query = "Foo" } }, timeout);
-            Assert.True(good.TryGetProperty("result", out var result), $"expected a result, got: {good}");
-            Assert.False(result.TryGetProperty("isError", out var isError) && isError.GetBoolean(), $"declared arguments must still work: {result}");
-        }
-        finally
-        {
-            server.Dispose();
-        }
+        var bad = await Call("lurp_search", new { query = "Foo", bogus = 1 });
+        Assert.Contains("unknown parameter 'bogus' for lurp_search.", AssertToolError(bad));
+
+        var badLimit = await Call("lurp_search", new { query = "Foo", limit = 0 });
+        Assert.Equal("limit must be a positive integer.", AssertToolError(badLimit));
+
+        var missing = await Call("lurp_find_symbol", new { symbol = "Nope.Nope" });
+        Assert.Equal($"Symbol 'Nope.Nope' not found in snapshot '{snapshotId}'. {HandlerBootstrap.AcceptedSymbolFormsText}",
+            AssertToolError(missing));
+
+        var unknown = await Call("lurp_does_not_exist", new { });
+        Assert.True(unknown.TryGetProperty("error", out _));
+        Assert.False(unknown.TryGetProperty("result", out _));
+
+        var good = await server.Client.CallToolAsync("lurp_search", new { query = "Foo" });
+        Assert.NotEmpty(good.GetProperty("content").EnumerateArray());
+    }
+
+    internal static string AssertToolError(JsonElement response)
+    {
+        Assert.False(response.TryGetProperty("error", out _), $"Expected a tool result: {response}");
+        var result = response.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        var content = Assert.Single(result.GetProperty("content").EnumerateArray());
+        Assert.Equal("text", content.GetProperty("type").GetString());
+        return content.GetProperty("text").GetString()!;
     }
 }

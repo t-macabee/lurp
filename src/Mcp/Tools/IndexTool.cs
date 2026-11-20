@@ -21,71 +21,29 @@ internal sealed class IndexTool
     }
 
     [McpServerTool(Name = "lurp_index", Title = "Lurp Index", ReadOnly = false, Destructive = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Index or re-index the solution the serve session was started with (`--solution=`). Starts a background run (`strategy` full|incremental, `force` to re-extract identical snapshot). Returns at once with {operation_id,status:running}. Progress is buffered; poll lurp_index with {operation_id} to read it. Cancel via MCP cancellation or by calling lurp_index with {operation_id,cancel:true}. On completion do not auto-pin — use lurp_refresh to advance. While running, other tools keep answering from the old pin.")]
+    [Description("Index or re-index the solution the serve session was started with (`--solution=`). Starts a background run (`strategy` full|incremental, `force` to re-extract identical snapshot). Returns at once with {operation_id,status:running}. Progress is buffered; poll lurp_index with {operation_id} to read it. Cancel by calling lurp_index with {operation_id,cancel:true} (sets cancel_requested:true on a running operation). If cancellation stops the run, later polls report cancelled. Reports the snapshot id the run built or reused, whatever database pin is set. On completion do not auto-pin — use lurp_refresh to advance. While running, other tools keep answering from the old pin.")]
     public string LurpIndex(
         string? strategy = null,
         bool? force = null,
         string? operation_id = null,
         bool? cancel = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        McpSessionContext.RunTool(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
             // Poll / cancel path when operation_id is supplied.
             if (!string.IsNullOrEmpty(operation_id))
             {
-                if (cancel == true)
-                {
-                    var ok = _indexState.TryCancel(operation_id!);
-                    if (!ok)
-                    {
-                        var snap = _indexState.Snapshot(operation_id);
-                        if (snap == null)
-                            throw new McpProtocolException($"unknown operation_id '{operation_id}'.", McpErrorCode.InvalidParams);
-                        // Already finished — return its snapshot.
-                        return JsonSerializer.Serialize(new
-                        {
-                            operation_id = snap.OperationId,
-                            status = snap.Status,
-                            finished_at_utc = snap.FinishedAtUtc,
-                            error = snap.ErrorMessage,
-                            result_snapshot_id = snap.ResultSnapshotId
-                        }, LurpJsonOptions.Indented);
-                    }
-
-                    return JsonSerializer.Serialize(new
-                    {
-                        operation_id = operation_id,
-                        status = "cancelled",
-                        message = "cancellation requested"
-                    }, LurpJsonOptions.Indented);
-                }
-
-                // Poll status.
-                var snapshot = _indexState.Snapshot(operation_id);
+                var snapshot = cancel == true ? _indexState.TryCancel(operation_id) : _indexState.Snapshot(operation_id);
                 if (snapshot == null)
                     throw new McpProtocolException($"unknown operation_id '{operation_id}'.", McpErrorCode.InvalidParams);
 
-                return JsonSerializer.Serialize(new
-                {
-                    operation_id = snapshot.OperationId,
-                    status = snapshot.Status,
-                    started_at_utc = snapshot.StartedAtUtc,
-                    finished_at_utc = snapshot.FinishedAtUtc,
-                    progress = snapshot.Progress,
-                    error = snapshot.ErrorMessage,
-                    error_code = snapshot.ErrorCode,
-                    error_data = snapshot.ErrorData,
-                    result_snapshot_id = snapshot.ResultSnapshotId,
-                    previous_snapshot_id = snapshot.PreviousSnapshotId
-                }, LurpJsonOptions.Indented);
+                return SerializeResponse(snapshot);
             }
 
             // Start new run — validate single-flight.
-            var current = _indexState.Current;
-            if (current != null && current.Status == IndexStatus.Running)
-                throw new McpProtocolException($"an index is already running (operation_id={current.OperationId}); wait or cancel it before starting another.", McpErrorCode.InvalidParams);
+            var runningOperationId = _indexState.RunningOperationId;
+            if (runningOperationId != null)
+                throw new McpProtocolException($"an index is already running (operation_id={runningOperationId}); wait or cancel it before starting another.", McpErrorCode.InvalidParams);
 
             if (strategy != null)
             {
@@ -116,32 +74,23 @@ internal sealed class IndexTool
             }
 
             var operationId = Guid.NewGuid().ToString("N");
-            string? previousSnapshotId;
-            string? strategyArg;
-            bool forceFlag;
+            IndexOperationSnapshot startSnapshot;
             CancellationTokenSource? cts = null;
             IndexOperation? op = null;
-            McpIndexOutputSink? sink;
             Task? task = null;
             try
             {
-                cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                op = _indexState.TryStart(operationId, cts);
+                cts = new CancellationTokenSource();
+                op = _indexState.TryStart(operationId, cts, _session.PinnedSnapshotId);
                 if (op == null)
                     throw new McpProtocolException("an index is already running; wait or cancel it before starting another.", McpErrorCode.InvalidParams);
 
-                previousSnapshotId = _session.PinnedSnapshotId;
-                strategyArg = strategy;
-                forceFlag = force ?? false;
+                startSnapshot = op.ToSnapshot();
 
-                sink = new McpIndexOutputSink(op);
-
-                // Background Task — Option B: in-process IndexRunner.RunAsync.
-                // Locks and the CTS are owned by this method until the task starts, then by
-                // the task, which releases them in its finally.
-                var opCts = cts!;
-                var opSink = sink!;
-                var opRef = op!;
+                // The background task uses its own token and owns the locks once started.
+                var opCts = cts;
+                var opRef = op;
+                var opSink = new McpIndexOutputSink(op);
                 task = Task.Run(async () =>
                 {
                     using var _solLock = solutionLock;
@@ -157,42 +106,24 @@ internal sealed class IndexTool
 
                         var skipAdapters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                        await IndexRunner.RunAsync(store, solutionPath!, skipAdapters, null, strategyArg, verbose: false, output: opSink, skipDiff: false, force: forceFlag, cancellationToken: opCts.Token);
-
-                        // On success, detect the new complete snapshot (may be identical to previous when dedup reused).
-                        string? latest = store.GetLatestSnapshotId();
-
-                        // If no new snapshot (dedup reuse), latest == previous. Still mark completed.
-                        opRef.Complete(latest, previousSnapshotId);
-
-                        opSink.WriteLine($"index operation {operationId} completed. snapshot: {latest ?? previousSnapshotId}");
+                        var selectedSnapshotId = await IndexRunner.RunAsync(store, solutionPath, skipAdapters, null, strategy, output: opSink, force: force ?? false, cancellationToken: opCts.Token);
+                        opSink.WriteLine($"index operation {operationId} completed. snapshot: {selectedSnapshotId}");
+                        opRef.Complete(selectedSnapshotId);
                     }
                     catch (OperationCanceledException)
                     {
-                        opRef.Cancel();
                         opSink.WriteLine($"index operation {operationId} cancelled.");
+                        opRef.Cancel();
                     }
                     catch (WorkspaceUnreadableException wue)
                     {
-                        // Return structured data, not a stack trace (4.9).
-                        var data = new
-                        {
-                            reason_code = "workspace_unreadable",
-                            message = wue.Message,
-                            solution = solutionPath
-                        };
-                        opRef.Fail(wue.Message, "workspace_unreadable", data);
                         opSink.WriteErrorLine($"ERROR: workspace unreadable: {wue.Message}");
-                    }
-                    catch (Exception ex) when (ex is not McpProtocolException)
-                    {
-                        opRef.Fail(ex.Message, "index_failed", new { message = ex.Message });
-                        opSink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
+                        opRef.Fail(wue.Message, "workspace_unreadable", McpErrorMapper.WorkspaceUnreadable(wue.Message));
                     }
                     catch (Exception ex)
                     {
-                        opRef.Fail(ex.Message);
                         opSink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
+                        opRef.Fail(ex.Message, "index_failed", new { message = ex.Message });
                     }
                     finally
                     {
@@ -225,28 +156,14 @@ internal sealed class IndexTool
                 throw;
             }
 
-            var envelope = new
-            {
-                operation_id = operationId,
-                status = "running",
-                started_at_utc = op.StartedAtUtc,
-                previous_snapshot_id = previousSnapshotId
-            };
-            return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+            return SerializeResponse(startSnapshot);
+        }, cancellationToken);
+
+    private static string SerializeResponse(IndexOperationSnapshot snapshot) =>
+        JsonSerializer.Serialize(new IndexOperationResponse(
+            snapshot.OperationId, snapshot.Status, snapshot.StartedAtUtc, snapshot.FinishedAtUtc,
+            snapshot.Progress, snapshot.ErrorMessage, snapshot.ErrorCode, snapshot.ErrorData,
+            snapshot.ResultSnapshotId, snapshot.PreviousSnapshotId, snapshot.CancelRequested), LurpJsonOptions.Indented);
 
     private sealed class McpIndexOutputSink : IOutputSink
     {
@@ -273,3 +190,16 @@ internal sealed class IndexTool
         }
     }
 }
+
+internal sealed record IndexOperationResponse(
+    string operation_id,
+    string status,
+    DateTime started_at_utc,
+    DateTime? finished_at_utc,
+    IReadOnlyList<string> progress,
+    string? error,
+    string? error_code,
+    object? error_data,
+    string? result_snapshot_id,
+    string previous_snapshot_id,
+    bool cancel_requested);

@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Lurp.Handlers;
+using Lurp.Tests.Docs;
 using Lurp.Workspace;
 
 namespace Lurp.Tests;
@@ -98,6 +99,9 @@ public sealed class FlagSpecTests
     {
         foreach (var value in FlagCatalog.Freshness.AllowedValues!)
             HandlerBootstrap.ParseFreshnessMode([$"--freshness={value}"]);
+
+        var ex = Assert.Throws<CliExitException>(() => HandlerBootstrap.ParseFreshnessMode(["--freshness=banana"]));
+        Assert.Equal(1, ex.ExitCode);
     }
 
     [Fact]
@@ -197,20 +201,49 @@ public sealed class FlagSpecTests
     [Fact]
     public void Help_ListsADescriptionForEveryFlag()
     {
-        var help = CaptureHelp();
         var missing = new List<string>();
         foreach (var entry in Program.ModeRegistry)
         {
+            var block = HelpBlock(entry.Name);
             foreach (var spec in entry.Specs)
             {
                 var plain = HelpText.PlainText(spec.Description);
                 var prefix = plain[..Math.Min(20, plain.Length)];
-                if (!help.Contains(prefix, StringComparison.Ordinal))
+                if (!block.Contains(spec.Name, StringComparison.Ordinal) || !block.Contains(prefix, StringComparison.Ordinal))
                     missing.Add($"{entry.Name}:{spec.Name}");
             }
         }
 
         Assert.Empty(missing);
+    }
+
+    [Fact]
+    public void EveryRegisteredFlag_IsReferencedInHandlerSource()
+    {
+        var root = TestRepoRoot.Find();
+        var paths = Directory.EnumerateFiles(Path.Combine(root, "src", "Handlers"), "*.cs")
+            .Append(Path.Combine(root, "src", "Mcp", "McpServeHandler.cs"))
+            .Append(Path.Combine(root, "src", "Mcp", "McpSessionContext.cs"));
+        var catalog = typeof(FlagCatalog).GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field.FieldType == typeof(FlagSpec))
+            .ToDictionary(field => field.Name, field => ((FlagSpec)field.GetValue(null)!).Name, StringComparer.Ordinal);
+
+        var literals = new HashSet<string>(StringComparer.Ordinal);
+        var references = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in paths)
+        {
+            foreach (Match match in Regex.Matches(File.ReadAllText(path), """(?:"(?<flag>--[a-z][a-z0-9-]*=?)"|\bFlagCatalog\.(?<field>\w+))"""))
+            {
+                if (match.Groups["flag"].Success)
+                    literals.Add(match.Groups["flag"].Value);
+                else if (catalog.TryGetValue(match.Groups["field"].Value, out var flag))
+                    references.Add(flag);
+            }
+        }
+
+        var registered = Program.ModeRegistry.SelectMany(entry => entry.Flags).ToHashSet(StringComparer.Ordinal);
+        Assert.Empty(registered.Except(literals, StringComparer.Ordinal).Except(references, StringComparer.Ordinal).Order());
+        Assert.Empty(literals.Except(registered, StringComparer.Ordinal).Except(CliFlagValidation.GlobalFlags, StringComparer.Ordinal).Order());
     }
 
     [Fact]

@@ -11,32 +11,39 @@ internal sealed class McpIndexSessionState
         get { lock (_lock) return _current; }
     }
 
+    public string? RunningOperationId
+    {
+        get { lock (_lock) return _current?.Status == IndexStatus.Running ? _current.OperationId : null; }
+    }
+
     /// <summary>
     ///     Try to start a new operation. Returns the operation on success, or null when
-    ///     another run is already active — the caller must then reject with -32602.
+    ///     another run is already active — the caller must then reject the request.
     /// </summary>
-    public IndexOperation? TryStart(string operationId, CancellationTokenSource cts)
+    public IndexOperation? TryStart(string operationId, CancellationTokenSource cts, string previousSnapshotId)
     {
         lock (_lock)
         {
             if (_current != null && _current.Status == IndexStatus.Running)
                 return null;
 
-            var op = new IndexOperation(operationId, cts);
+            var op = new IndexOperation(operationId, cts, previousSnapshotId, _lock);
             _current = op;
             return op;
         }
     }
 
-    public bool TryCancel(string operationId)
+    public IndexOperationSnapshot? TryCancel(string operationId)
     {
         lock (_lock)
         {
-            if (_current == null) return false;
-            if (_current.OperationId != operationId) return false;
-            if (_current.Status != IndexStatus.Running) return false;
-            try { _current.CancellationTokenSource.Cancel(); } catch { }
-            return true;
+            if (_current?.OperationId != operationId)
+                return null;
+
+            if (_current.Status == IndexStatus.Running)
+                _current.RequestCancellation();
+
+            return _current.ToSnapshot();
         }
     }
 
@@ -48,7 +55,8 @@ internal sealed class McpIndexSessionState
     {
         lock (_lock)
         {
-            try { _current?.CancellationTokenSource.Cancel(); } catch { }
+            if (_current?.Status == IndexStatus.Running)
+                _current.RequestCancellation();
         }
     }
 
@@ -75,7 +83,7 @@ internal enum IndexStatus
 internal sealed class IndexOperation
 {
     private readonly List<string> _progressLines = new();
-    private readonly object _progressLock = new();
+    private readonly object _lock;
 
     public string OperationId { get; }
     public CancellationTokenSource CancellationTokenSource { get; }
@@ -86,61 +94,78 @@ internal sealed class IndexOperation
     public string? ErrorCode { get; private set; }
     public object? ErrorData { get; private set; }
     public string? ResultSnapshotId { get; private set; }
-    public string? PreviousSnapshotId { get; private set; }
+    public string PreviousSnapshotId { get; }
+    public bool CancelRequested { get; private set; }
     public Task? BackgroundTask { get; set; }
 
-    public IndexOperation(string operationId, CancellationTokenSource cts)
+    public IndexOperation(string operationId, CancellationTokenSource cts, string previousSnapshotId, object stateLock)
     {
         OperationId = operationId;
         CancellationTokenSource = cts;
+        PreviousSnapshotId = previousSnapshotId;
+        _lock = stateLock;
     }
 
     public void AppendProgress(string line)
     {
-        lock (_progressLock) _progressLines.Add(line);
+        lock (_lock) _progressLines.Add(line);
     }
 
-    public IReadOnlyList<string> GetProgress()
+    // Called under the session lock so cancellation and the returned status agree.
+    internal void RequestCancellation()
     {
-        lock (_progressLock) return _progressLines.ToList();
+        CancelRequested = true;
+        try { CancellationTokenSource.Cancel(); } catch { }
     }
 
-    public void Complete(string? newSnapshotId, string? previousSnapshotId)
+    public void Complete(string newSnapshotId)
     {
-        FinishedAtUtc = DateTime.UtcNow;
-        Status = IndexStatus.Completed;
-        ResultSnapshotId = newSnapshotId;
-        PreviousSnapshotId = previousSnapshotId;
+        lock (_lock)
+        {
+            FinishedAtUtc = DateTime.UtcNow;
+            Status = IndexStatus.Completed;
+            ResultSnapshotId = newSnapshotId;
+        }
     }
 
     public void Fail(string message, string? code = null, object? data = null)
     {
-        FinishedAtUtc = DateTime.UtcNow;
-        Status = IndexStatus.Failed;
-        ErrorMessage = message;
-        ErrorCode = code;
-        ErrorData = data;
+        lock (_lock)
+        {
+            FinishedAtUtc = DateTime.UtcNow;
+            Status = IndexStatus.Failed;
+            ErrorMessage = message;
+            ErrorCode = code;
+            ErrorData = data;
+        }
     }
 
     public void Cancel()
     {
-        FinishedAtUtc = DateTime.UtcNow;
-        Status = IndexStatus.Cancelled;
+        lock (_lock)
+        {
+            FinishedAtUtc = DateTime.UtcNow;
+            Status = IndexStatus.Cancelled;
+        }
     }
 
     public IndexOperationSnapshot ToSnapshot()
     {
-        return new IndexOperationSnapshot(
-            OperationId,
-            Status.ToString().ToLowerInvariant(),
-            StartedAtUtc,
-            FinishedAtUtc,
-            GetProgress(),
-            ErrorMessage,
-            ErrorCode,
-            ErrorData,
-            ResultSnapshotId,
-            PreviousSnapshotId);
+        lock (_lock)
+        {
+            return new IndexOperationSnapshot(
+                OperationId,
+                Status.ToString().ToLowerInvariant(),
+                StartedAtUtc,
+                FinishedAtUtc,
+                _progressLines.ToArray(),
+                ErrorMessage,
+                ErrorCode,
+                ErrorData,
+                ResultSnapshotId,
+                PreviousSnapshotId,
+                CancelRequested);
+        }
     }
 }
 
@@ -154,4 +179,5 @@ internal sealed record IndexOperationSnapshot(
     string? ErrorCode,
     object? ErrorData,
     string? ResultSnapshotId,
-    string? PreviousSnapshotId);
+    string PreviousSnapshotId,
+    bool CancelRequested);

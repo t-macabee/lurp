@@ -36,17 +36,28 @@ public sealed class McpToolCatalogTests
     public void ReadTools_AreReadOnly_WriteTools_AreNot()
     {
         foreach (var type in McpServeHandler.ReadToolTypes)
-            Assert.All(DocRenderers.ToolMethods(type), method => Assert.True(ToolAttribute(method).ReadOnly));
+            Assert.All(DocRenderers.ToolMethods(type), method =>
+            {
+                var attr = ToolAttribute(method);
+                Assert.True(attr.ReadOnly);
+                // The SDK defaults Destructive to true; the hint only applies to write tools.
+                var declaration = method.CustomAttributes.Single(attribute => attribute.AttributeType == typeof(McpServerToolAttribute));
+                Assert.DoesNotContain(declaration.NamedArguments,
+                    argument => argument.MemberName == nameof(attr.Destructive) && argument.TypedValue.Value is true);
+                Assert.False(attr.OpenWorld);
+            });
 
         foreach (var type in McpServeHandler.WriteToolTypes)
-            Assert.All(DocRenderers.ToolMethods(type), method => Assert.False(ToolAttribute(method).ReadOnly));
-    }
-
-    [Fact]
-    public void ToolCounts_AreSixteenAndTwo()
-    {
-        Assert.Equal(16, McpServeHandler.ReadToolTypes.Length);
-        Assert.Equal(2, McpServeHandler.WriteToolTypes.Length);
+            Assert.All(DocRenderers.ToolMethods(type), method =>
+            {
+                var attr = ToolAttribute(method);
+                Assert.False(attr.ReadOnly);
+                // The SDK defaults Destructive to true, so a write tool must state it.
+                var declaration = method.CustomAttributes.Single(attribute => attribute.AttributeType == typeof(McpServerToolAttribute));
+                Assert.Contains(declaration.NamedArguments,
+                    argument => argument.MemberName == nameof(attr.Destructive) && argument.TypedValue.Value is true);
+                Assert.False(attr.OpenWorld);
+            });
     }
 
     private static McpServerToolAttribute ToolAttribute(MethodInfo method) =>

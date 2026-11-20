@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -22,6 +23,11 @@ internal static class CursorUtils
         {
             return null;
         }
+    }
+
+    public static string JoinFingerprint(params object?[] parts)
+    {
+        return string.Join("\u0001", parts.Select(static part => Convert.ToString(part, CultureInfo.InvariantCulture)));
     }
 
     public static void RequireBinding(string issuedSnapshotId, string issuedFingerprint, string snapshotId, string fingerprint, string mismatchMessage)

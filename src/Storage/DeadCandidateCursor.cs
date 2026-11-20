@@ -8,7 +8,7 @@ public sealed record DeadCandidateCursor(string SnapshotId, string Fingerprint, 
 {
     public static string ComputeFingerprint(string? project, string? document, string? kind, bool includePublic, bool includeGenerated, bool includeTests)
     {
-        return $"{project ?? string.Empty}\u0001{document ?? string.Empty}\u0001{kind ?? string.Empty}\u0001{includePublic}\u0001{includeGenerated}\u0001{includeTests}";
+        return CursorUtils.JoinFingerprint(project, document, kind, includePublic, includeGenerated, includeTests);
     }
 
     public string Encode()

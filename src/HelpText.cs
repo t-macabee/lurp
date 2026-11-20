@@ -53,8 +53,6 @@ internal static class HelpText
         {
             output.WriteLine();
             output.WriteLine($"  --mode={entry.Name}");
-            if (entry.Flags.Length == 0)
-                output.WriteLine("      (no flags beyond --output-dir=)");
             foreach (var spec in entry.Specs)
                 WriteFlag(spec, output);
             if (ModeNotes.TryGetValue(entry.Name, out var note))

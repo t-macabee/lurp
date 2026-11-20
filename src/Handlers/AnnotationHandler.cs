@@ -10,9 +10,9 @@ internal static class AnnotationHandler
 
     public static void RunAnnotate(string[] args, IOutputSink output)
     {
-        var symbolArg = HandlerBootstrap.RequireArg(args, "--symbol=", "ERROR: --symbol=<symbolId> is required for --mode=annotate.");
-        var kindArg = HandlerBootstrap.RequireArg(args, "--annotation-kind=", "ERROR: --annotation-kind=<kind> is required for --mode=annotate.");
-        var valueArg = HandlerBootstrap.RequireArg(args, "--value=", "ERROR: --value=<text> is required for --mode=annotate.");
+        var symbolArg = HandlerBootstrap.RequireFlag(args, FlagCatalog.Symbol, "annotate");
+        var kindArg = HandlerBootstrap.RequireFlag(args, FlagCatalog.AnnotationKind, "annotate");
+        var valueArg = HandlerBootstrap.RequireFlag(args, FlagCatalog.Value, "annotate");
 
         HandlerBootstrap.WithWritableStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
@@ -33,7 +33,7 @@ internal static class AnnotationHandler
 
     public static void RunRetractAnnotation(string[] args, IOutputSink output)
     {
-        var rawId = HandlerBootstrap.RequireArg(args, "--annotation-id=", "ERROR: --annotation-id=<id> is required for --mode=retract-annotation.");
+        var rawId = HandlerBootstrap.RequireFlag(args, FlagCatalog.AnnotationId, "retract-annotation");
         if (!long.TryParse(rawId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var annotationId) || annotationId < 1)
             HandlerBootstrap.Fail("ERROR: --annotation-id must be a positive integer.");
 
@@ -98,13 +98,7 @@ internal static class AnnotationHandler
                     HandlerBootstrap.Fail($"ERROR: {DocumentMessages.NotFound(normalizedDocument!, snapshotId)}");
             }
 
-            AnnotationCursor? cursor = null;
-            if (!string.IsNullOrEmpty(cursorArg))
-            {
-                cursor = AnnotationCursor.TryDecode(cursorArg);
-                if (cursor == null)
-                    HandlerBootstrap.Fail("ERROR: --cursor is not a valid continuation token.");
-            }
+            var cursor = HandlerBootstrap.DecodeCursor(cursorArg, AnnotationCursor.TryDecode);
 
             AnnotationPage page;
             try
@@ -119,14 +113,7 @@ internal static class AnnotationHandler
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
-            var annotations = page.Items.Select(a => new
-            {
-                annotation_id = a.AnnotationId,
-                symbol_id = a.SymbolId,
-                kind = a.Kind,
-                value = a.Value,
-                document_path = a.DocumentPath
-            }).ToList();
+            var annotations = page.Items.Select(SurfacePayloads.AnnotationRow).ToList();
 
             var meta = new
             {
@@ -139,26 +126,16 @@ internal static class AnnotationHandler
                 freshness = FreshnessJson.Cheap(freshness)
             };
 
-            switch (outputMode)
+            CliOutputWriter.Write(outputMode, output, () =>
             {
-                case OutputMode.Summary:
-                    foreach (var a in annotations)
-                        output.WriteLine($"{a.kind,-24} {a.symbol_id}  {a.value}  doc={a.document_path ?? "<null>"}");
-                    output.WriteLine($"-- {annotations.Count}/{page.TotalCount} annotation(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
-                    break;
-
-                case OutputMode.Jsonl:
-                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-                    foreach (var a in annotations)
-                        output.WriteLine(JsonSerializer.Serialize(new { type = "annotation", annotation = a }, HandlerBootstrap.CompactJson));
-                    break;
-
-                default:
-                    output.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, symbol_id = resolvedSymbol, document = normalizedDocument, kind = kindFilter, annotations, annotation_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
-                        HandlerBootstrap.IndentedJson));
-                    break;
-            }
+                foreach (var a in annotations)
+                    output.WriteLine($"{a.kind,-24} {a.symbol_id}  {a.value}  doc={a.document_path ?? "<null>"}");
+                output.WriteLine($"-- {annotations.Count}/{page.TotalCount} annotation(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+            },
+            () => new { snapshot_id = snapshotId, symbol_id = resolvedSymbol, document = normalizedDocument, kind = kindFilter, annotations, annotation_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
+            () => meta,
+            CliOutputWriter.JsonlItemTypes["get-annotations"],
+            annotations);
         }, output);
     }
 }

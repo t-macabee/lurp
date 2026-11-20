@@ -54,6 +54,7 @@ internal static class HandlerBootstrap
     ///     caller on Windows who pastes a native path from the shell would otherwise miss
     ///     every stored document. Normalize the CLI form to the stored form.
     /// </summary>
+    [return: NotNullIfNotNull(nameof(path))]
     public static string? NormalizeDocumentPath(string? path)
     {
         return path is null ? null : PathNormalizer.ToForwardSlash(path);
@@ -200,6 +201,24 @@ internal static class HandlerBootstrap
             ? " scope=documents_only (not a full compilation check)"
             : "";
         output.WriteErrorLine($"freshness: state={stamp.State} method={stamp.Method} changedDocuments={stamp.ChangedDocumentCount} snapshot={stamp.SnapshotId}{scope}");
+    }
+
+    public static TCursor? DecodeCursor<TCursor>(string? rawCursor, Func<string, TCursor?> decoder) where TCursor : class
+    {
+        if (string.IsNullOrEmpty(rawCursor))
+            return null;
+
+        var cursor = decoder(rawCursor);
+        if (cursor is null)
+            Fail("ERROR: --cursor is not a valid continuation token.");
+
+        return cursor;
+    }
+
+    public static string RequireFlag(string[] args, FlagSpec spec, string mode, params string[] extraLines)
+    {
+        var hint = spec.ValueHint ?? (spec.AllowedValues is { Count: > 0 } ? string.Join("|", spec.AllowedValues) : "value");
+        return RequireArg(args, spec.Name, [$"ERROR: {spec.Name}<{hint}> is required for --mode={mode}.", .. extraLines]);
     }
 
     public static string RequireArg(string[] args, string prefix, params string[] errorLines)

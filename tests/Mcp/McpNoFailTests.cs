@@ -25,6 +25,18 @@ public sealed class McpNoFailTests
         Assert.Empty(hits);
     }
 
+    [Fact]
+    public void McpTools_ContainZeroDirectCliExitExceptionConstructions()
+    {
+        var mcpDir = FindMcpDirectory();
+        var startupFile = Path.Combine(mcpDir, "McpSessionContext.cs");
+        var pattern = new Regex(@"new\s+CliExitException\s*\(");
+        var hits = Directory.EnumerateFiles(mcpDir, "*.cs", SearchOption.AllDirectories)
+            .Where(file => file != startupFile && pattern.IsMatch(File.ReadAllText(file)));
+
+        Assert.Empty(hits);
+    }
+
     private static string FindMcpDirectory()
     {
         var dir = AppContext.BaseDirectory;

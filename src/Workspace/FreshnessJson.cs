@@ -3,9 +3,9 @@ namespace Lurp.Workspace;
 /// <summary>
 ///     The single owner for the freshness object in CLI and MCP output (B22).
 ///     <see cref="Cheap" /> keeps the eight-key shape the read-only surfaces have
-///     always emitted; the two <see cref="ForStatus" /> overloads emit the twelve-key
+///     always emitted; the two <see cref="ForStatus" /> overloads emit the thirteen-key
 ///     shape <c>lurp_status</c> uses, with every key always present.
-///     <c>full_check_error</c> is added only when the caller asked for the full check.
+///     <c>full_check_error</c> is null unless a requested full check failed or could not run.
 /// </summary>
 internal static class FreshnessJson
 {
@@ -28,8 +28,8 @@ internal static class FreshnessJson
     /// <summary>The text <c>full_check_error</c> carries when the full check was asked for but no solution is available.</summary>
     public const string FullCheckNotRun = "full check not run: no solution is available (start serve with --solution=)";
 
-    /// <summary>Adds <c>full_check_error</c>; only a caller that asked for the full check calls this.</summary>
-    public static void AddFullCheckError(Dictionary<string, object?> freshness, string? error)
+    /// <summary>Sets <c>full_check_error</c> when a requested full check failed or could not run.</summary>
+    public static void SetFullCheckError(Dictionary<string, object?> freshness, string? error)
     {
         freshness["full_check_error"] = error;
     }
@@ -145,7 +145,8 @@ internal static class FreshnessJson
         bool? isFresh,
         object? mismatches,
         object? mismatchesTruncated,
-        object? mismatchesTotal)
+        object? mismatchesTotal,
+        string? fullCheckError = null)
     {
         return new Dictionary<string, object?>
         {
@@ -160,7 +161,8 @@ internal static class FreshnessJson
             ["is_fresh"] = isFresh,
             ["mismatches"] = mismatches,
             ["mismatches_truncated"] = mismatchesTruncated,
-            ["mismatches_total"] = mismatchesTotal
+            ["mismatches_total"] = mismatchesTotal,
+            ["full_check_error"] = fullCheckError
         };
     }
 }

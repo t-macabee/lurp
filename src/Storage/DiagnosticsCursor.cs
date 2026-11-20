@@ -12,7 +12,7 @@ public sealed record DiagnosticsCursor(string SnapshotId, string Fingerprint, lo
 {
     public static string ComputeFingerprint(string? projectName, string? documentPath, string? severity, bool excludeHidden, bool includeGenerated, string? id)
     {
-        return $"{projectName ?? string.Empty}\u0001{documentPath ?? string.Empty}\u0001{severity ?? string.Empty}\u0001{excludeHidden}\u0001{includeGenerated}\u0001{id ?? string.Empty}";
+        return CursorUtils.JoinFingerprint(projectName, documentPath, severity, excludeHidden, includeGenerated, id);
     }
 
     public string Encode()

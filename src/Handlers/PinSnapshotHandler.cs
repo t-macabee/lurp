@@ -41,14 +41,9 @@ internal static class PinSnapshotHandler
                 var selectedLatest = store.GetSelectedLatestSnapshotId();
                 if (asJson)
                 {
-                    output.WriteLine(JsonSerializer.Serialize(new
-                    {
-                        status = "cleared",
-                        cleared,
-                        effective_latest_snapshot_id = effectiveLatest,
-                        selected_latest_snapshot_id = selectedLatest,
-                        pin_active = false
-                    }, HandlerBootstrap.IndentedJson));
+                    var response = new PinSnapshotResponse("cleared", cleared, null, null, null, null,
+                        effectiveLatest, selectedLatest, false);
+                    output.WriteLine(JsonSerializer.Serialize(response, HandlerBootstrap.IndentedJson));
                 }
                 else
                 {
@@ -97,17 +92,9 @@ internal static class PinSnapshotHandler
 
             if (asJson)
             {
-                output.WriteLine(JsonSerializer.Serialize(new
-                {
-                    status = "pinned",
-                    pinned_snapshot_id = pinnedRow.PinnedSnapshotId,
-                    previous_pinned_snapshot_id = previousId,
-                    pinned_at_utc = pinnedRow.PinnedAtUtc,
-                    built_at_utc = pinnedRow.BuiltAtUtc,
-                    effective_latest_snapshot_id = effectiveLatestId,
-                    selected_latest_snapshot_id = selectedLatestId,
-                    pin_active = true
-                }, HandlerBootstrap.IndentedJson));
+                var response = new PinSnapshotResponse("pinned", null, pinnedRow.PinnedSnapshotId,
+                    previousId, pinnedRow.PinnedAtUtc, pinnedRow.BuiltAtUtc, effectiveLatestId, selectedLatestId, true);
+                output.WriteLine(JsonSerializer.Serialize(response, HandlerBootstrap.IndentedJson));
             }
             else
             {
@@ -126,3 +113,8 @@ internal static class PinSnapshotHandler
         }
     }
 }
+
+internal sealed record PinSnapshotResponse(
+    string status, bool? cleared, string? pinned_snapshot_id, string? previous_pinned_snapshot_id,
+    DateTime? pinned_at_utc, DateTime? built_at_utc, string? effective_latest_snapshot_id,
+    string? selected_latest_snapshot_id, bool pin_active);

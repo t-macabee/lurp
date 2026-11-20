@@ -1,6 +1,7 @@
 using Lurp.Workspace;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Lurp.Handlers;
 
@@ -126,28 +127,21 @@ internal static class ImpactHandler
                 binding.Fingerprint,
                 ImpactRequest.CursorKind);
 
-            switch (outputMode)
+            CliOutputWriter.Write(outputMode, output, () =>
             {
-                case OutputMode.Summary:
-                    // Summary rows are read by humans, so they lead with names; the full
-                    // docCommentId|assemblyIdentity strings stay in --output=json, which is
-                    // what a consumer feeds back into --symbol=.
-                    var displayName = MakeNameResolver(store, snapshotId);
-                    WriteSummary(displayName(response.symbol_id), response.direction, response.symbol_count_total, response.symbols.Count, binding.Offset,
-                        response.groups.Count, response.frontier_count,
-                        response.groups.Select(group => ($"{displayName(group.first_hop_source_symbol_id)} → {displayName(group.first_hop_target_symbol_id)} [{group.edge_kind}]", group.symbol_count)),
-                        response.truncated, output);
-                    break;
-
-                case OutputMode.Jsonl:
-                    WriteJsonl(response, output);
-                    break;
-
-                // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
-                default:
-                    output.WriteLine(JsonSerializer.Serialize(response, HandlerBootstrap.IndentedJson));
-                    break;
-            }
+                // Summary rows are read by humans, so they lead with names; the full
+                // docCommentId|assemblyIdentity strings stay in --output=json, which is
+                // what a consumer feeds back into --symbol=.
+                var displayName = MakeNameResolver(store, snapshotId);
+                WriteSummary(displayName(response.symbol_id), response.direction, response.symbol_count_total, response.symbols.Count, binding.Offset,
+                    response.groups.Count, response.frontier_count,
+                    response.groups.Select(group => ($"{displayName(group.first_hop_source_symbol_id)} → {displayName(group.first_hop_target_symbol_id)} [{group.edge_kind}]", group.symbol_count)),
+                    response.truncated, output);
+            },
+            () => response,
+            () => BuildJsonlMeta(response),
+            CliOutputWriter.JsonlItemTypes["impact"],
+            response.symbols);
 
         }, output);
     }
@@ -194,14 +188,11 @@ internal static class ImpactHandler
             output.WriteLine("  truncated: pass --cursor=<token from --output=json> to continue.");
     }
 
-    private static void WriteJsonl(ImpactResponse response, IOutputSink output)
+    private static JsonObject BuildJsonlMeta(ImpactResponse response)
     {
-        // The meta line is the response without the per-symbol rows: a streaming
-        // consumer reads the header first and then one symbol per line.
+        // The meta record is the response without the per-symbol rows.
         var meta = JsonSerializer.SerializeToNode(response, HandlerBootstrap.CompactJson)!.AsObject();
         meta.Remove("symbols");
-        output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-        foreach (var symbol in response.symbols)
-            output.WriteLine(JsonSerializer.Serialize(new { type = "symbol", symbol }, HandlerBootstrap.CompactJson));
+        return meta;
     }
 }

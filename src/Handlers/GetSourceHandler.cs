@@ -6,8 +6,7 @@ internal static class GetSourceHandler
 {
     public static void Run(string[] args, IOutputSink output)
     {
-        var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
-        if (string.IsNullOrEmpty(documentArg)) HandlerBootstrap.Fail("ERROR: --document=<relative-path> is required for --mode=get-source.");
+        var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.RequireFlag(args, FlagCatalog.Document, "get-source"));
 
         var startLineRaw = HandlerBootstrap.GetArgValue(args, "--start-line=");
         var endLineRaw = HandlerBootstrap.GetArgValue(args, "--end-line=");

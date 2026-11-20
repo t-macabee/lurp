@@ -10,19 +10,13 @@ namespace Lurp.Tests.Mcp;
 /// </summary>
 public sealed class McpStdioBoundaryTests : IntegrationTestBase
 {
-    private async Task IndexFixtureAsync()
-    {
-        CreateProject("BoundaryProj", new Dictionary<string, string>
-        {
-            ["Models.cs"] = "namespace BoundaryProj { public class Foo { public void Bar() {} } }"
-        });
-        await RunFullIndexAsync(DbPath);
-    }
+    private void SeedSnapshot() =>
+        IndexedDirFixture.Create(1, stalePin: false, out _, out _, outputDir: TestDir);
 
     [Fact]
     public async Task Serve_WithoutWriteTools_ExposesReadToolsOnly_AndSurvivesMalformedInput()
     {
-        await IndexFixtureAsync();
+        SeedSnapshot();
 
         using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", $"--output-dir={Path.GetDirectoryName(DbPath)!}"));
         await server.Client.InitializeAsync("test", TimeSpan.FromSeconds(30));
@@ -44,7 +38,7 @@ public sealed class McpStdioBoundaryTests : IntegrationTestBase
     [Fact]
     public async Task Serve_WithWriteTools_ExposesIndexAndRetract()
     {
-        await IndexFixtureAsync();
+        SeedSnapshot();
 
         using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", "--enable-write-tools", $"--output-dir={Path.GetDirectoryName(DbPath)!}"));
         await server.Client.InitializeAsync("test", TimeSpan.FromSeconds(30));
@@ -57,13 +51,52 @@ public sealed class McpStdioBoundaryTests : IntegrationTestBase
         Assert.Contains("lurp_index", names);
         Assert.Contains("lurp_retract_annotation", names);
 
-        // annotation_id is optional in the tool schema: the SDK binds a missing value
-        // as null and the tool answers with its own named -32602 error.
         var retract = list.GetProperty("result").GetProperty("tools").EnumerateArray()
             .Single(t => t.GetProperty("name").GetString() == "lurp_retract_annotation");
-        var schema = retract.GetProperty("inputSchema");
-        Assert.False(
-            schema.TryGetProperty("required", out var required) &&
-            required.EnumerateArray().Any(name => name.GetString() == "annotation_id"));
+        var required = Assert.Single(retract.GetProperty("inputSchema").GetProperty("required").EnumerateArray());
+        Assert.Equal("annotation_id", required.GetString());
+        var omitted = await server.Client.SendAsync("tools/call",
+            new { name = "lurp_retract_annotation", arguments = new { } }, TimeSpan.FromSeconds(30));
+        Assert.Equal("annotation_id is required.", McpArgumentGuardTests.AssertToolError(omitted));
+    }
+
+    [Fact]
+    public async Task Serve_ToolsList_DeclaresExactRequiredParameters_AndOmittedRequiredStillReturnsNamedError()
+    {
+        SeedSnapshot();
+        using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", "--enable-write-tools", $"--output-dir={TestDir}"));
+        var timeout = TimeSpan.FromSeconds(30);
+        await server.Client.InitializeAsync("test", timeout);
+
+        var expected = new Dictionary<string, string[]>
+        {
+            ["lurp_get_source"] = ["document"],
+            ["lurp_outline"] = ["document"],
+            ["lurp_navigate"] = ["file", "line"],
+            ["lurp_find_symbol"] = ["symbol"],
+            ["lurp_get_symbol"] = ["symbol"],
+            ["lurp_impact"] = ["symbol"],
+            ["lurp_search"] = ["query"],
+            ["lurp_grep"] = ["query"],
+            ["lurp_diff"] = ["from_snapshot", "to_snapshot"],
+            ["lurp_retract_annotation"] = ["annotation_id"]
+        };
+
+        var list = await server.Client.SendAsync("tools/list", null, timeout);
+        var tools = list.GetProperty("result").GetProperty("tools");
+        Assert.Equal(18, tools.GetArrayLength());
+        foreach (var tool in tools.EnumerateArray())
+        {
+            var name = tool.GetProperty("name").GetString()!;
+            var schema = tool.GetProperty("inputSchema");
+            var actual = schema.TryGetProperty("required", out var required)
+                ? required.EnumerateArray().Select(item => item.GetString()).ToArray()
+                : [];
+            Assert.Equal(expected.Remove(name, out var parameters) ? parameters : [], actual);
+        }
+        Assert.Empty(expected);
+
+        var grep = await server.Client.SendAsync("tools/call", new { name = "lurp_grep", arguments = new { } }, timeout);
+        Assert.Equal("query is required.", McpArgumentGuardTests.AssertToolError(grep));
     }
 }

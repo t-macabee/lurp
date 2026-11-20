@@ -111,6 +111,7 @@ public sealed class DocRenderersTests
 
         Assert.Contains("| `lurp_index` | write (needs `--enable-write-tools`) |", table);
         Assert.Contains("Both from_snapshot and to_snapshot are required.", table);
+        Assert.Contains("`from_snapshot` (string, required)", table);
         Assert.Contains("(bool, default `false`)", table);
         Assert.Contains("`affected_project` (string[])", table);
     }

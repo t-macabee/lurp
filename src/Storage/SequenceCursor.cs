@@ -16,8 +16,6 @@ namespace Lurp.Storage;
 /// </summary>
 public sealed record SequenceCursor(string SnapshotId, string Fingerprint, string Kind, int Offset)
 {
-    private const string FingerprintSeparator = "\u0001";
-
     /// <summary>
     ///     Binds a cursor to the exact request that produced it. Resuming a cursor against a
     ///     different symbol, direction, depth, or filter would reinterpret the offset against
@@ -25,7 +23,7 @@ public sealed record SequenceCursor(string SnapshotId, string Fingerprint, strin
     /// </summary>
     public static string ComputeFingerprint(params string?[] parts)
     {
-        return string.Join(FingerprintSeparator, parts.Select(static part => part ?? string.Empty));
+        return CursorUtils.JoinFingerprint(parts);
     }
 
     public string Encode()

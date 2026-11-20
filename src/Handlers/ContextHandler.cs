@@ -81,17 +81,6 @@ internal static class ContextHandler
             ? new SequenceCursor(snapshotId, binding.Fingerprint!, ContextRequest.CursorKind, binding.Offset + page.Items.Count).Encode()
             : null;
 
-        if (outputMode == OutputMode.Summary)
-        {
-            output.WriteLine($"tier {page.TierName} of {page.FullyQualifiedName} ({page.Kind})");
-            output.WriteLine($"  items: {page.TotalItems} total, {page.Items.Count} in this page (offset {page.Offset})");
-            foreach (var item in page.Items)
-                output.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
-            if (nextCursor != null)
-                output.WriteLine("  more available: re-run with --cursor=<next_cursor from --output=json>.");
-            return;
-        }
-
         var meta = new
         {
             snapshot_id = snapshotId,
@@ -108,15 +97,16 @@ internal static class ContextHandler
             budget_applied = false
         };
 
-        if (outputMode == OutputMode.Jsonl)
+        CliOutputWriter.Write(outputMode, output, () =>
         {
-            output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+            output.WriteLine($"tier {page.TierName} of {page.FullyQualifiedName} ({page.Kind})");
+            output.WriteLine($"  items: {page.TotalItems} total, {page.Items.Count} in this page (offset {page.Offset})");
             foreach (var item in page.Items)
-                output.WriteLine(JsonSerializer.Serialize(new { type = "item", item }, HandlerBootstrap.CompactJson));
-            return;
-        }
-
-        output.WriteLine(JsonSerializer.Serialize(new
+                output.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
+            if (nextCursor != null)
+                output.WriteLine("  more available: re-run with --cursor=<next_cursor from --output=json>.");
+        },
+        () => new
         {
             meta.snapshot_id,
             meta.freshness,
@@ -129,7 +119,10 @@ internal static class ContextHandler
             meta.next_cursor,
             meta.budget_applied,
             items = page.Items
-        }, HandlerBootstrap.IndentedJson));
+        },
+        () => meta,
+        CliOutputWriter.JsonlItemTypes["context"],
+        page.Items);
     }
 
     internal static bool TryParseIntent(string value, out ContextIntent intent)

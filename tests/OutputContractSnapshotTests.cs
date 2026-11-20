@@ -3,10 +3,10 @@ using System.Reflection;
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Lurp.Parity.Shared;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
-using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace Lurp.Tests;
@@ -161,8 +161,14 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         var clearJson = await RunMode("pin-snapshot", "--clear", "--json");
         var setOutput = await RunMode("pin-snapshot", $"--snapshot={fixture.SnapshotB}", "--output=json");
         var clearOutput = await RunMode("pin-snapshot", "--clear", "--output=json");
-        ExtractJsonAliasPair("cli:pin-snapshot:json", "set", setJson, setOutput);
-        ExtractJsonAliasPair("cli:pin-snapshot:json", "clear", clearJson, clearOutput);
+        ExtractJsonAliasPair("cli:pin-snapshot:json", setJson, setOutput);
+        ExtractJsonAliasPair("cli:pin-snapshot:json", clearJson, clearOutput);
+
+        // A second pin replaces the first, so previous_pinned_snapshot_id is a string here.
+        await RunMode("pin-snapshot", $"--snapshot={fixture.SnapshotA}", "--json");
+        ExtractJsonShape("cli:pin-snapshot:json",
+            await RunMode("pin-snapshot", $"--snapshot={fixture.SnapshotB}", "--json"));
+        await RunMode("pin-snapshot", "--clear", "--json");
 
         // --- read modes ---
         // get-source prints raw text, not JSON (T4).
@@ -189,15 +195,13 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         ExtractTextSurface("cli:get-symbol:surrounding:text",
             await RunMode("get-symbol", $"--symbol={fixture.TypeSymbolId}", "--view=surrounding"));
 
-        // search: one call per --type= value, JSON and JSONL, each its own variant.
+        // Search exercises each --type= value in JSON and JSONL.
         foreach (var type in new[] { "all", "source", "symbol" })
         {
             ExtractJsonShape("cli:search:json",
-                await RunMode("search", "--query=CoreApi", $"--type={type}", "--output=json"),
-                $"type={type}");
+                await RunMode("search", "--query=CoreApi", $"--type={type}", "--output=json"));
             ExtractJsonlShape("search",
-                await RunMode("search", "--query=CoreApi", $"--type={type}", "--output=jsonl"),
-                $"type={type}");
+                await RunMode("search", "--query=CoreApi", $"--type={type}", "--output=jsonl"));
         }
 
         ExtractJsonShape("cli:find-symbol:json",
@@ -206,9 +210,9 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         // Type anchor (T11): a named type's metadata carries base_type, interfaces,
         // is_record and type_kind, which a method anchor does not.
         ExtractJsonShape("cli:find-symbol:json",
-            await RunMode("find-symbol", $"--symbol={fixture.ContractImplSymbolId}", "--output=json"), "type");
+            await RunMode("find-symbol", $"--symbol={fixture.ContractImplSymbolId}", "--output=json"));
         ExtractJsonShape("cli:get-symbol:json",
-            await RunMode("get-symbol", $"--symbol={fixture.ContractImplSymbolId}", "--view=metadata"), "type");
+            await RunMode("get-symbol", $"--symbol={fixture.ContractImplSymbolId}", "--view=metadata"));
 
         ExtractJsonShape("cli:navigate:json",
             await RunMode("navigate", $"--file={fixture.NavDocPath}", $"--line={fixture.NavLine}"));
@@ -271,34 +275,33 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         // timings then status last (T8), so status surfaces see the final database.
         ExtractJsonShape("cli:timings:json",
             await RunMode("timings", "--json"));
-        // status: --json and --output=json are an alias pair for the default payload; each
-        // --detail= value and the snapshot-only path are their own variants.
-        ExtractJsonAliasPair("cli:status:json", "default",
+        // Status exercises the default JSON aliases, detail options and snapshot-only path.
+        ExtractJsonAliasPair("cli:status:json",
             await RunMode("status", "--json"),
             await RunMode("status", "--output=json"));
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", "--output=json", "--detail=documents"), "detail=documents");
+            await RunMode("status", "--output=json", "--detail=documents"));
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", "--output=json", "--detail=references"), "detail=references");
+            await RunMode("status", "--output=json", "--detail=references"));
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", "--output=json", "--detail=completeness"), "detail=completeness");
+            await RunMode("status", "--output=json", "--detail=completeness"));
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", "--output=json", "--detail=all"), "detail=all");
+            await RunMode("status", "--output=json", "--detail=all"));
         // Snapshot-only path (ReportSnapshotOnly): no --solution=.
         ExtractJsonShape("cli:status:json",
-            await RunModeWithoutSolution("status", "--output=json"), "snapshot-only");
+            await RunModeWithoutSolution("status", "--output=json"));
 
         // status with an active pin (T12): the pin fields.
         await RunMode("pin-snapshot", $"--snapshot={fixture.SnapshotB}", "--json");
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", "--output=json"), "pinned");
+            await RunMode("status", "--output=json"));
         await RunMode("pin-snapshot", "--clear", "--json");
 
         // status with a stale pin (T12, R107): stale_pinned_snapshot_id. Snapshot A is failed, so the pin is stale. The newer complete B replaced it, so latest_failure is absent.
         await RunMode("pin-snapshot", $"--snapshot={fixture.SnapshotA}", "--json");
         SetSnapshotState(fixture.SnapshotA, "failed", "fixture_failure", "fixture failure message");
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", "--output=json"), "stale-pin");
+            await RunMode("status", "--output=json"));
         SetSnapshotState(fixture.SnapshotA, "complete");
         await RunMode("pin-snapshot", "--clear", "--json");
 
@@ -307,27 +310,28 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         SetSnapshotState(fixture.SnapshotA, "failed", "fixture_failure", "fixture failure message",
             DateTime.UtcNow.AddDays(1).ToString("O", CultureInfo.InvariantCulture));
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", "--output=json"), "failed-snapshot");
+            await RunMode("status", "--output=json"));
         SetSnapshotState(fixture.SnapshotA, "complete", builtAtUtc: snapshotABuiltAtUtc);
 
         // status with an older failed snapshot and a newer complete one (R139, F13): the
         // newest snapshot did not fail, so latest_failure must be absent.
         var failedThenCompleteDir = CopyDatabaseWithFailedThenComplete();
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", $"--output-dir={failedThenCompleteDir}", "--output=json"), "failed-then-complete");
+            await RunMode("status", $"--output-dir={failedThenCompleteDir}", "--output=json"));
 
         // status with no database at all (R129, B120): the never-indexed branch follows the
         // same null rule as the other branches, so no latest_failure or schema_version key.
-        var noDbDir = Path.Combine(fixture.TempDir, "never-indexed-no-db");
+        // A directory of its own: the copy helpers below put an index.db into TempDir itself.
+        var noDbDir = Path.Combine(fixture.TempDir, "no-database");
         Directory.CreateDirectory(noDbDir);
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", $"--output-dir={noDbDir}", "--output=json"), "never-indexed-no-db");
+            await RunMode("status", $"--output-dir={noDbDir}", "--output=json"));
 
         // status with a database whose snapshots are all failed (R129, B123): the
         // never-indexed branch with schema_version and latest_failure present.
         var failedDir = CopyDatabaseWithFailedSnapshots();
         ExtractJsonShape("cli:status:json",
-            await RunMode("status", $"--output-dir={failedDir}", "--output=json"), "never-indexed-failed");
+            await RunMode("status", $"--output-dir={failedDir}", "--output=json"));
 
         // --- MCP tools (T9) ---
         // One session for every tool call; it pins to the latest snapshot, which is
@@ -336,29 +340,29 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         Assert.Equal(fixture.SnapshotB, session.PinnedSnapshotId);
 
         // lurp_context: a capsule for each anchor, then a real tier first page and
-        // its cursor page (T7). capsule and tier are separate variants.
+        // its cursor page (T7).
         var contextTool = new ContextTool(session);
         foreach (var anchor in fixture.AnchorSymbolIds)
-            ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: anchor, affected_project: CallShapesAppProject), "capsule");
+            ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: anchor, affected_project: CallShapesAppProject));
 
         var (mcpCursorSymbol, mcpCursorTier, mcpCursor) = FindMcpContextCursor(session);
-        ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: mcpCursorSymbol, tier: mcpCursorTier, tier_limit: 1), "tier");
-        ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: mcpCursorSymbol, tier: mcpCursorTier, tier_limit: 1, cursor: mcpCursor), "tier");
+        ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: mcpCursorSymbol, tier: mcpCursorTier, tier_limit: 1));
+        ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: mcpCursorSymbol, tier: mcpCursorTier, tier_limit: 1, cursor: mcpCursor));
 
-        // lurp_get_source: without and with the outline payload, as separate variants.
+        // lurp_get_source: without and with the outline payload.
         var getSourceTool = new GetSourceTool(session);
-        ExtractToolShape("lurp_get_source", () => getSourceTool.LurpGetSource(document: fixture.DocPath), "outline=false");
-        ExtractToolShape("lurp_get_source", () => getSourceTool.LurpGetSource(document: fixture.DocPath, outline: true), "outline=true");
+        ExtractToolShape("lurp_get_source", () => getSourceTool.LurpGetSource(document: fixture.DocPath));
+        ExtractToolShape("lurp_get_source", () => getSourceTool.LurpGetSource(document: fixture.DocPath, outline: true));
 
         ExtractToolShape("lurp_outline", () => new OutlineTool(session).LurpOutline(document: fixture.DocPath));
         ExtractToolShape("lurp_navigate", () => new NavigateTool(session).LurpNavigate(file: fixture.NavDocPath, line: fixture.NavLine));
         ExtractToolShape("lurp_find_symbol", () => new FindSymbolTool(session).LurpFindSymbol(symbol: fixture.CallerSymbolId));
 
-        // lurp_search: one call per type value, each its own variant. Same query as the
+        // lurp_search: one call per type value. Same query as the
         // CLI search (R9), so MCP and CLI are exercised with the same input.
         var searchTool = new SearchTool(session);
         foreach (var type in new[] { "all", "source", "symbol" })
-            ExtractToolShape("lurp_search", () => searchTool.LurpSearch(query: "CoreApi", type: type), $"type={type}");
+            ExtractToolShape("lurp_search", () => searchTool.LurpSearch(query: "CoreApi", type: type));
 
         ExtractToolShape("lurp_impact", () => new ImpactTool(session).LurpImpact(symbol: fixture.DiffSymbolId, direction: "upstream"));
         ExtractToolShape("lurp_diff", () => new DiffTool(session).LurpDiff(from_snapshot: fixture.SnapshotA, to_snapshot: fixture.SnapshotB));
@@ -366,11 +370,11 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         // lurp_get_symbol: every view the tool accepts (summary, source, all).
         var getSymbolTool = new GetSymbolTool(session);
         foreach (var view in new[] { "summary", "source", "all" })
-            ExtractToolShape("lurp_get_symbol", () => getSymbolTool.LurpGetSymbol(symbol: fixture.CallerSymbolId, view: view), $"view={view}");
+            ExtractToolShape("lurp_get_symbol", () => getSymbolTool.LurpGetSymbol(symbol: fixture.CallerSymbolId, view: view));
 
         // Type anchor (T11), CLI/MCP parity.
-        ExtractToolShape("lurp_find_symbol", () => new FindSymbolTool(session).LurpFindSymbol(symbol: fixture.ContractImplSymbolId), "type");
-        ExtractToolShape("lurp_get_symbol", () => getSymbolTool.LurpGetSymbol(symbol: fixture.ContractImplSymbolId, view: "summary"), "type");
+        ExtractToolShape("lurp_find_symbol", () => new FindSymbolTool(session).LurpFindSymbol(symbol: fixture.ContractImplSymbolId));
+        ExtractToolShape("lurp_get_symbol", () => getSymbolTool.LurpGetSymbol(symbol: fixture.ContractImplSymbolId, view: "summary"));
 
         ExtractToolShape("lurp_get_annotations", () => new AnnotationsTool(session).LurpGetAnnotations(symbol: fixture.MethodGroupSymbolId));
         ExtractToolShape("lurp_diagnostics", () => new DiagnosticsTool(session).LurpDiagnostics(document: fixture.DocPath));
@@ -379,9 +383,31 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         // lurp_status: every sections value, then the full MSBuild freshness check.
         var statusTool = new StatusTool(session);
         foreach (var sections in new[] { "freshness", "manifest", "references", "completeness", "all" })
-            await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(sections: sections), $"sections={sections}");
-        await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(sections: "references", projects: CallShapesAppProject, max_bytes: 100_000), "sections=references,projects,max_bytes");
-        await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(full: true), "full");
+            await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(sections: sections));
+        await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(sections: "references", projects: CallShapesAppProject, max_bytes: 100_000));
+        await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(full: true));
+        await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(documents: [fixture.DocPath]));
+
+        // Error paths of lurp_status: fields that stay null on every success run.
+        // Both run before the tree edit below, so freshness still compares clean.
+        // full=true with no solution: full_check_error carries the reason.
+        await using (var noSolutionSession = McpSessionContext.Create(new[] { $"--output-dir={fixture.OutputDir}" }))
+            await ExtractToolShapeAsync("lurp_status", () => new StatusTool(noSolutionSession).LurpStatus(full: true));
+
+        // lurp_status detail on a store failure: dropping binding_incompleteness leaves the
+        // freshness check usable and makes the manifest read throw.
+        var storeErrorDir = CopyDatabaseToNewDirectory("status-store-error");
+        await using (var storeErrorSession = McpSessionContext.Create(new[] { $"--output-dir={storeErrorDir}" }))
+        {
+            using (var connection = TestDatabase.Open(Path.Combine(storeErrorDir, "index.db")))
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = "DROP TABLE binding_incompleteness;";
+                command.ExecuteNonQuery();
+            }
+
+            await ExtractToolShapeAsync("lurp_status", () => new StatusTool(storeErrorSession).LurpStatus(sections: "manifest"));
+        }
 
         ExtractToolShape("lurp_timings", () => new TimingsTool(session).LurpTimings());
         ExtractToolShape("lurp_dead_candidates", () => new DeadCandidatesTool(session).LurpDeadCandidates());
@@ -413,23 +439,34 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
                 "lurp_refresh without ack must require an ack after a completed lurp_index.");
             refreshTarget = noAckDoc.RootElement.GetProperty("new_snapshot_id").GetString()!;
         }
-        ExtractToolShape("lurp_refresh", () => refreshNoAck, "no-ack");
-        ExtractToolShape("lurp_refresh", () => refreshTool.LurpRefresh(ack: refreshTarget), "ack");
+        ExtractToolShape("lurp_refresh", () => refreshNoAck);
+        ExtractToolShape("lurp_refresh", () => refreshTool.LurpRefresh(ack: refreshTarget));
+        ExtractToolShape("lurp_refresh", () => refreshTool.LurpRefresh(ack: refreshTarget));
 
-        // --- MCP error envelope (T9) ---
-        // The ModelContextProtocol SDK, not Lurp, serializes the JSON-RPC error
-        // object from a thrown McpProtocolException, so the test reconstructs
-        // {code, message} from the exception. This is a real failing call.
+        // lurp_index on an unreadable workspace: a failed run fills error, error_code and error_data.
+        var failedIndexDir = CopyDatabaseToNewDirectory("index-failed");
+        var unreadableSolutionDir = Path.Combine(fixture.TempDir, "unreadable-solution");
+        IntegrationTestBase.WriteUnreadableSolution(unreadableSolutionDir);
+        var unreadableSolution = Path.Combine(unreadableSolutionDir, "Test.slnx");
         try
         {
-            new FindSymbolTool(session).LurpFindSymbol(symbol: "T:Does.Not.Exist|Nope");
-            Assert.Fail("Expected McpProtocolException for an unknown symbol");
+            await using var failedIndexSession = McpSessionContext.Create(new[] { $"--solution={unreadableSolution}", $"--output-dir={failedIndexDir}" });
+            await RunIndexToolToCompletion(new IndexTool(failedIndexSession, new McpIndexSessionState()), "failed");
         }
-        catch (McpProtocolException ex)
+        finally
         {
-            var errorJson = JsonSerializer.Serialize(new { code = (int)ex.ErrorCode, message = ex.Message }, LurpJsonOptions.Indented);
-            ExtractJsonShape("mcp:error", errorJson);
+            TestDatabase.DeleteSolutionCache(unreadableSolution);
         }
+
+        using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", $"--output-dir={fixture.OutputDir}"));
+        var timeout = TimeSpan.FromSeconds(30);
+        await server.Client.InitializeAsync("output-contract", timeout);
+        var missingSymbol = await server.Client.SendAsync("tools/call",
+            new { name = "lurp_find_symbol", arguments = new { symbol = "T:Does.Not.Exist|Nope" } }, timeout);
+        var unknownArgument = await server.Client.SendAsync("tools/call",
+            new { name = "lurp_search", arguments = new { query = "CoreApi", bogus = 1 } }, timeout);
+        ExtractJsonShape("mcp:error", missingSymbol.GetProperty("result").GetRawText());
+        ExtractJsonShape("mcp:error", unknownArgument.GetProperty("result").GetRawText());
 
         // --- compare with snapshot ---
         EnforceCompletenessThenCompare();
@@ -600,28 +637,16 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
 
         using (doc)
         {
-            return JsonShape.Extract(doc.RootElement, MapPaths, surface, keyViolations);
+            return ExtractShape(doc.RootElement, surface);
         }
     }
 
-    // Builds a surface name from its base and optional variant (R5). A run of a surface
-    // merges only with runs of the same variant, so the variant is part of the key. This is
-    // the one place a surface name is built.
-    private static string Surface(string baseSurface, string? variant)
-    {
-        return variant is null ? baseSurface : $"{baseSurface}[{variant}]";
-    }
-
-    // Runs both spellings of one payload (an alias pair), checks that their extracted
-    // shapes match (same path set, same type set per path), and records them under one
-    // variant surface. A difference fails with the surface and both arg lists (R5).
+    // Both spellings of one payload must emit the same paths and type sets.
     private void ExtractJsonAliasPair(
-        string baseSurface,
-        string variant,
+        string surface,
         (string Args, string Stdout) first,
         (string Args, string Stdout) second)
     {
-        var surface = Surface(baseSurface, variant);
         var firstShapes = ParseJsonShapes(surface, first.Args, first.Stdout);
         var secondShapes = ParseJsonShapes(surface, second.Args, second.Stdout);
 
@@ -651,10 +676,11 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
 
     private void ExtractJsonShape(string baseSurface, (string Args, string Stdout) run, string? variant = null)
     {
-        ExtractJsonShape(Surface(baseSurface, variant), run.Args, run.Stdout);
+        var surface = variant is null ? baseSurface : $"{baseSurface}[{variant}]";
+        ExtractJsonShape(surface, run.Args, run.Stdout);
     }
 
-    private void ExtractJsonlShape(string mode, (string Args, string Stdout) run, string? variant = null)
+    private void ExtractJsonlShape(string mode, (string Args, string Stdout) run)
     {
         var lines = run.Stdout.Split('\n')
             .Select((line, index) => (Line: line, Number: index + 1))
@@ -685,14 +711,13 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
             using (doc)
             {
                 var root = doc.RootElement;
-                // A JSONL line with no string "type" field is surface ":jsonl:(untyped)",
-                // not ":jsonl:unknown", so a future regression (T13) shows as its own line.
-                var type = root.TryGetProperty("type", out var typeEl) && typeEl.ValueKind == JsonValueKind.String
-                    ? typeEl.GetString() ?? "(untyped)"
-                    : "(untyped)";
+                var type = number == lines[0].Number ? "meta" : Handlers.CliOutputWriter.JsonlItemTypes[mode];
+                Assert.Equal(["type", type], root.EnumerateObject().Select(property => property.Name));
+                Assert.Equal(type, root.GetProperty("type").GetString());
+                Assert.Equal(JsonValueKind.Object, root.GetProperty(type).ValueKind);
 
-                var surface = Surface($"cli:{mode}:jsonl:{type}", variant);
-                Accumulate(surface, JsonShape.Extract(root, MapPaths, surface, keyViolations));
+                var surface = $"cli:{mode}:jsonl:{type}";
+                Accumulate(surface, ExtractShape(root, surface));
             }
         }
     }
@@ -708,40 +733,27 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         Accumulate(surface, new Dictionary<string, HashSet<string>> { ["$"] = new HashSet<string> { "text" } });
     }
 
-    // Records one MCP tool call (T9): the tool name goes into coveredTools (always the
-    // bare name), and the payload is reduced to "mcp:<name without lurp_>" with an
-    // optional variant (R5). The surface is derived from the tool name so the two cannot drift.
-    private void ExtractToolShape(string name, Func<string> call, string? variant = null)
+    private void ExtractToolShape(string name, Func<string> call)
     {
         coveredTools.Add(name);
-        ExtractJsonShape(McpSurface(name, variant), call());
+        ExtractJsonShape(McpSurface(name), call());
     }
 
-    private async Task ExtractToolShapeAsync(string name, Func<Task<string>> call, string? variant = null)
+    private async Task ExtractToolShapeAsync(string name, Func<Task<string>> call)
     {
         coveredTools.Add(name);
-        ExtractJsonShape(McpSurface(name, variant), await call());
+        ExtractJsonShape(McpSurface(name), await call());
     }
 
-    private static string McpSurface(string toolName, string? variant = null)
-    {
-        const string prefix = "lurp_";
-        var surface = $"mcp:{(toolName.StartsWith(prefix, StringComparison.Ordinal) ? toolName[prefix.Length..] : toolName)}";
-        return Surface(surface, variant);
-    }
+    private static string McpSurface(string toolName) => $"mcp:{toolName["lurp_".Length..]}";
 
-    // T9/R6: start a full MCP index and poll until it leaves "running". The start payload
-    // records as mcp:index[start] and the first non-running poll as mcp:index[final]; the
-    // intermediate polls are not recorded, because their nulls and progress vary from run
-    // to run. The poll loop and timeout follow tests/Mcp/McpIndexTests.cs:23
-    // (WaitForCompletionAsync).
-    private async Task RunIndexToolToCompletion(IndexTool tool)
+    private async Task RunIndexToolToCompletion(IndexTool tool, string expectedStatus = "completed")
     {
         const string name = "lurp_index";
         coveredTools.Add(name);
 
         var startJson = tool.LurpIndex(strategy: "full");
-        ExtractJsonShape(McpSurface(name, "start"), startJson);
+        ExtractJsonShape(McpSurface(name), startJson);
 
         string operationId;
         using (var startDoc = JsonDocument.Parse(startJson))
@@ -757,8 +769,9 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
                 var status = doc.RootElement.GetProperty("status").GetString();
                 if (status != "running")
                 {
-                    Assert.Equal("completed", status);
-                    ExtractJsonShape(McpSurface(name, "final"), json);
+                    Assert.Equal(expectedStatus, status);
+                    ExtractJsonShape(McpSurface(name), json);
+                    ExtractJsonShape(McpSurface(name), tool.LurpIndex(operation_id: operationId, cancel: true));
                     return;
                 }
             }
@@ -767,6 +780,46 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         }
 
         throw new TimeoutException($"operation {operationId} did not finish within 120000ms");
+    }
+
+    private readonly ObjectKeyConsistency objectKeys = new();
+
+    private Dictionary<string, HashSet<string>> ExtractShape(JsonElement root, string surface) =>
+        JsonShape.Extract(root, MapPaths, surface, keyViolations,
+            visitObject: (path, element) => objectKeys.Record(surface, path, element));
+
+    internal sealed class ObjectKeyConsistency
+    {
+        private readonly Dictionary<(string Surface, string Path), HashSet<string>> objectKeys = new();
+        internal HashSet<string> Problems { get; } = new(StringComparer.Ordinal);
+
+        internal void Record(string surface, string path, JsonElement element)
+        {
+            if (surface is "cli:context:json[capsule]" or "cli:index:export"
+                || MapPaths.Any(map => IsAtOrUnder(path, map))
+                || IsAtOrUnder(path, "$.manifest") || IsAtOrUnder(path, "$.detail.manifest")
+                || IsAtOrUnder(path, "$.capsule") || IsAtOrUnder(path, "$.metadata")
+                || IsAtOrUnder(path, "$.changes[].detail") || IsAtOrUnder(path, "$.error_data")
+                || (surface is "cli:search:json" or "mcp:search" && IsAtOrUnder(path, "$.results[]"))
+                || (surface == "cli:search:jsonl:result" && IsAtOrUnder(path, "$.result")))
+                return;
+
+            var keys = element.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+            if (objectKeys.TryAdd((surface, path), keys))
+                return;
+
+            var expected = objectKeys[(surface, path)];
+            if (!expected.SetEquals(keys))
+            {
+                var missing = string.Join(", ", expected.Except(keys).Order(StringComparer.Ordinal));
+                var extra = string.Join(", ", keys.Except(expected).Order(StringComparer.Ordinal));
+                Problems.Add($"{surface} {path}: missing keys [{missing}], extra keys [{extra}]");
+            }
+        }
+
+        private static bool IsAtOrUnder(string path, string ancestor) =>
+            path == ancestor || path.StartsWith(ancestor + ".", StringComparison.Ordinal)
+                || path.StartsWith(ancestor + "[]", StringComparison.Ordinal);
     }
 
     // Unions one payload's path -> type-set map into the per-surface accumulator (T5),
@@ -849,6 +902,7 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
 
         // Keys: every schema-invalid key collected while walking the payloads (T6).
         problems.AddRange(keyViolations);
+        problems.AddRange(objectKeys.Problems.Order(StringComparer.Ordinal));
 
         // Always write the actual file first, so a single run shows the whole picture.
         var snapshotDir = SnapshotDirectory();
@@ -953,7 +1007,7 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
     // row is cleared, so LoadLatestSnapshot (complete rows only) finds no snapshot.
     private string CopyDatabaseWithFailedSnapshots()
     {
-        var directory = Path.Combine(fixture.TempDir, "never-indexed-failed");
+        var directory = Path.Combine(fixture.TempDir);
         Directory.CreateDirectory(directory);
         var dbPath = Path.Combine(directory, "index.db");
         SqliteConnection.ClearAllPools();
@@ -984,9 +1038,18 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
     // R139: a copy of the fixture database where snapshot A (the older one) is failed and
     // snapshot B (the newer one) is complete. latest_failure must be absent: the newest
     // snapshot did not fail.
+    private string CopyDatabaseToNewDirectory(string name)
+    {
+        var directory = Path.Combine(fixture.TempDir, name);
+        Directory.CreateDirectory(directory);
+        SqliteConnection.ClearAllPools();
+        File.Copy(fixture.DbPath, Path.Combine(directory, "index.db"), overwrite: true);
+        return directory;
+    }
+
     private string CopyDatabaseWithFailedThenComplete()
     {
-        var directory = Path.Combine(fixture.TempDir, "failed-then-complete");
+        var directory = Path.Combine(fixture.TempDir);
         Directory.CreateDirectory(directory);
         var dbPath = Path.Combine(directory, "index.db");
         SqliteConnection.ClearAllPools();

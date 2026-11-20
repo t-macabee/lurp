@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Lurp.Parity.Shared;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
@@ -130,7 +131,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     }
 
     [Fact]
-    public async Task Status_FullFalse_HasNoFullCheckError()
+    public async Task Status_FullFalse_HasNullFullCheckError()
     {
         await IndexAsync();
         var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
@@ -140,13 +141,13 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var missing = await tool.LurpStatus();
         using (var doc = JsonDocument.Parse(missing))
         {
-            Assert.False(doc.RootElement.GetProperty("freshness").TryGetProperty("full_check_error", out _));
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("freshness").GetProperty("full_check_error").ValueKind);
         }
 
         var explicitFalse = await tool.LurpStatus(full: false);
         using (var doc = JsonDocument.Parse(explicitFalse))
         {
-            Assert.False(doc.RootElement.GetProperty("freshness").TryGetProperty("full_check_error", out _));
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("freshness").GetProperty("full_check_error").ValueKind);
         }
     }
 
@@ -255,7 +256,8 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var cheapKeys = cheapDoc.RootElement.GetProperty("freshness").EnumerateObject().Select(p => p.Name).ToArray();
         var fullKeys = fullDoc.RootElement.GetProperty("freshness").EnumerateObject().Select(p => p.Name).ToArray();
 
-        Assert.Equal(cheapKeys, fullKeys.Where(k => k != "full_check_error").ToArray());
+        Assert.Equal(cheapKeys, fullKeys);
+        Assert.Equal(13, fullKeys.Length);
         Assert.Equal("full_check_error", fullKeys[^1]);
         Assert.True(cheapDoc.RootElement.GetProperty("freshness").GetProperty("is_fresh").GetBoolean());
         Assert.True(fullDoc.RootElement.GetProperty("freshness").GetProperty("is_fresh").GetBoolean());
@@ -631,7 +633,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         Assert.True(truncated.GetBoolean());
 
         var detail = doc.RootElement.GetProperty("detail");
-        Assert.False(detail.TryGetProperty("note", out _));
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("note").ValueKind);
 
         var manifest = detail.GetProperty("manifest");
         Assert.Equal(snapshotId, manifest.GetProperty("snapshot_id").GetString());
@@ -683,7 +685,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         using var doc = JsonDocument.Parse(json);
         Assert.True(doc.RootElement.GetProperty("truncated").GetBoolean());
         var detail = doc.RootElement.GetProperty("detail");
-        Assert.False(detail.TryGetProperty("note", out _));
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("note").ValueKind);
         var manifest = detail.GetProperty("manifest");
         Assert.True(manifest.TryGetProperty("snapshot_id", out _));
         Assert.True(manifest.TryGetProperty("target_frameworks", out _));
@@ -790,6 +792,105 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         Assert.Contains("max_mismatches must be <= 500", ex.Message);
 
         await tool.LurpStatus(max_mismatches: 500);
+    }
+
+    [Fact]
+    public async Task Status_Documents_EmptyArray_ReturnsNullMap()
+    {
+        IndexedDirFixture.Create(1, stalePin: false, out _, out _, outputDir: TestDir);
+        await using var session = McpSessionContext.Create([$"--output-dir={TestDir}"]);
+        using var result = JsonDocument.Parse(await new StatusTool(session).LurpStatus(documents: []));
+        Assert.Equal(JsonValueKind.Null, result.RootElement.GetProperty("document_freshness").ValueKind);
+    }
+
+    [Fact]
+    public async Task Status_Documents_EmptyOrWhitespaceEntry_ThrowsEmptyPath()
+    {
+        IndexedDirFixture.Create(1, stalePin: false, out _, out _, outputDir: TestDir);
+        await using var session = McpSessionContext.Create([$"--output-dir={TestDir}"]);
+        var tool = new StatusTool(session);
+        foreach (var documents in new[] { new[] { "Models.cs", "   " }, new[] { "" } })
+        {
+            var error = await Assert.ThrowsAsync<McpProtocolException>(() => tool.LurpStatus(documents: documents));
+            Assert.Equal(McpErrorCode.InvalidParams, error.ErrorCode);
+            Assert.Equal("documents contains an empty path.", error.Message);
+        }
+    }
+
+    [Fact]
+    public async Task Serve_Status_Documents_WireValidation()
+    {
+        const string docPath = "Models.cs";
+        var content = "namespace StatusProj; public class Foo {}"u8.ToArray();
+        File.WriteAllBytes(Path.Combine(TestDir, docPath), content);
+        using (var store = OpenStore(DbPath))
+        {
+            var snapshot = Guid.NewGuid().ToString();
+            store.SaveSnapshot(new SnapshotRow
+            {
+                SnapshotId = snapshot,
+                WorkspaceId = "status-workspace",
+                GitRoot = TestDir,
+                SolutionPath = SolutionPath,
+                CreatedAtUtc = DateTime.UtcNow,
+                DatabaseSchemaVersion = MigrationRunner.LatestVersion,
+                OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
+                ExtractorVersion = VersionConstants.ExtractorVersion,
+                ToolVersion = VersionConstants.ToolVersion,
+                Documents =
+                [
+                    new DocumentVersion(content)
+                    {
+                        DocumentId = docPath,
+                        FilePath = docPath,
+                        ContentHash = DocumentVersionId.Compute(new DocumentId(docPath), content).Hash,
+                        Encoding = "utf-8"
+                    }
+                ]
+            });
+            store.MarkSnapshotComplete(snapshot);
+        }
+
+        using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", $"--output-dir={TestDir}"));
+        var timeout = TimeSpan.FromSeconds(30);
+        await server.Client.InitializeAsync("test", timeout);
+        var list = await server.Client.SendAsync("tools/list", null, timeout);
+        var status = list.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .Single(tool => tool.GetProperty("name").GetString() == "lurp_status");
+        var schema = status.GetProperty("inputSchema").GetProperty("properties").GetProperty("documents");
+        var type = schema.GetProperty("type");
+        var types = type.ValueKind == JsonValueKind.Array
+            ? type.EnumerateArray().Select(value => value.GetString()).ToArray()
+            : [type.GetString()];
+        Assert.Contains("array", types);
+        Assert.Equal("string", schema.GetProperty("items").GetProperty("type").GetString());
+
+        Task<JsonElement> Call(object? documents) => server.Client.SendAsync("tools/call",
+            new { name = "lurp_status", arguments = new { documents } }, timeout);
+
+        async Task<JsonElement> ReadMap(object documents)
+        {
+            var response = await Call(documents);
+            var result = response.GetProperty("result");
+            Assert.False(result.TryGetProperty("isError", out var isError) && isError.GetBoolean());
+            var content = Assert.Single(result.GetProperty("content").EnumerateArray());
+            using var payload = JsonDocument.Parse(content.GetProperty("text").GetString()!);
+            return payload.RootElement.GetProperty("document_freshness").Clone();
+        }
+
+        Assert.Equal(JsonValueKind.Null, (await ReadMap(Array.Empty<string>())).ValueKind);
+        var row = Assert.Single((await ReadMap(new[] { docPath })).EnumerateArray());
+        Assert.Equal(docPath, row.GetProperty("document").GetString());
+        Assert.Equal("fresh", row.GetProperty("state").GetString());
+
+        Assert.NotEmpty(McpArgumentGuardTests.AssertToolError(await Call(docPath)));
+        Assert.NotEmpty(McpArgumentGuardTests.AssertToolError(await Call(new object[] { 1, new { a = 1 } })));
+        string?[] nullDocument = [null];
+        Assert.Equal("documents contains an empty path.",
+            McpArgumentGuardTests.AssertToolError(await Call(nullDocument)));
+        string[] blankDocument = [""];
+        Assert.Equal("documents contains an empty path.",
+            McpArgumentGuardTests.AssertToolError(await Call(blankDocument)));
     }
 
     [Fact]
@@ -1118,12 +1219,20 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     // ── Fix 1: store-exception surfacing (StatusTool.cs:162-191) ──────
 
     [Fact]
-    public async Task Status_DetailBranch_StoreFailure_SurfacesErrorNotSwallowed()
+    public async Task Status_Detail_HealthyAndStoreFailure_EmitConsistentKeySets()
     {
-        await IndexAsync();
+        IndexedDirFixture.Create(1, stalePin: false, out _, out _, outputDir: TestDir);
         var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
+
+        string[] expectedKeys = ["database_path", "schema_version", "contract_version", "latest_snapshot_id",
+            "manifest", "filters", "git_root", "solution_path", "error", "error_message", "note"];
+        using var healthy = JsonDocument.Parse(await tool.LurpStatus(sections: "manifest"));
+        var healthyDetail = healthy.RootElement.GetProperty("detail");
+        Assert.Equal(expectedKeys, healthyDetail.EnumerateObject().Select(p => p.Name));
+        foreach (var key in new[] { "error", "error_message", "note" })
+            Assert.Equal(JsonValueKind.Null, healthyDetail.GetProperty(key).ValueKind);
 
         // Force a genuine store failure inside the detail branch. Freshness
         // does not read binding completeness; the manifest branch does.
@@ -1141,6 +1250,10 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         using var doc = JsonDocument.Parse(json);
         var detail = doc.RootElement.GetProperty("detail");
 
+        Assert.Equal(expectedKeys, detail.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(DbPath, detail.GetProperty("database_path").GetString());
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("manifest").ValueKind);
+        Assert.Equal(healthyDetail.GetProperty("filters").GetRawText(), detail.GetProperty("filters").GetRawText());
         Assert.True(detail.TryGetProperty("error", out var errorProp));
         Assert.False(string.IsNullOrEmpty(errorProp.GetString()));
         Assert.True(detail.TryGetProperty("error_message", out _));

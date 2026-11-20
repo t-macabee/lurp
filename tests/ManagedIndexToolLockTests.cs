@@ -82,7 +82,7 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
 
         // An operation is already active for this session, so the single-flight guard refuses the call.
         using var runningCts = new CancellationTokenSource();
-        Assert.NotNull(indexState.TryStart("already-running", runningCts));
+        Assert.NotNull(indexState.TryStart("already-running", runningCts, sessionContext.PinnedSnapshotId));
 
         var ex = await Record.ExceptionAsync(() =>
             Task.FromResult(tool.LurpIndex(

@@ -29,11 +29,27 @@ internal static class McpLimits
     public const int MaxSnippetTokens = 2_000;
 
     /// <remarks>
+    ///     Bounds the manifest parts only. The JSON appears in both <c>content[0].text</c>
+    ///     and <c>structuredContent</c>, and client size limits apply to both copies.
     ///     MCP clients cut larger results without counting them (Claude Code: 4 × its
     ///     25,000-token limit, in characters).
     /// </remarks>
     [Description("`max_bytes` on `lurp_status` (UTF-8 bytes)")]
     public const int MaxStatusBytes = 400_000;
+
+    /// <summary>
+    ///     Uses the default when no value is supplied and validates the resolved value
+    ///     against the inclusive range from 1 to <paramref name="max" />.
+    /// </summary>
+    public static int RequirePositiveAtMost(int? value, int defaultValue, int max, string name)
+    {
+        var resolved = value ?? defaultValue;
+        if (resolved < 1)
+            throw new McpProtocolException($"{name} must be a positive integer.", McpErrorCode.InvalidParams);
+
+        RequireAtMost(resolved, max, name);
+        return resolved;
+    }
 
     /// <summary>
     ///     Rejects a value above <paramref name="max" /> with the MCP invalid-params

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -29,13 +28,7 @@ internal static class DeadCandidatesHandler
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            DeadCandidateCursor? cursor = null;
-            if (!string.IsNullOrEmpty(cursorArg))
-            {
-                cursor = DeadCandidateCursor.TryDecode(cursorArg);
-                if (cursor == null)
-                    HandlerBootstrap.Fail("ERROR: --cursor is not a valid continuation token.");
-            }
+            var cursor = HandlerBootstrap.DecodeCursor(cursorArg, DeadCandidateCursor.TryDecode);
 
             DeadCandidatePage page;
             try
@@ -52,30 +45,20 @@ internal static class DeadCandidatesHandler
             var filters = DeadCandidatePayload.Filters(projectFilter, documentFilter, kindFilter, includePublic, includeGenerated, includeTests);
             var freshnessJson = FreshnessJson.Cheap(freshness);
 
-            switch (outputMode)
+            CliOutputWriter.Write(outputMode, output, () =>
             {
-                case OutputMode.Summary:
-                    foreach (var e in page.Candidates)
-                    {
-                        var line = e.Locations.FirstOrDefault()?.StartLine;
-                        var loc = e.DocumentPath == null ? "<no-doc>" : line is { } l ? $"{e.DocumentPath}:{l}" : e.DocumentPath;
-                        output.WriteLine($"{e.Kind,-12} {e.Accessibility ?? "unknown",-18} {e.Fqn ?? e.SymbolId}  {loc}  {e.Reason}  {e.Status}");
-                    }
-                    output.WriteLine($"-- {page.Candidates.Count}/{page.DeadCount + page.UncertainCount + page.UnresolvedCount} dead candidate(s) shown (proved:{page.DeadCount} uncertain:{page.UncertainCount} unresolved:{page.UnresolvedCount} total candidates:{page.CandidateCount}){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
-                    break;
-
-                case OutputMode.Jsonl:
-                    var meta = DeadCandidatePayload.Meta(page, filters, snapshotId, freshnessJson);
-                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-                    foreach (var c in DeadCandidatePayload.Candidates(page))
-                        output.WriteLine(JsonSerializer.Serialize(new { type = "candidate", candidate = c }, HandlerBootstrap.CompactJson));
-                    break;
-
-                default:
-                    var envelope = DeadCandidatePayload.Envelope(page, filters, snapshotId, freshnessJson);
-                    output.WriteLine(JsonSerializer.Serialize(envelope, HandlerBootstrap.IndentedJson));
-                    break;
-            }
+                foreach (var e in page.Candidates)
+                {
+                    var line = e.Locations.FirstOrDefault()?.StartLine;
+                    var loc = e.DocumentPath == null ? "<no-doc>" : line is { } l ? $"{e.DocumentPath}:{l}" : e.DocumentPath;
+                    output.WriteLine($"{e.Kind,-12} {e.Accessibility ?? "unknown",-18} {e.Fqn ?? e.SymbolId}  {loc}  {e.Reason}  {e.Status}");
+                }
+                output.WriteLine($"-- {page.Candidates.Count}/{page.DeadCount + page.UncertainCount + page.UnresolvedCount} dead candidate(s) shown (proved:{page.DeadCount} uncertain:{page.UncertainCount} unresolved:{page.UnresolvedCount} total candidates:{page.CandidateCount}){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+            },
+            () => DeadCandidatePayload.Envelope(page, filters, snapshotId, freshnessJson),
+            () => DeadCandidatePayload.Meta(page, filters, snapshotId, freshnessJson),
+            CliOutputWriter.JsonlItemTypes["dead-candidates"],
+            outputMode == OutputMode.Jsonl ? DeadCandidatePayload.Candidates(page) : []);
         }, output);
     }
 }

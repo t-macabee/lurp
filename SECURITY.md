@@ -91,8 +91,8 @@ MSBuild, writes a new snapshot and prunes old snapshots as `--mode=index` does.
 
 ## Input limits
 
-Each bound is a constant in `src/Mcp/McpLimits.cs`. A larger value is an
-invalid-params error.
+Each bound is a constant in `src/Mcp/McpLimits.cs`. A larger value returns a
+tool error (`isError: true`).
 
 <!-- generated:mcp-limits -->
 | Parameter | Maximum |

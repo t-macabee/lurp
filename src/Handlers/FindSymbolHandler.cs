@@ -8,8 +8,7 @@ internal static class FindSymbolHandler
 {
     public static void Run(string[] args, IOutputSink output)
     {
-        var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
-        if (string.IsNullOrEmpty(symbolArg)) HandlerBootstrap.Fail("ERROR: --symbol=<name> is required for --mode=find-symbol.");
+        var symbolArg = HandlerBootstrap.RequireFlag(args, FlagCatalog.Symbol, "find-symbol");
 
         var includeGenerated = args.Contains("--include-generated");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
@@ -37,35 +36,31 @@ internal static class FindSymbolHandler
                 locations
             };
 
-            switch (outputMode)
+            JsonObject? node = null;
+            JsonObject? meta = null;
+            if (outputMode == OutputMode.Jsonl)
             {
-                case OutputMode.Summary:
-                    output.WriteLine($"{payload.fully_qualified_name} ({payload.kind})");
-                    output.WriteLine($"  symbol_id: {payload.symbol_id}");
-                    if (locations.Count > 0)
-                        output.WriteLine($"  location: {locations[0].DocumentPath}:{locations[0].StartLine}");
-                    output.WriteLine($"  declarations: {payload.declaration_count}  partial: {payload.is_partial}");
-                    output.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
-                    break;
-
-                case OutputMode.Jsonl:
-                    var node = JsonSerializer.SerializeToNode(payload, HandlerBootstrap.CompactJson)!.AsObject();
-                    var meta = new JsonObject
-                    {
-                        ["snapshot_id"] = node["snapshot_id"]!.DeepClone(),
-                        ["freshness"] = node["freshness"]!.DeepClone()
-                    };
-                    node.Remove("snapshot_id");
-                    node.Remove("freshness");
-                    output.WriteLine(JsonSerializer.Serialize(new JsonObject { ["type"] = "meta", ["meta"] = meta }, HandlerBootstrap.CompactJson));
-                    output.WriteLine(JsonSerializer.Serialize(new JsonObject { ["type"] = "symbol", ["symbol"] = node }, HandlerBootstrap.CompactJson));
-                    break;
-
-                // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
-                default:
-                    output.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.IndentedJson));
-                    break;
+                node = JsonSerializer.SerializeToNode(payload, HandlerBootstrap.CompactJson)!.AsObject();
+                var snapshot = node["snapshot_id"]!;
+                var stamp = node["freshness"]!;
+                node.Remove("snapshot_id");
+                node.Remove("freshness");
+                meta = new JsonObject { ["snapshot_id"] = snapshot, ["freshness"] = stamp };
             }
+
+            CliOutputWriter.Write(outputMode, output, () =>
+            {
+                output.WriteLine($"{payload.fully_qualified_name} ({payload.kind})");
+                output.WriteLine($"  symbol_id: {payload.symbol_id}");
+                if (locations.Count > 0)
+                    output.WriteLine($"  location: {locations[0].DocumentPath}:{locations[0].StartLine}");
+                output.WriteLine($"  declarations: {payload.declaration_count}  partial: {payload.is_partial}");
+                output.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
+            },
+            () => payload,
+            () => meta!,
+            CliOutputWriter.JsonlItemTypes["find-symbol"],
+            node is null ? [] : new[] { node });
 
         }, output);
     }

@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
@@ -10,209 +9,188 @@ namespace Lurp.Tests.Mcp;
 
 public sealed class McpParityTests : IntegrationTestBase
 {
-    private async Task<string> IndexFixtureAndGetSnapshot()
-    {
-        CreateProject("ParityProj", new Dictionary<string, string>
-        {
-            ["Models.cs"] = """
-                namespace ParityProj {
-                    public class Foo {
-                        public void Bar() {}
-                        public void Caller() { Bar(); }
-                    }
-                }
-                """
-        });
-        return await RunFullIndexAsync(DbPath);
-    }
-
-    private McpSessionContext CreateSession()
-    {
-        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
-        return McpSessionContext.Create(args);
-    }
-
-    [Fact]
-    public async Task GetSource_Parity_WithDirectStore()
-    {
-        var snapshotId = await IndexFixtureAndGetSnapshot();
-        await using var session = CreateSession();
-        var tool = new GetSourceTool(session);
-
-        string docPath;
-        string? directSource;
-        using (var store = OpenStore(DbPath))
-        {
-            docPath = store.GetDocumentVersionIdsByPath(snapshotId).Keys.First();
-            directSource = store.GetSource(docPath, snapshotId);
+    private const string Document = "src/ParityProj/Models.cs";
+    private const string BarFqn = "global::ParityProj.Foo.Bar";
+    private const string BarId = "M:ParityProj.Foo.Bar";
+    private const string Source = """
+        namespace ParityProj {
+            public class Foo {
+                public void Bar() {}
+                public void Caller() { Bar(); }
+            }
         }
+        """;
 
-        var json = tool.LurpGetSource(document: docPath);
-        using var doc = JsonDocument.Parse(json);
-        var toolSource = doc.RootElement.GetProperty("source").GetString();
+    private Task<string> IndexFixtureAndGetSnapshot() =>
+        IndexFullAsync("ParityProj", new Dictionary<string, string> { ["Models.cs"] = Source });
 
-        Assert.Equal(directSource, toolSource);
-        Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
+    private McpSessionContext CreateSession() =>
+        McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
+
+    private string RunCli(Action<string[], IOutputSink> run, string[] args)
+    {
+        var output = new CapturingOutputSink();
+        run([.. args, $"--output-dir={Path.GetDirectoryName(DbPath)!}"], output);
+        return output.Stdout;
     }
 
+    private JsonDocument RunCliJson(Action<string[], IOutputSink> run, string[] args) =>
+        JsonDocument.Parse(RunCli(run, args));
+
+    private static void AssertSameProperty(JsonElement cli, JsonElement mcp, string name) =>
+        Assert.True(JsonElement.DeepEquals(cli.GetProperty(name), mcp.GetProperty(name)),
+            $"CLI and MCP differ on '{name}'.");
+
     [Fact]
-    public async Task Navigate_Parity_WithDirectStore()
+    public async Task GetSource_Parity()
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();
         await using var session = CreateSession();
-        var tool = new NavigateTool(session);
+        using var mcp = JsonDocument.Parse(new GetSourceTool(session).LurpGetSource(document: Document));
 
-        string docPath;
-        using (var store = OpenStore(DbPath))
-        {
-            docPath = store.GetDocumentVersionIdsByPath(snapshotId).Keys.First();
-        }
-
-        var json = tool.LurpNavigate(file: docPath, line: 2);
-        using var doc = JsonDocument.Parse(json);
-        var hasTarget = doc.RootElement.TryGetProperty("target", out var targetEl);
-
-        Assert.True(hasTarget);
-        // Parity: direct store NavigateToLocation should produce same JSON shape
-        using var directStore = OpenStore(DbPath);
-        var direct = directStore.NavigateToLocation(docPath, 2, snapshotId, false);
-
-        // Line 2 is inside class Foo, so both sides must resolve a target, and the
-        // tool's target must serialize to exactly what the store returned.
-        Assert.NotNull(direct);
-        Assert.NotEqual(JsonValueKind.Null, targetEl.ValueKind);
-        Assert.True(
-            JsonNode.DeepEquals(JsonSerializer.SerializeToNode(direct), JsonNode.Parse(targetEl.GetRawText())),
-            $"tool target differs from store result:\n{targetEl.GetRawText()}");
+        var source = mcp.RootElement.GetProperty("source").GetString();
+        Assert.Equal(Source, source);
+        Assert.Equal(RunCli(GetSourceHandler.Run, [$"--document={Document}", $"--snapshot={snapshotId}"]), source);
+        Assert.Equal(snapshotId, mcp.RootElement.GetProperty("snapshot_id").GetString());
     }
 
-    [Fact]
-    public async Task FindSymbol_Parity_WithDirectStore()
+    [Theory]
+    [InlineData(2, "T:ParityProj.Foo", 2, 6)]
+    [InlineData(3, BarId, 3, 4)]
+    public async Task Navigate_Parity(int line, string symbol, int start, int end)
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();
         await using var session = CreateSession();
-        var tool = new FindSymbolTool(session);
+        using var mcp = JsonDocument.Parse(new NavigateTool(session).LurpNavigate(file: Document, line: line));
+        using var cli = RunCliJson(NavigateHandler.Run, [$"--file={Document}", $"--line={line}", $"--snapshot={snapshotId}"]);
 
-        string symbolId;
-        using (var store = OpenStore(DbPath))
-        {
-            symbolId = store.GetSymbolIdsInSnapshot(snapshotId).First();
-        }
-
-        var json = tool.LurpFindSymbol(symbol: symbolId);
-        using var doc = JsonDocument.Parse(json);
-        var toolFqn = doc.RootElement.GetProperty("fully_qualified_name").GetString();
-
-        using var directStore = OpenStore(DbPath);
-        var directInfo = directStore.GetSymbolInfo(symbolId, snapshotId);
-        Assert.Equal(directInfo?.FullyQualifiedName, toolFqn);
+        var target = mcp.RootElement.GetProperty("target");
+        Assert.Equal(symbol, SymbolId.DocCommentIdOf(target.GetProperty("symbol_id").GetString()!));
+        Assert.Equal(start, target.GetProperty("start_line").GetInt32());
+        Assert.Equal(end, target.GetProperty("end_line").GetInt32());
+        AssertSameProperty(cli.RootElement, mcp.RootElement, "target");
+        AssertSameProperty(cli.RootElement, mcp.RootElement, "snapshot_id");
     }
 
-    [Fact]
-    public async Task Search_Parity_WithDirectStore()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SymbolMetadata_Parity(bool getSymbol)
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();
         await using var session = CreateSession();
-        var tool = new SearchTool(session);
+        var json = getSymbol
+            ? new GetSymbolTool(session).LurpGetSymbol(symbol: BarFqn, view: "summary")
+            : new FindSymbolTool(session).LurpFindSymbol(symbol: BarFqn);
+        using var mcp = JsonDocument.Parse(json);
+        using var cli = getSymbol
+            ? RunCliJson(GetSymbolHandler.Run, [$"--symbol={BarFqn}", "--view=metadata", $"--snapshot={snapshotId}"])
+            : RunCliJson(FindSymbolHandler.Run, [$"--symbol={BarFqn}", "--output=json", $"--snapshot={snapshotId}"]);
 
-        var json = tool.LurpSearch(query: "Foo", type: "symbol");
-        using var doc = JsonDocument.Parse(json);
-        var toolResults = doc.RootElement.GetProperty("results").GetArrayLength();
-
-        using var directStore = OpenStore(DbPath);
-        var directPage = directStore.SearchSymbolsPage("Foo", snapshotId, 20, false, null, null);
-        // The fixture declares Foo, so both paths must find it.
-        Assert.True(directPage.Items.Count > 0, "direct store search found no 'Foo' symbol");
-        Assert.True(toolResults > 0, "lurp_search found no 'Foo' symbol");
+        Assert.Equal(BarFqn, mcp.RootElement.GetProperty("fully_qualified_name").GetString());
+        Assert.Equal("Method", mcp.RootElement.GetProperty("kind").GetString());
+        Assert.Equal(BarId, mcp.RootElement.GetProperty("doc_comment_id").GetString());
+        foreach (var key in new[] { "snapshot_id", "symbol_id", "doc_comment_id", "assembly_identity",
+                     "fully_qualified_name", "kind", "metadata", "declaration_count", "is_partial", "locations" })
+            AssertSameProperty(cli.RootElement, mcp.RootElement, key);
     }
 
     [Fact]
-    public async Task Impact_Parity_WithDirectReachability()
+    public async Task Search_Parity()
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();
         await using var session = CreateSession();
-        var tool = new ImpactTool(session);
-        string symbolId;
-        using (var store = OpenStore(DbPath))
-            symbolId = store.GetSymbolIdsInSnapshot(snapshotId).First(id => store.GetSymbolInfo(id, snapshotId)?.FullyQualifiedName?.Contains("ParityProj.Foo.Caller") == true);
+        using var mcp = JsonDocument.Parse(new SearchTool(session).LurpSearch(query: "Foo", type: "symbol"));
+        using var cli = RunCliJson(SearchHandler.Run, ["--query=Foo", "--type=symbol", "--output=json", $"--snapshot={snapshotId}"]);
 
-        var json = tool.LurpImpact(symbol: symbolId, direction: "downstream", max_depth: 3, limit: 50);
-        using var doc = JsonDocument.Parse(json);
-        var toolSymbols = doc.RootElement.GetProperty("symbols").GetArrayLength();
-
-        using var store2 = OpenStore(DbPath);
-        var reachability = new ImpactReachability(store2, snapshotId);
-        var direct = reachability.Trace(symbolId, ImpactDirection.Downstream, 3);
-        // parity: the reached-symbol count matches the core directly, and the page is a prefix
-        Assert.Equal(direct.Symbols.Count, doc.RootElement.GetProperty("symbol_count_total").GetInt32());
-        Assert.True(toolSymbols <= direct.Symbols.Count);
+        var names = mcp.RootElement.GetProperty("results").EnumerateArray()
+            .Select(row => row.GetProperty("fully_qualified_name").GetString());
+        Assert.Equal(["global::ParityProj.Foo", BarFqn, "global::ParityProj.Foo.Caller"], names);
+        foreach (var key in new[] { "snapshot_id", "query", "type", "results", "next_cursor" })
+            AssertSameProperty(cli.RootElement, mcp.RootElement, key);
     }
 
     [Fact]
-    public async Task Diff_Parity_WithDirectDiffer()
+    public async Task Impact_Parity()
     {
-        CreateProject("ParityDiffProj", new Dictionary<string, string>
+        var snapshotId = await IndexFixtureAndGetSnapshot();
+        await using var session = CreateSession();
+        const string caller = "global::ParityProj.Foo.Caller";
+        using var mcp = JsonDocument.Parse(new ImpactTool(session).LurpImpact(symbol: caller, direction: "downstream", max_depth: 1));
+        using var cli = RunCliJson(ImpactHandler.Run, [$"--symbol={caller}", "--direction=downstream", "--max-depth=1", "--output=json", $"--snapshot={snapshotId}"]);
+
+        var target = Assert.Single(mcp.RootElement.GetProperty("symbols").EnumerateArray(),
+            row => SymbolId.DocCommentIdOf(row.GetProperty("symbol_id").GetString()!) == BarId);
+        Assert.Equal(1, target.GetProperty("depth").GetInt32());
+        Assert.Equal(1, target.GetProperty("shortest_path_count").GetInt32());
+        foreach (var key in new[] { "snapshot_id", "symbol_id", "direction", "symbols", "symbol_count_total", "groups", "frontier_count" })
+            AssertSameProperty(cli.RootElement, mcp.RootElement, key);
+    }
+
+    [Fact]
+    public async Task Diff_Parity()
+    {
+        const string project = "ParityDiffProj";
+        var snap1 = await IndexFullAsync(project, new Dictionary<string, string>
         {
             ["Models.cs"] = "namespace ParityDiffProj { public class Foo { public void Bar() {} } }"
         });
-        var snap1 = await RunFullIndexAsync(DbPath);
-        WriteFile("ParityDiffProj", "Models.cs", "namespace ParityDiffProj { public class Foo { public void Bar(int x) {} public void New() {} } }");
+        WriteFile(project, "Models.cs", "namespace ParityDiffProj { public class Foo { public void Bar(int x) {} public int New() => 1; } }");
         var snap2 = await RunIncrementalIndexAsync();
         await using var session = CreateSession();
-        var tool = new DiffTool(session);
-        var json = tool.LurpDiff(from_snapshot: snap1, to_snapshot: snap2);
-        using var doc = JsonDocument.Parse(json);
-        var toolChanges = doc.RootElement.GetProperty("changes").GetArrayLength();
-        using var store = OpenStore(DbPath);
-        var differ = new SemanticDiffer(store, store, store);
-        var (directChanges, _) = differ.ComputeDiff(snap1, snap2);
-        Assert.Equal(directChanges.Count, toolChanges);
-        Assert.Equal(directChanges.Count, doc.RootElement.GetProperty("change_count").GetInt32());
+        using var mcp = JsonDocument.Parse(new DiffTool(session).LurpDiff(from_snapshot: snap1, to_snapshot: snap2));
+        using var cli = RunCliJson(DiffHandler.Run, [$"--from-snapshot={snap1}", $"--to-snapshot={snap2}"]);
+
+        foreach (var key in new[] { "from_snapshot", "to_snapshot", "change_count", "skipped_comparisons" })
+            AssertSameProperty(cli.RootElement, mcp.RootElement, key);
+
+        static (string? Type, string? Symbol, JsonElement Detail)[] Changes(JsonElement root) =>
+            root.GetProperty("changes").EnumerateArray()
+                .Select(row => (Type: row.GetProperty("change_type").GetString(),
+                    Symbol: row.GetProperty("symbol_id").GetString(), Detail: row.GetProperty("detail")))
+                .OrderBy(row => row.Type, StringComparer.Ordinal)
+                .ThenBy(row => row.Symbol, StringComparer.Ordinal)
+                .ThenBy(row => row.Detail.GetRawText(), StringComparer.Ordinal)
+                .ToArray();
+
+        var actual = Changes(mcp.RootElement);
+        var expected = Changes(cli.RootElement);
+        Assert.Equal(expected.Select(row => (row.Type, row.Symbol)), actual.Select(row => (row.Type, row.Symbol)));
+        Assert.All(actual.Zip(expected), pair => Assert.True(JsonElement.DeepEquals(pair.First.Detail, pair.Second.Detail)));
+        Assert.Equal(
+            [("symbol_removed", "M:ParityDiffProj.Foo.Bar"),
+             ("symbol_added", "M:ParityDiffProj.Foo.Bar(System.Int32)"),
+             ("symbol_added", "M:ParityDiffProj.Foo.New")],
+            actual.Where(row => row.Type is "symbol_added" or "symbol_removed")
+                .Select(row => (row.Type, Symbol: SymbolId.DocCommentIdOf(row.Symbol!)))
+                .OrderBy(row => row.Symbol, StringComparer.Ordinal));
     }
 
     [Fact]
-    public async Task GetSymbol_Parity_WithDirectStore()
+    public async Task GetAnnotations_Parity()
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();
-        await using var session = CreateSession();
-        var tool = new GetSymbolTool(session);
-        string symbolId;
-        using (var store = OpenStore(DbPath))
-            symbolId = store.GetSymbolIdsInSnapshot(snapshotId).First();
-        var json = tool.LurpGetSymbol(symbol: symbolId, view: "summary");
-        using var doc = JsonDocument.Parse(json);
-        using var store2 = OpenStore(DbPath);
-        var direct = store2.GetSymbolInfo(symbolId, snapshotId);
-        Assert.Equal(direct?.FullyQualifiedName, doc.RootElement.GetProperty("fully_qualified_name").GetString());
-        Assert.Equal(symbolId, doc.RootElement.GetProperty("symbol_id").GetString());
-    }
+        var annotation = RunCli(AnnotationHandler.RunAnnotate, [$"--symbol={BarFqn}", "--annotation-kind=note", "--value=parity"]);
+        using var created = JsonDocument.Parse(annotation);
+        var annotationId = created.RootElement.GetProperty("annotation_id").GetInt64();
 
-    [Fact]
-    public async Task GetAnnotations_Parity_WithDirectStore()
-    {
-        var snapshotId = await IndexFixtureAndGetSnapshot();
-        string symbolId;
-        using (var store = OpenStore(DbPath))
-        {
-            symbolId = store.GetSymbolIdsInSnapshot(snapshotId).First();
-            store.SaveAnnotations(snapshotId, new[] { new AnnotationRecord(symbolId, "note", "parity") });
-        }
         await using var session = CreateSession();
-        var tool = new AnnotationsTool(session);
-        var json = tool.LurpGetAnnotations(symbol: symbolId);
-        using var doc = JsonDocument.Parse(json);
-        using var store2 = OpenStore(DbPath);
-        var direct = store2.GetAnnotations(snapshotId, symbolId);
-        Assert.Equal(direct.Count, doc.RootElement.GetProperty("annotations").GetArrayLength());
+        using var mcp = JsonDocument.Parse(new AnnotationsTool(session).LurpGetAnnotations(symbol: BarFqn, kind: "note"));
+        using var cli = RunCliJson(AnnotationHandler.RunGetAnnotations, [$"--symbol={BarFqn}", "--kind=note", "--output=json", $"--snapshot={snapshotId}"]);
+
+        var row = Assert.Single(mcp.RootElement.GetProperty("annotations").EnumerateArray());
+        Assert.Equal(BarId, SymbolId.DocCommentIdOf(row.GetProperty("symbol_id").GetString()!));
+        Assert.Equal("note", row.GetProperty("kind").GetString());
+        Assert.Equal("parity", row.GetProperty("value").GetString());
+        Assert.Equal(annotationId, row.GetProperty("annotation_id").GetInt64());
+        Assert.Equal(JsonValueKind.Null, row.GetProperty("document_path").ValueKind);
+        foreach (var key in new[] { "snapshot_id", "symbol_id", "document", "kind", "annotations", "annotation_count", "next_cursor" })
+            AssertSameProperty(cli.RootElement, mcp.RootElement, key);
     }
 
     [Fact]
     public async Task Timings_Parity_WithCliJson()
     {
-        // Parity contract: lurp_timings (pinned snapshot) must equal --mode=timings --output=json (same snapshot).
-        // The CLI handler's JSON is { snapshot_id, total_ms, steps: [{step, elapsed_ms, percent}] } derived from store.GetTimings.
-        // The MCP tool reuses the same engine path; we verify envelope total_ms/steps match direct store computation
-        // which is byte-identical to what the CLI would emit for that snapshot.
         var snapshotId = await IndexFixtureAndGetSnapshot();
         await using var session = CreateSession();
         var tool = new TimingsTool(session);
@@ -241,26 +219,9 @@ public sealed class McpParityTests : IntegrationTestBase
             idx++;
         }
 
-        // `metrics` parity: run the CLI handler for the same snapshot (`--mode=timings --json`)
-        // and require an equal metrics object in both outputs. Indexing a real fixture records
-        // at least peak_working_set_mb (see SnapshotMetricsTests).
-        var sink = new CapturingOutputSink();
-        TimingsHandler.Run([
-            "--mode=timings", "--json",
-            $"--output-dir={Path.GetDirectoryName(DbPath)!}",
-            $"--snapshot={snapshotId}"
-        ], sink);
-
-        using var cliDoc = JsonDocument.Parse(sink.Stdout);
-        var cliMetrics = cliDoc.RootElement.GetProperty("metrics");
-        var toolMetrics = doc.RootElement.GetProperty("metrics");
-        Assert.True(cliMetrics.EnumerateObject().Any(), "CLI metrics should contain at least one metric.");
-        Assert.Equal(cliMetrics.EnumerateObject().Count(), toolMetrics.EnumerateObject().Count());
-        foreach (var metric in cliMetrics.EnumerateObject())
-        {
-            Assert.True(toolMetrics.TryGetProperty(metric.Name, out var toolValue),
-                $"MCP metrics missing '{metric.Name}'.");
-            Assert.Equal(metric.Value.GetInt64(), toolValue.GetInt64());
-        }
+        using var cli = RunCliJson(TimingsHandler.Run, ["--json", $"--snapshot={snapshotId}"]);
+        Assert.NotEmpty(doc.RootElement.GetProperty("metrics").EnumerateObject());
+        foreach (var key in new[] { "snapshot_id", "total_ms", "steps", "metrics" })
+            AssertSameProperty(cli.RootElement, doc.RootElement, key);
     }
 }

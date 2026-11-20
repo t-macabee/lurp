@@ -54,6 +54,37 @@ public sealed class PinSnapshotTests : IDisposable
     }
 
     [Fact]
+    public void PinSnapshot_SetAndClearJson_EmitTheSameKeySet()
+    {
+        var dir = IndexedDirFixture.Create(2, stalePin: false, out _, out var snapshot);
+        try
+        {
+            string[] expectedKeys = ["status", "cleared", "pinned_snapshot_id", "previous_pinned_snapshot_id",
+                "pinned_at_utc", "built_at_utc", "effective_latest_snapshot_id", "selected_latest_snapshot_id", "pin_active"];
+
+            var setOutput = new CapturingOutputSink();
+            PinSnapshotHandler.Run([$"--output-dir={dir}", $"--snapshot={snapshot}", "--json"], setOutput);
+            using var set = JsonDocument.Parse(setOutput.Stdout);
+            Assert.Equal(expectedKeys, set.RootElement.EnumerateObject().Select(p => p.Name));
+            Assert.Equal(JsonValueKind.Null, set.RootElement.GetProperty("cleared").ValueKind);
+            Assert.Equal(snapshot, set.RootElement.GetProperty("pinned_snapshot_id").GetString());
+            Assert.True(set.RootElement.GetProperty("pin_active").GetBoolean());
+
+            var clearOutput = new CapturingOutputSink();
+            PinSnapshotHandler.Run([$"--output-dir={dir}", "--clear", "--json"], clearOutput);
+            using var clear = JsonDocument.Parse(clearOutput.Stdout);
+            Assert.Equal(expectedKeys, clear.RootElement.EnumerateObject().Select(p => p.Name));
+            Assert.True(clear.RootElement.GetProperty("cleared").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, clear.RootElement.GetProperty("pinned_snapshot_id").ValueKind);
+            Assert.False(clear.RootElement.GetProperty("pin_active").GetBoolean());
+        }
+        finally
+        {
+            TestDatabase.DeleteDirectory(dir);
+        }
+    }
+
+    [Fact]
     public void PinnedOlderSnapshot_IsEffectiveLatest()
     {
         using var store = CreateStore();

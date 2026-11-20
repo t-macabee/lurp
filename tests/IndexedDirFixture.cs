@@ -13,9 +13,10 @@ namespace Lurp.Tests;
 /// </summary>
 internal static class IndexedDirFixture
 {
-    internal static string Create(int completeSnapshots, bool stalePin, out string staleId, out string latestId)
+    internal static string Create(int completeSnapshots, bool stalePin, out string staleId, out string latestId,
+        string? outputDir = null)
     {
-        var dir = Path.Combine(Path.GetTempPath(), $"lurp-indexed-{Guid.NewGuid():N}");
+        var dir = outputDir ?? Path.Combine(Path.GetTempPath(), $"lurp-indexed-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
         var dbPath = Path.Combine(dir, "index.db");
         // Snapshot ids are GUIDs (SnapshotId.Parse rejects anything else), so the

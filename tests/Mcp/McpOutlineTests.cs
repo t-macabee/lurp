@@ -104,21 +104,26 @@ public sealed class McpOutlineTests : IntegrationTestBase
         Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
         Assert.Equal(docPath, doc.RootElement.GetProperty("document").GetString());
         var decls = doc.RootElement.GetProperty("declarations");
-        Assert.True(decls.GetArrayLength() >= 4, "should have at least 4 declarations");
-        // Ordered by start_line then symbol_id
-        int prevStart = 0;
-        foreach (var el in decls.EnumerateArray())
-        {
-            var start = el.GetProperty("start_line").GetInt32();
-            var end = el.GetProperty("end_line").GetInt32();
-            Assert.True(start >= 1);
-            Assert.True(end >= start);
-            Assert.True(start >= prevStart, "declarations should be ordered by start_line");
-            prevStart = start;
-        }
-        // Check total count
-        var total = doc.RootElement.GetProperty("declaration_count").GetInt32();
-        Assert.Equal(decls.GetArrayLength(), total);
+        // Leading comments count toward both the full span and signature. The end is exclusive.
+        (string? Fqn, string? Kind, int Start, int Signature, int Name, int End)[] expected =
+        [
+            ("global::OutlineProj.ClassA", "Type", 2, 2, 3, 8),
+            ("global::OutlineProj.ClassA.MethodOne", "Method", 4, 4, 5, 6),
+            ("global::OutlineProj.ClassA.MethodTwo", "Method", 6, 6, 6, 7),
+            ("global::OutlineProj.ClassB", "Type", 8, 8, 8, 11),
+            ("global::OutlineProj.ClassB.BMethod", "Method", 9, 9, 9, 10),
+            ("global::OutlineProj.ClassC", "Type", 11, 11, 12, 15),
+            ("global::OutlineProj.ClassC.CMethod", "Method", 13, 13, 13, 14)
+        ];
+        var actual = decls.EnumerateArray().Select(row => (
+            row.GetProperty("fully_qualified_name").GetString(),
+            row.GetProperty("kind").GetString(),
+            row.GetProperty("start_line").GetInt32(),
+            row.GetProperty("signature_start_line").GetInt32(),
+            row.GetProperty("name_start_line").GetInt32(),
+            row.GetProperty("end_line").GetInt32()));
+        Assert.Equal(expected, actual);
+        Assert.Equal(expected.Length, doc.RootElement.GetProperty("declaration_count").GetInt32());
     }
 
     [Fact]

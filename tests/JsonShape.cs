@@ -25,10 +25,11 @@ public static class JsonShape
         HashSet<string> mapPaths,
         string surface,
         List<string> violations,
-        string path = "$")
+        string path = "$",
+        Action<string, JsonElement>? visitObject = null)
     {
         var shapes = new Dictionary<string, HashSet<string>>();
-        ExtractInner(element, path, shapes, mapPaths, surface, violations);
+        ExtractInner(element, path, shapes, mapPaths, surface, violations, visitObject);
         return shapes;
     }
 
@@ -38,31 +39,33 @@ public static class JsonShape
         Dictionary<string, HashSet<string>> shapes,
         HashSet<string> mapPaths,
         string surface,
-        List<string> violations)
+        List<string> violations,
+        Action<string, JsonElement>? visitObject)
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
                 Add(shapes, path, "object");
+                visitObject?.Invoke(path, element);
 
                 if (mapPaths.Contains(path))
                 {
                     // The object's full path is a known data map: every key is data,
                     // so record each value under "{*}" whatever the keys look like.
                     foreach (var prop in element.EnumerateObject())
-                        ExtractInner(prop.Value, path + ".{*}", shapes, mapPaths, surface, violations);
+                        ExtractInner(prop.Value, path + ".{*}", shapes, mapPaths, surface, violations, visitObject);
                 }
                 else
                 {
                     foreach (var prop in element.EnumerateObject())
                     {
-                        if (!FixedKey.IsMatch(prop.Name))
+                        if (!FixedKey.IsMatch(prop.Name) && !(surface == "mcp:error" && path == "$" && prop.Name == "isError"))
                         {
                             violations.Add($"{surface} {path}: key '{prop.Name}'");
                             continue; // do not descend into a value with a schema-invalid key
                         }
 
-                        ExtractInner(prop.Value, path + "." + prop.Name, shapes, mapPaths, surface, violations);
+                        ExtractInner(prop.Value, path + "." + prop.Name, shapes, mapPaths, surface, violations, visitObject);
                     }
                 }
                 break;
@@ -75,7 +78,7 @@ public static class JsonShape
                 {
                     Add(shapes, path, "array");
                     foreach (var item in element.EnumerateArray())
-                        ExtractInner(item, path + "[]", shapes, mapPaths, surface, violations);
+                        ExtractInner(item, path + "[]", shapes, mapPaths, surface, violations, visitObject);
                 }
                 break;
 

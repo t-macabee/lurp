@@ -37,6 +37,12 @@ public abstract class IntegrationTestBase : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    // Without framework references, the project has no corlib and the workspace is unreadable.
+    internal static void WriteUnreadableSolution(string solutionDir) =>
+        WriteSolution(solutionDir, "Blind",
+            new Dictionary<string, string> { ["Marker.cs"] = "namespace Blind; public class Marker { }" },
+            msbuildProperties: new Dictionary<string, string> { ["DisableImplicitFrameworkReferences"] = "true" });
+
     /// <summary>Writes one .csproj + source files and appends the project to the .slnx.</summary>
     public void CreateProject(
         string projectName,

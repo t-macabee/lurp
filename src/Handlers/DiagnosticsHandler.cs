@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -25,13 +24,7 @@ internal static class DiagnosticsHandler
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            DiagnosticsCursor? cursor = null;
-            if (!string.IsNullOrEmpty(cursorArg))
-            {
-                cursor = DiagnosticsCursor.TryDecode(cursorArg);
-                if (cursor == null)
-                    HandlerBootstrap.Fail("ERROR: --cursor is not a valid continuation token.");
-            }
+            var cursor = HandlerBootstrap.DecodeCursor(cursorArg, DiagnosticsCursor.TryDecode);
 
             DiagnosticsPage page;
             try
@@ -49,19 +42,7 @@ internal static class DiagnosticsHandler
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
-            var diagnostics = page.Items.Select(d => new
-            {
-                project_name = d.Record.ProjectName,
-                document_path = d.NormalizedDocumentPath,
-                in_snapshot = d.InSnapshot,
-                severity = d.Record.Severity,
-                id = d.Record.Id,
-                message = d.Record.Message,
-                start_line = LineNumbers.ToOneBased(d.Record.StartLine),
-                start_column = d.Record.StartColumn,
-                end_line = LineNumbers.ToOneBased(d.Record.EndLine),
-                end_column = d.Record.EndColumn
-            }).ToList();
+            var diagnostics = page.Items.Select(SurfacePayloads.DiagnosticRow).ToList();
 
             var meta = new
             {
@@ -76,26 +57,16 @@ internal static class DiagnosticsHandler
                 freshness = FreshnessJson.Cheap(freshness)
             };
 
-            switch (outputMode)
+            CliOutputWriter.Write(outputMode, output, () =>
             {
-                case OutputMode.Summary:
-                    foreach (var d in diagnostics)
-                        output.WriteLine($"{d.severity,-10} {d.id,-10} {d.document_path ?? "<null>"}:{d.start_line}  {d.message}");
-                    output.WriteLine($"-- {diagnostics.Count}/{page.TotalCount} diagnostic(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
-                    break;
-
-                case OutputMode.Jsonl:
-                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-                    foreach (var d in diagnostics)
-                        output.WriteLine(JsonSerializer.Serialize(new { type = "diagnostic", diagnostic = d }, HandlerBootstrap.CompactJson));
-                    break;
-
-                default:
-                    output.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, include_generated = includeGenerated, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
-                        HandlerBootstrap.IndentedJson));
-                    break;
-            }
+                foreach (var d in diagnostics)
+                    output.WriteLine($"{d.severity,-10} {d.id,-10} {d.document_path ?? "<null>"}:{d.start_line}  {d.message}");
+                output.WriteLine($"-- {diagnostics.Count}/{page.TotalCount} diagnostic(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+            },
+            () => new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, include_generated = includeGenerated, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
+            () => meta,
+            CliOutputWriter.JsonlItemTypes["diagnostics"],
+            diagnostics);
         }, output);
     }
 }

@@ -8,7 +8,7 @@ public static class IndexRunner
 {
     internal static readonly string[] Strategies = [SnapshotBuildStrategies.Full, SnapshotBuildStrategies.Incremental];
 
-    public static async Task RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
+    public static async Task<string> RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
         bool force = false, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -53,7 +53,7 @@ public static class IndexRunner
 
                 totalSw.Stop();
                 sink.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
-                return;
+                return builtSnapshot.SnapshotId;
             }
         }
 
@@ -85,7 +85,6 @@ public static class IndexRunner
             if (previousStorageManifest == null)
             {
                 sink.WriteLine("No previous snapshot found. Falling back to full index.");
-                strategy = SnapshotBuildStrategies.Full;
             }
             else
             {
@@ -107,30 +106,25 @@ public static class IndexRunner
                     totalSw.Stop();
 
                     sink.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
-                    return;
+                    return result.NewSnapshotId;
                 }
                 catch (FullRebuildRequiredException ex)
                 {
                     sink.WriteLine(ex.Message);
-                    strategy = SnapshotBuildStrategies.Full;
                 }
             }
         }
 
-        string? newSnapshotId = null;
-        if (strategy == SnapshotBuildStrategies.Full)
+        var setupTimings = new List<SnapshotTimingRow>
         {
-            var setupTimings = new List<SnapshotTimingRow>
-            {
-                new("solution_load", loadElapsed),
-                new(SnapshotTimingSteps.WorkspaceInfo, swWorkspaceInfo.ElapsedMilliseconds)
-            };
-            if (precheckMs is { } precheckElapsed)
-                setupTimings.Add(new SnapshotTimingRow(SnapshotTimingSteps.IncrementalPrecheck, precheckElapsed));
-            var (selectedId, built) = await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
-            newSnapshotId = built ? selectedId : null;
-            store.MarkSnapshotSelected(selectedId, runStartedAtUtc);
-        }
+            new("solution_load", loadElapsed),
+            new(SnapshotTimingSteps.WorkspaceInfo, swWorkspaceInfo.ElapsedMilliseconds)
+        };
+        if (precheckMs is { } fullPrecheckElapsed)
+            setupTimings.Add(new SnapshotTimingRow(SnapshotTimingSteps.IncrementalPrecheck, fullPrecheckElapsed));
+        var (selectedId, built) = await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
+        var newSnapshotId = built ? selectedId : null;
+        store.MarkSnapshotSelected(selectedId, runStartedAtUtc);
 
         PruneAndRecord(store, sink, newSnapshotId);
 
@@ -138,6 +132,7 @@ public static class IndexRunner
 
         var runKind = newSnapshotId is null ? "snapshot reused, nothing rebuilt" : "full rebuild";
         sink.WriteLine($"  Total time ({runKind}): {totalSw.ElapsedMilliseconds} ms");
+        return selectedId;
     }
 
     private static async Task<(string SelectedSnapshotId, bool Built)> RunFullIndexAsync(SqliteIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,

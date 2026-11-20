@@ -21,7 +21,7 @@ internal sealed class ImpactTool
     [McpServerTool(Name = "lurp_impact", Title = "Lurp Impact", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination. The upstream direction follows every edge kind except Declares, Contains and TestedBy unless kinds names the set; the downstream direction follows every kind.")]
     public string LurpImpact(
-        string? symbol = null,
+        [McpRequired] string? symbol = null,
         string? direction = null,
         string[]? kinds = null,
         string[]? provenance = null,
@@ -29,14 +29,9 @@ internal sealed class ImpactTool
         int? limit = null,
         string? cursor = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             var (request, parseError) = ImpactRequest.Parse(
                 symbol,
                 direction,
@@ -76,18 +71,5 @@ internal sealed class ImpactTool
                 includeLimitEcho: true);
 
             return JsonSerializer.Serialize(response, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

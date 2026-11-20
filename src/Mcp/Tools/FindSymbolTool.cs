@@ -19,17 +19,12 @@ internal sealed class FindSymbolTool
     [McpServerTool(Name = "lurp_find_symbol", Title = "Lurp Find Symbol", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Resolve a symbol in the pinned snapshot. " + HandlerBootstrap.AcceptedSymbolFormsText + " More than one match is an error.")]
     public string LurpFindSymbol(
-        string? symbol = null,
+        [McpRequired] string? symbol = null,
         bool? include_generated = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             if (string.IsNullOrEmpty(symbol))
                 throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
 
@@ -40,35 +35,8 @@ internal sealed class FindSymbolTool
             var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated: true);
             var freshness = _session.GetFreshnessJson();
 
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                symbol_id = info.SymbolId.Value,
-                doc_comment_id = info.SymbolId.DocCommentId,
-                assembly_identity = info.SymbolId.AssemblyIdentity,
-                kind = info.Kind.ToString(),
-                fully_qualified_name = info.FullyQualifiedName,
-                metadata = SymbolMetadata.Parse(info.MetadataJson, info.SymbolId.Value),
-                declaration_count = info.DeclarationCount,
-                is_partial = info.IsPartial,
-                locations
-            };
+            var envelope = McpSymbolEnvelope.Build(snapshotId, freshness, info, locations);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

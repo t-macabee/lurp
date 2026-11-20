@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -9,9 +8,7 @@ internal static class OutlineHandler
 
     public static void Run(string[] args, IOutputSink output)
     {
-        var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
-        if (string.IsNullOrEmpty(documentArg))
-            HandlerBootstrap.Fail("ERROR: --document=<relative-path> is required for --mode=outline.");
+        var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.RequireFlag(args, FlagCatalog.Document, "outline"));
 
         var includeGenerated = args.Contains("--include-generated");
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
@@ -21,13 +18,7 @@ internal static class OutlineHandler
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            OutlineCursor? cursor = null;
-            if (!string.IsNullOrEmpty(cursorArg))
-            {
-                cursor = OutlineCursor.TryDecode(cursorArg);
-                if (cursor == null)
-                    HandlerBootstrap.Fail("ERROR: --cursor is not a valid continuation token.");
-            }
+            var cursor = HandlerBootstrap.DecodeCursor(cursorArg, OutlineCursor.TryDecode);
 
             DeclarationOutlinePage? page;
             try
@@ -45,18 +36,7 @@ internal static class OutlineHandler
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
-            var declarations = page.Items.Select(e => new
-            {
-                symbol_id = e.SymbolId,
-                kind = e.Kind,
-                fully_qualified_name = e.FullyQualifiedName,
-                start_line = e.StartLine,
-                end_line = e.EndLine,
-                signature_start_line = e.SignatureStartLine,
-                name_start_line = e.NameStartLine,
-                is_partial = e.IsPartial,
-                is_generated = e.IsGenerated
-            }).ToList();
+            var declarations = page.Items.Select(SurfacePayloads.OutlineDeclaration).ToList();
 
             var meta = new
             {
@@ -67,26 +47,16 @@ internal static class OutlineHandler
                 freshness = FreshnessJson.Cheap(freshness)
             };
 
-            switch (outputMode)
+            CliOutputWriter.Write(outputMode, output, () =>
             {
-                case OutputMode.Summary:
-                    foreach (var d in declarations)
-                        output.WriteLine($"{d.kind,-12} {d.symbol_id}  {d.fully_qualified_name}  [{d.start_line}:{d.end_line}]  partial={d.is_partial} gen={d.is_generated}");
-                    output.WriteLine($"-- {declarations.Count}/{page.TotalCount} declaration(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
-                    break;
-
-                case OutputMode.Jsonl:
-                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-                    foreach (var d in declarations)
-                        output.WriteLine(JsonSerializer.Serialize(new { type = "declaration", declaration = d }, HandlerBootstrap.CompactJson));
-                    break;
-
-                default:
-                    output.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, document = documentArg, declarations, declaration_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
-                        HandlerBootstrap.IndentedJson));
-                    break;
-            }
+                foreach (var d in declarations)
+                    output.WriteLine($"{d.kind,-12} {d.symbol_id}  {d.fully_qualified_name}  [{d.start_line}:{d.end_line}]  partial={d.is_partial} gen={d.is_generated}");
+                output.WriteLine($"-- {declarations.Count}/{page.TotalCount} declaration(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+            },
+            () => new { snapshot_id = snapshotId, document = documentArg, declarations, declaration_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
+            () => meta,
+            CliOutputWriter.JsonlItemTypes["outline"],
+            declarations);
         }, output);
     }
 }

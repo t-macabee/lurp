@@ -17,6 +17,35 @@ public sealed class McpRefreshTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Refresh_AllBranches_EmitTheSameKeySet()
+    {
+        IndexedDirFixture.Create(2, stalePin: false, out var oldSnapshot, out var latest, outputDir: TestDir);
+
+        using var store = OpenStore(DbPath);
+        store.SetPinnedSnapshot(oldSnapshot);
+        await using var session = McpSessionContext.Create([$"--output-dir={TestDir}"]);
+        Assert.Equal(oldSnapshot, session.PinnedSnapshotId);
+        Assert.True(store.ClearPinnedSnapshot());
+        Assert.Equal(latest, store.GetLatestSnapshotId());
+
+        var tool = new RefreshTool(session);
+        string[] expectedKeys = ["old_snapshot_id", "new_snapshot_id", "changed", "requires_ack", "pinned", "freshness"];
+        using var noAck = JsonDocument.Parse(tool.LurpRefresh(snapshot_id: "LATEST"));
+        Assert.Equal(expectedKeys, noAck.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.False(noAck.RootElement.GetProperty("pinned").GetBoolean());
+        Assert.True(noAck.RootElement.GetProperty("requires_ack").GetBoolean());
+
+        for (int i = 0; i < 2; i++)
+        {
+            using var ack = JsonDocument.Parse(tool.LurpRefresh(ack: latest));
+            Assert.Equal(expectedKeys, ack.RootElement.EnumerateObject().Select(p => p.Name));
+            Assert.Equal(i == 0 ? oldSnapshot : latest, ack.RootElement.GetProperty("old_snapshot_id").GetString());
+            Assert.False(ack.RootElement.GetProperty("requires_ack").GetBoolean());
+            Assert.True(ack.RootElement.GetProperty("pinned").GetBoolean());
+        }
+    }
+
+    [Fact]
     public async Task Refresh_NoAck_DoesNotMovePin()
     {
         var snapshot1 = await IndexInitialAsync();

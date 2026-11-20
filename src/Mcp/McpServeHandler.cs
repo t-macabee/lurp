@@ -11,7 +11,7 @@ internal static class McpServeHandler
     /// <summary>How long shutdown waits for an in-flight index run to stop.</summary>
     internal static readonly TimeSpan ShutdownIndexWait = TimeSpan.FromSeconds(30);
 
-    /// <summary>Read tools registered on every serve session, in <c>tools/list</c> order.</summary>
+    /// <summary>Read tools registered on every serve session.</summary>
     internal static readonly Type[] ReadToolTypes =
     [
         typeof(ContextTool),
@@ -57,7 +57,9 @@ internal static class McpServeHandler
         builder.Services.AddSingleton<McpIndexSessionState>();
         var mcp = builder.Services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithRequestFilters(filters => filters.AddCallToolFilter(McpArgumentGuard.Filter))
+            .WithRequestFilters(filters => filters
+                .AddCallToolFilter(McpArgumentGuard.Filter)
+                .AddListToolsFilter(McpToolSchema.ListToolsFilter))
             // The cast selects WithTools(IEnumerable<Type>). Without it the generic
             // WithTools<TTool>(TTool target) overload binds the array as one tool instance
             // and registers no tool.

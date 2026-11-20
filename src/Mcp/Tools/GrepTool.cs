@@ -18,38 +18,24 @@ internal sealed class GrepTool
     [McpServerTool(Name = "lurp_grep", Title = "Lurp Grep", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Literal/exact-text search over source content in the pinned snapshot. Returns per-occurrence results with 1-based start_line/end_line and 0-based start_column/end_column plus the full line_text. Use this instead of lurp_search when you need the exact line where a string appears. Supports pagination via cursor and case-insensitive search via ignore_case. match_count is the total match count across all pages, not the page size — use next_cursor for pagination.")]
     public string LurpGrep(
-        string? query = null,
+        [McpRequired] string? query = null,
         int? limit = null,
         string? cursor = null,
         bool? ignore_case = null,
         bool? include_generated = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             if (string.IsNullOrEmpty(query))
                 throw new McpProtocolException("query is required.", McpErrorCode.InvalidParams);
 
-            var limitVal = limit ?? Lurp.Handlers.GrepHandler.DefaultLimit;
-            if (limitVal < 1)
-                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
+            var limitVal = McpLimits.RequirePositiveAtMost(limit, Lurp.Handlers.GrepHandler.DefaultLimit, McpLimits.MaxLimit, "limit");
 
             var ignoreCase = ignore_case ?? false;
             var includeGenerated = include_generated ?? false;
 
-            TextSearchCursor? cursorObj = null;
-            if (!string.IsNullOrEmpty(cursor))
-            {
-                cursorObj = TextSearchCursor.TryDecode(cursor);
-                if (cursorObj == null)
-                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
-            }
+            var cursorObj = McpSessionContext.DecodeCursor(cursor, TextSearchCursor.TryDecode);
 
             TextSearchPage page;
             try
@@ -90,18 +76,5 @@ internal sealed class GrepTool
             };
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

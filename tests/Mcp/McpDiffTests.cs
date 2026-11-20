@@ -1,6 +1,8 @@
+using System.Text.Json.Nodes;
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol;
 
@@ -30,7 +32,8 @@ public sealed class McpDiffTests : IntegrationTestBase
                 public class Foo {
                     public void Bar(int x) {}
                     public void Caller() { Bar(1); }
-                    public void NewMethod() {}
+                    // A different return type keeps the differ from reading Bar -> NewMethod as a rename.
+                    public int NewMethod() => 1;
                 }
             }
             """);
@@ -63,29 +66,33 @@ public sealed class McpDiffTests : IntegrationTestBase
         var differ = new SemanticDiffer(store, store, store);
         var (directChanges, _) = differ.ComputeDiff(snap1, snap2);
         Assert.Equal(directChanges.Count, changes.GetArrayLength());
-        // Pair each MCP change with its direct-differ counterpart by (change_type,
-        // symbol_id) and compare those fields, not just their presence. Change IDs
-        // are regenerated per call, so they cannot be used as the join key.
-        var mcpPairs = changes.EnumerateArray()
-            .Select(c => (c.GetProperty("change_type").GetString()!,
-                          c.GetProperty("symbol_id").GetString()!))
-            .OrderBy(p => p.Item1, StringComparer.Ordinal)
-            .ThenBy(p => p.Item2, StringComparer.Ordinal)
-            .ToList();
-        var directPairs = directChanges
-            .Select(d => (d.ChangeType, d.SymbolId))
-            .OrderBy(p => p.Item1, StringComparer.Ordinal)
-            .ThenBy(p => p.Item2, StringComparer.Ordinal)
-            .ToList();
-        Assert.Equal(directPairs, mcpPairs);
-        // each change has required fields matching DiffHandler shape
-        foreach (var c in changes.EnumerateArray())
+        // Multiple edges can change for one symbol. Match each occurrence by key and detail.
+        var remaining = directChanges.Select(change =>
+            (Key: (change.ChangeType, change.SymbolId),
+             Detail: change.DetailJson is { } detail ? JsonNode.Parse(detail) : null)).ToList();
+        foreach (var row in changes.EnumerateArray())
         {
-            Assert.True(c.TryGetProperty("change_id", out _));
-            Assert.True(c.TryGetProperty("change_type", out _));
-            Assert.True(c.TryGetProperty("symbol_id", out _));
-            Assert.True(c.TryGetProperty("created_at_utc", out _));
+            var key = (row.GetProperty("change_type").GetString()!, row.GetProperty("symbol_id").GetString()!);
+            var actualDetail = JsonNode.Parse(row.GetProperty("detail").GetRawText());
+            var index = remaining.FindIndex(change => change.Key == key && JsonNode.DeepEquals(change.Detail, actualDetail));
+            Assert.True(index >= 0, $"Unexpected change or detail for {key}: {actualDetail}");
+            remaining.RemoveAt(index);
+            Assert.True(row.TryGetProperty("change_id", out _));
+            Assert.True(row.TryGetProperty("created_at_utc", out _));
         }
+        Assert.Empty(remaining);
+        Assert.Contains(directChanges, change => change.DetailJson is not null);
+
+        var symbolChanges = changes.EnumerateArray().Select(row => (
+            Type: row.GetProperty("change_type").GetString(),
+            Symbol: SymbolId.DocCommentIdOf(row.GetProperty("symbol_id").GetString()!)))
+            .Where(change => change.Type is "symbol_added" or "symbol_removed")
+            .OrderBy(change => change.Symbol, StringComparer.Ordinal);
+        Assert.Equal(
+            [("symbol_removed", "M:DiffProj.Foo.Bar"),
+             ("symbol_added", "M:DiffProj.Foo.Bar(System.Int32)"),
+             ("symbol_added", "M:DiffProj.Foo.NewMethod")],
+            symbolChanges);
     }
 
     [Fact]

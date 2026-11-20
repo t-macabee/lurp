@@ -358,6 +358,17 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 
 ## Breaking changes (CLI/MCP contract version 7)
 
+- `lurp_index` reports the snapshot the run built or reused, even with a database
+  pin. Start, poll, and cancel return the same 11 fields. Cancel by passing
+  `operation_id` and `cancel: true`. The operation reports `cancel_requested: true`
+  and stays `running` until it stops. MCP request cancellation applies to the
+  request itself.
+- MCP tool validation, lookup, and store failures return `isError: true` in the
+  tool result. Read the message in `content[0].text`. Messages omit the CLI's
+  `ERROR:` prefix. Unknown tools and malformed requests return JSON-RPC errors.
+  An unreadable `lurp_index` workspace reports `reason_code`, `message` and
+  `remediation` in `error_data`.
+
 - `status` and `pin-snapshot` JSON: the key `built_at_latest_snapshot_id` is
   renamed `selected_latest_snapshot_id`. Read the new key.
 - Reads that default to the latest snapshot use the snapshot that the last
@@ -434,6 +445,16 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   included.
 
 ## CLI and MCP surface
+
+- `lurp_refresh`, `lurp_index`, `lurp_status`, `lurp_context` and
+  `pin-snapshot --json` use a fixed set of fields. Unavailable values are `null`.
+  `lurp_status` always includes `freshness.full_check_error`.
+- `lurp_status` accepts only a string array for `documents`, with `[]` producing
+  a `null` document freshness map. Empty and whitespace-only paths are rejected.
+- `snapshot_id: "latest"` resolves to the MCP session's pin. Either end of
+  `lurp_diff` can use the same alias.
+- `tools/list` declares required parameters for the ten tools with mandatory
+  inputs. Omitting one returns a tool error that names the missing parameter.
 
 - MCP `lurp_context` rejects a half `file`+`line` pair, as the CLI does (D86, additive). MCP and CLI error texts for impact and context use one wording.
 

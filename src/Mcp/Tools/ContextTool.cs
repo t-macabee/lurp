@@ -19,7 +19,7 @@ internal sealed class ContextTool
     }
 
     [McpServerTool(Name = "lurp_context", Title = "Lurp Context Capsule", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Assemble a context capsule for a symbol or file location. Exactly one of symbol or file+line is required. Intent: inspect | modify | diagnose (default: inspect). Supports tier continuation via tier/cursor.")]
+    [Description("Assemble a context capsule for a symbol or file location. Exactly one of symbol or file+line is required. Intent: inspect | modify | diagnose (default: inspect). Supports tier continuation via tier/cursor. Passing file without line, or line without file, is an error, also when symbol is given.")]
     public string LurpContext(
         string? symbol = null,
         string? file = null,
@@ -37,14 +37,9 @@ internal sealed class ContextTool
         int? tier_limit = null,
         string? cursor = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             var (request, parseError) = ContextRequest.Parse(
                 symbol,
                 HandlerBootstrap.NormalizeDocumentPath(file),
@@ -83,27 +78,22 @@ internal sealed class ContextTool
 
                 var freshness = _session.GetFreshnessJson();
 
-                var envelope = new
+                var tierPage = new
                 {
-                    snapshot_id = snapshotId,
-                    freshness,
-                    pinned = true,
-                    tier_page = new
-                    {
-                        tier = page.TierName,
-                        symbol_id = page.SymbolId,
-                        fully_qualified_name = page.FullyQualifiedName,
-                        kind = page.Kind,
-                        total_items = page.TotalItems,
-                        offset = page.Offset,
-                        next_cursor = nextCursor,
-                        // The tier is rebuilt in isolation, so no capsule token budget applies here.
-                        // Mirrors ContextHandler.RunTierContinuation: keep false so the page
-                        // is not mistaken for a budgeted capsule section.
-                        budget_applied = false,
-                        items = page.Items
-                    }
+                    tier = page.TierName,
+                    symbol_id = page.SymbolId,
+                    fully_qualified_name = page.FullyQualifiedName,
+                    kind = page.Kind,
+                    total_items = page.TotalItems,
+                    offset = page.Offset,
+                    next_cursor = nextCursor,
+                    // The tier is rebuilt in isolation, so no capsule token budget applies here.
+                    // Mirrors ContextHandler.RunTierContinuation: keep false so the page
+                    // is not mistaken for a budgeted capsule section.
+                    budget_applied = false,
+                    items = page.Items
                 };
+                var envelope = new ContextToolResponse(snapshotId, freshness, true, null, tierPage);
 
                 return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
@@ -122,27 +112,11 @@ internal sealed class ContextTool
 
             var freshnessJson = _session.GetFreshnessJson();
 
-            var capsuleEnvelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness = freshnessJson,
-                pinned = true,
-                capsule = capsuleElement
-            };
+            var capsuleEnvelope = new ContextToolResponse(snapshotId, freshnessJson, true, capsuleElement, null);
 
             return JsonSerializer.Serialize(capsuleEnvelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }
+
+internal sealed record ContextToolResponse(
+    string snapshot_id, object freshness, bool pinned, JsonElement? capsule, object? tier_page);

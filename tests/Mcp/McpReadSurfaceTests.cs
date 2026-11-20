@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
 using ModelContextProtocol;
@@ -198,14 +199,20 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task FindSymbol_NotFound_MapsToInvalidParams()
+    public async Task FindSymbol_And_GetSymbol_NotFound_ReturnSameMessageWithoutErrorPrefix()
     {
-        await IndexFixtureAndGetSnapshot();
+        var snapshotId = await IndexFixtureAndGetSnapshot();
         var (session, _, _, findSymbol, _) = CreateTools();
         await using (session)
         {
-            var ex = Assert.Throws<McpProtocolException>(() => findSymbol.LurpFindSymbol(symbol: "NonExistent.Symbol"));
-            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            const string symbol = "NonExistent.Symbol";
+            var findError = Assert.Throws<McpProtocolException>(() => findSymbol.LurpFindSymbol(symbol: symbol));
+            var getError = Assert.Throws<McpProtocolException>(() => new GetSymbolTool(session).LurpGetSymbol(symbol: symbol));
+            Assert.Equal(McpErrorCode.InvalidParams, findError.ErrorCode);
+            Assert.Equal(McpErrorCode.InvalidParams, getError.ErrorCode);
+            Assert.Equal($"Symbol '{symbol}' not found in snapshot '{snapshotId}'. {HandlerBootstrap.AcceptedSymbolFormsText}",
+                findError.Message);
+            Assert.Equal(findError.Message, getError.Message);
         }
     }
 

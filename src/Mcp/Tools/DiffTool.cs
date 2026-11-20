@@ -19,29 +19,38 @@ internal sealed class DiffTool
     [McpServerTool(Name = "lurp_diff", Title = "Lurp Diff", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Compute semantic diff between two snapshots. Both from_snapshot and to_snapshot are required.")]
     public string LurpDiff(
-        string? from_snapshot = null,
-        string? to_snapshot = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        [McpRequired] string? from_snapshot = null,
+        [McpRequired] string? to_snapshot = null,
+        CancellationToken cancellationToken = default) =>
+        McpSessionContext.RunTool(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
             using var store = _session.OpenReadStore();
             if (string.IsNullOrEmpty(from_snapshot))
                 throw new McpProtocolException("from_snapshot is required.", McpErrorCode.InvalidParams);
             if (string.IsNullOrEmpty(to_snapshot))
                 throw new McpProtocolException("to_snapshot is required.", McpErrorCode.InvalidParams);
 
-            ValidateSnapshotExists(store, from_snapshot);
-            ValidateSnapshotExists(store, to_snapshot);
+            var pinnedSnapshotId = _session.PinnedSnapshotId;
+            var fromSnapshotId = McpSessionContext.IsLatestAlias(from_snapshot) ? pinnedSnapshotId : from_snapshot;
+            var toSnapshotId = McpSessionContext.IsLatestAlias(to_snapshot) ? pinnedSnapshotId : to_snapshot;
+
+            ValidateSnapshotExists(store, fromSnapshotId);
+            ValidateSnapshotExists(store, toSnapshotId);
 
             var differ = new SemanticDiffer(store, store, store);
-            var (changes, skippedComparisons) = differ.ComputeDiff(from_snapshot, to_snapshot);
+            var (changes, skippedComparisons) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
-            var payload = new
+            var freshnessStamp = WorkspaceFreshness.CheckFreshnessCheap(store, toSnapshotId, FreshnessMode.Auto);
+            var freshness = FreshnessJson.Cheap(freshnessStamp);
+            var isPinned = string.Equals(toSnapshotId, pinnedSnapshotId, StringComparison.Ordinal);
+
+            var envelope = new
             {
-                from_snapshot = from_snapshot,
-                to_snapshot = to_snapshot,
+                snapshot_id = toSnapshotId,
+                freshness,
+                pinned = isPinned,
+                from_snapshot = fromSnapshotId,
+                to_snapshot = toSnapshotId,
                 change_count = changes.Count,
                 skipped_comparisons = skippedComparisons,
                 changes = changes.Select(static c => new
@@ -54,37 +63,8 @@ internal sealed class DiffTool
                 }).ToList()
             };
 
-            var freshnessStamp = WorkspaceFreshness.CheckFreshnessCheap(store, to_snapshot, FreshnessMode.Auto);
-            var freshness = FreshnessJson.Cheap(freshnessStamp);
-            var isPinned = string.Equals(to_snapshot, _session.PinnedSnapshotId, StringComparison.Ordinal);
-
-            var envelope = new
-            {
-                snapshot_id = to_snapshot,
-                freshness,
-                pinned = isPinned,
-                from_snapshot = payload.from_snapshot,
-                to_snapshot = payload.to_snapshot,
-                change_count = payload.change_count,
-                skipped_comparisons = payload.skipped_comparisons,
-                changes = payload.changes
-            };
-
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 
     private static void ValidateSnapshotExists(SqliteIndexStore store, string snapshotId)
     {

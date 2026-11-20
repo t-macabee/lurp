@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Lurp.Parity.Shared;
 using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol;
@@ -31,6 +32,7 @@ public sealed class McpIndexTests : IntegrationTestBase
             var status = GetString(doc.RootElement, "status");
             if (status != "running")
                 return doc;
+            doc.Dispose();
             await Task.Delay(250);
         }
         throw new TimeoutException($"operation {operationId} did not finish within {timeoutMs}ms");
@@ -69,6 +71,7 @@ public sealed class McpIndexTests : IntegrationTestBase
         using var checkStore = OpenStore(DbPath);
         var latest = checkStore.GetLatestSnapshotId();
         Assert.Equal(newSnapshotId, latest);
+        Assert.Equal(newSnapshotId, checkStore.GetSelectedLatestSnapshotId());
         // Ensure new snapshot has symbols
         var ids = checkStore.GetSymbolIdsInSnapshot(newSnapshotId!);
         Assert.NotEmpty(ids);
@@ -104,22 +107,19 @@ public sealed class McpIndexTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Cancel_MidRun_LeavesStoreOnOldPin_WithNoPartialCompleteData()
+    public async Task Cancel_MidRun_ReturnsRunningWithCancelRequested_ThenTransitionsToCancelled()
     {
-        var snapshot1 = await IndexInitialAsync();
+        CreateProject("IndexProj", new Dictionary<string, string> { ["A.cs"] = "namespace IndexProj; public class A {}" });
+        IndexedDirFixture.Create(1, stalePin: false, out _, out var snapshot1, outputDir: TestDir);
         var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var state = new McpIndexSessionState();
         using var gatedStore = new GatedStoreFactory();
         var tool = new IndexTool(session, state, gatedStore.Create);
 
-        CreateProject("IndexProj2", new Dictionary<string, string>
-        {
-            ["B.cs"] = "namespace IndexProj2 { public class B { public void Bar() {} } }"
-        });
-
         var jsonStart = tool.LurpIndex(strategy: "full");
         using var startDoc = Parse(jsonStart);
+        AssertOperationShape(startDoc.RootElement);
         var opId = GetString(startDoc.RootElement, "operation_id");
 
         // The run is held inside the background task before IndexRunner starts, so it is
@@ -130,8 +130,10 @@ public sealed class McpIndexTests : IntegrationTestBase
         // Request cancellation via operation_id.
         using (var cancelDoc = Parse(tool.LurpIndex(operation_id: opId, cancel: true)))
         {
-            Assert.Equal("cancelled", GetString(cancelDoc.RootElement, "status"));
-            Assert.Equal("cancellation requested", GetString(cancelDoc.RootElement, "message"));
+            AssertOperationShape(cancelDoc.RootElement);
+            Assert.Equal("running", GetString(cancelDoc.RootElement, "status"));
+            Assert.True(cancelDoc.RootElement.GetProperty("cancel_requested").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, cancelDoc.RootElement.GetProperty("finished_at_utc").ValueKind);
         }
 
         gatedStore.Release();
@@ -139,6 +141,10 @@ public sealed class McpIndexTests : IntegrationTestBase
         // Wait for terminal state.
         using var finalDoc = await WaitForCompletionAsync(tool, opId, timeoutMs: 30000);
         Assert.Equal("cancelled", GetString(finalDoc.RootElement, "status"));
+        Assert.True(finalDoc.RootElement.GetProperty("cancel_requested").GetBoolean());
+        Assert.Equal(JsonValueKind.String, finalDoc.RootElement.GetProperty("finished_at_utc").ValueKind);
+        using var terminalCancel = Parse(tool.LurpIndex(operation_id: opId, cancel: true));
+        Assert.Equal(finalDoc.RootElement.GetRawText(), terminalCancel.RootElement.GetRawText());
 
         // Snapshot-immutability: the cancelled run wrote no new snapshot and advanced no pin.
         using var store = OpenStore(DbPath);
@@ -152,37 +158,125 @@ public sealed class McpIndexTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Cancel_ThroughRequestCancellationToken_StopsRunAndKeepsOldPin()
+    public async Task IndexTool_WithDatabasePin_ReportsBuiltSnapshotId()
     {
-        var snapshot1 = await IndexInitialAsync();
-        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
-        await using var session = McpSessionContext.Create(args);
-        var state = new McpIndexSessionState();
-        var tool = new IndexTool(session, state);
+        var snapshotA = await IndexInitialAsync();
+        CreateProject("IndexProj2", new Dictionary<string, string> { ["B.cs"] = "namespace IndexProj2; public class B {}" });
+        var snapshotB = await RunFullIndexNoDeleteAsync(DbPath);
+        Assert.NotEqual(snapshotA, snapshotB);
+        using (var store = OpenStore(DbPath))
+            store.SetPinnedSnapshot(snapshotA);
 
-        CreateProject("IndexProj2", new Dictionary<string, string>
-        {
-            ["B.cs"] = "namespace IndexProj2 { public class B { public void Bar() {} } }"
-        });
+        await using var session = McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={TestDir}"]);
+        CreateProject("IndexProj3", new Dictionary<string, string> { ["C.cs"] = "namespace IndexProj3; public class C {}" });
+        var tool = new IndexTool(session, new McpIndexSessionState());
+        using var start = Parse(tool.LurpIndex(strategy: "full"));
+        Assert.Equal(snapshotA, GetString(start.RootElement, "previous_snapshot_id"));
+        Assert.Empty(start.RootElement.GetProperty("progress").EnumerateArray());
+        using var final = await WaitForCompletionAsync(tool, GetString(start.RootElement, "operation_id"));
+        Assert.Equal("completed", GetString(final.RootElement, "status"));
 
-        using var cts = new CancellationTokenSource();
-        var jsonStart = tool.LurpIndex(strategy: "full", cancellationToken: cts.Token);
-        using var startDoc = Parse(jsonStart);
-        var opId = GetString(startDoc.RootElement, "operation_id");
-
-        // The request token is linked into the run's token, so cancelling it as soon as the
-        // run is accepted must stop the run before it completes. A removed link would let the
-        // run finish and flip the final status to completed.
-        cts.Cancel();
-
-        using var finalDoc = await WaitForCompletionAsync(tool, opId, timeoutMs: 30000);
-        var finalStatus = GetString(finalDoc.RootElement, "status");
-        Assert.Equal("cancelled", finalStatus);
-
-        using var store = OpenStore(DbPath);
-        Assert.Equal(snapshot1, store.GetLatestSnapshotId());
-        Assert.Equal(snapshot1, session.PinnedSnapshotId);
+        using var check = OpenStore(DbPath);
+        var snapshotC = check.GetSelectedLatestSnapshotId();
+        Assert.NotNull(snapshotC);
+        Assert.NotEqual(snapshotA, snapshotC);
+        Assert.NotEqual(snapshotB, snapshotC);
+        Assert.Equal(snapshotC, GetString(final.RootElement, "result_snapshot_id"));
+        Assert.Equal(snapshotA, GetString(final.RootElement, "previous_snapshot_id"));
+        Assert.Contains(final.RootElement.GetProperty("progress").EnumerateArray(),
+            line => line.GetString()!.EndsWith($"snapshot: {snapshotC}", StringComparison.Ordinal));
+        Assert.Equal(snapshotA, check.GetPinnedSnapshot(check.LoadSnapshot(snapshotA)!.WorkspaceId)?.PinnedSnapshotId);
+        Assert.Equal(snapshotA, session.PinnedSnapshotId);
     }
+
+    [Fact]
+    public async Task Serve_Index_CancelOverStdio_KeepsOneShape()
+    {
+        var initial = await IndexInitialAsync();
+        // Use a new identity so the forced run cannot replace the original snapshot in place.
+        WriteFile("IndexProj", "A.cs", "namespace IndexProj; public class A { public void Bar() {} }");
+        using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", "--enable-write-tools",
+            $"--solution={SolutionPath}", $"--output-dir={TestDir}"));
+        var timeout = TimeSpan.FromSeconds(60);
+        await server.Client.InitializeAsync("test", timeout);
+
+        async Task<JsonElement> CallAsync(object arguments, CancellationToken deadline)
+        {
+            var reply = await server.Client.SendAsync("tools/call", new { name = "lurp_index", arguments }, timeout)
+                .WaitAsync(deadline);
+            var content = Assert.Single(reply.GetProperty("result").GetProperty("content").EnumerateArray());
+            using var json = Parse(GetString(content, "text"));
+            AssertOperationShape(json.RootElement);
+            return json.RootElement.Clone();
+        }
+
+        using var deadline = new CancellationTokenSource(timeout);
+        var start = await CallAsync(new { strategy = "full", force = true }, deadline.Token);
+        Assert.Equal("running", GetString(start, "status"));
+        Assert.False(start.GetProperty("cancel_requested").GetBoolean());
+        var operation_id = GetString(start, "operation_id");
+        var cancel = await CallAsync(new { operation_id, cancel = true }, deadline.Token);
+
+        JsonElement final;
+        do
+        {
+            final = await CallAsync(new { operation_id }, deadline.Token);
+            if (GetString(final, "status") == "running")
+                await Task.Delay(100, deadline.Token);
+        }
+        while (GetString(final, "status") == "running");
+
+        var status = GetString(final, "status");
+        Assert.True(status is "cancelled" or "completed", $"Unexpected operation state: {final}");
+        var wasRunning = GetString(cancel, "status") == "running";
+        Assert.Equal(wasRunning, cancel.GetProperty("cancel_requested").GetBoolean());
+        Assert.Equal(wasRunning, final.GetProperty("cancel_requested").GetBoolean());
+        Assert.Equal(JsonValueKind.String, final.GetProperty("finished_at_utc").ValueKind);
+        if (status == "cancelled")
+        {
+            Assert.Equal(JsonValueKind.Null, final.GetProperty("result_snapshot_id").ValueKind);
+            using var store = OpenStore(DbPath);
+            Assert.Equal(initial, store.GetSelectedLatestSnapshotId());
+        }
+    }
+
+    [Fact]
+    public async Task Index_UnreadableWorkspace_ErrorDataIsTheReasonPayload()
+    {
+        await IndexInitialAsync();
+        var solutionDir = Path.Combine(TestDir, "unreadable");
+        WriteUnreadableSolution(solutionDir);
+        var solution = Path.Combine(solutionDir, "Test.slnx");
+        try
+        {
+            // Serve needs a complete snapshot at startup. Seed the store with the readable fixture above.
+            await using var session = McpSessionContext.Create([$"--solution={solution}", $"--output-dir={TestDir}"]);
+            var tool = new IndexTool(session, new McpIndexSessionState());
+            using var start = Parse(tool.LurpIndex(strategy: "full"));
+            using var final = await WaitForCompletionAsync(tool, GetString(start.RootElement, "operation_id"));
+            Assert.Equal("failed", GetString(final.RootElement, "status"));
+            Assert.Equal("workspace_unreadable", GetString(final.RootElement, "error_code"));
+            var data = final.RootElement.GetProperty("error_data");
+            string[] reasonKeys = ["reason_code", "message", "remediation"];
+            Assert.Equal(reasonKeys, data.EnumerateObject().Select(p => p.Name));
+            Assert.Equal("workspace_unreadable", GetString(data, "reason_code"));
+            Assert.Equal(GetString(final.RootElement, "error"), GetString(data, "message"));
+            Assert.Contains("dotnet restore", GetString(data, "remediation"));
+        }
+        finally
+        {
+            TestDatabase.DeleteSolutionCache(solution);
+        }
+    }
+
+    private static readonly string[] OperationKeys =
+    [
+        "operation_id", "status", "started_at_utc", "finished_at_utc", "progress", "error",
+        "error_code", "error_data", "result_snapshot_id", "previous_snapshot_id", "cancel_requested"
+    ];
+
+    private static void AssertOperationShape(JsonElement operation) =>
+        Assert.Equal(OperationKeys, operation.EnumerateObject().Select(p => p.Name));
 
     [Fact]
     public async Task Refresh_AfterCompletion_AdvancesPin()

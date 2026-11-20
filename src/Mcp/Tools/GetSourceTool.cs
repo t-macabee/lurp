@@ -19,20 +19,15 @@ internal sealed class GetSourceTool
     [McpServerTool(Name = "lurp_get_source", Title = "Lurp Get Source", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Fetch source text for a document in the pinned snapshot. Supports line windowing: start_line/end_line are 1-based inclusive; context_lines expands symmetrically. When no window is given the whole file is returned. Pass outline=true to include the declaration outline in the same response; compiler-generated members (record Equals, ToString and similar) are not listed.")]
     public string LurpGetSource(
-        string? document = null,
+        [McpRequired] string? document = null,
         int? start_line = null,
         int? end_line = null,
         int? context_lines = null,
         string? snapshot_id = null,
         bool? outline = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             var normalized = HandlerBootstrap.NormalizeDocumentPath(document);
             if (string.IsNullOrEmpty(normalized))
                 throw new McpProtocolException("document is required.", McpErrorCode.InvalidParams);
@@ -75,18 +70,7 @@ internal sealed class GetSourceTool
                     var outlinePage = store.GetDeclarationsOutline(normalized, snapshotId, false, OutlineHandler.DefaultLimit, null);
                     if (outlinePage != null)
                     {
-                        outlinePayload = outlinePage.Items.Select(e => new
-                        {
-                            symbol_id = e.SymbolId,
-                            kind = e.Kind,
-                            fully_qualified_name = e.FullyQualifiedName,
-                            start_line = e.StartLine,
-                            end_line = e.EndLine,
-                            signature_start_line = e.SignatureStartLine,
-                            name_start_line = e.NameStartLine,
-                            is_partial = e.IsPartial,
-                            is_generated = e.IsGenerated
-                        }).ToList();
+                        outlinePayload = outlinePage.Items.Select(SurfacePayloads.OutlineDeclaration).ToList();
                         outlineNextCursor = outlinePage.NextCursor;
                         outlineCount = outlinePage.TotalCount;
                     }
@@ -114,18 +98,5 @@ internal sealed class GetSourceTool
             };
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

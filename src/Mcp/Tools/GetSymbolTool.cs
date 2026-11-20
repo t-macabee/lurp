@@ -19,19 +19,14 @@ internal sealed class GetSymbolTool
     [McpServerTool(Name = "lurp_get_symbol", Title = "Lurp Get Symbol", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Get symbol metadata and optional source. " + HandlerBootstrap.AcceptedSymbolFormsText + " More than one match is an error. View summary|source|all controls payload.")]
     public string LurpGetSymbol(
-        string? symbol = null,
+        [McpRequired] string? symbol = null,
         string? view = null,
         int? context_lines = null,
         bool? include_generated = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             if (string.IsNullOrEmpty(symbol))
                 throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
 
@@ -66,39 +61,10 @@ internal sealed class GetSymbolTool
                 }
             }
 
-            var metadata = SymbolMetadata.Parse(info.MetadataJson, info.SymbolId.Value);
-
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                symbol_id = info.SymbolId.Value,
-                doc_comment_id = info.SymbolId.DocCommentId,
-                assembly_identity = info.SymbolId.AssemblyIdentity,
-                kind = info.Kind.ToString(),
-                fully_qualified_name = info.FullyQualifiedName,
-                metadata = metadata,
-                declaration_count = info.DeclarationCount,
-                is_partial = info.IsPartial,
-                locations,
-                source = (viewArg is "source" or "all") ? source : null,
-                annotations = annotations.Select(static a => new { annotation_id = a.AnnotationId, symbol_id = a.SymbolId, kind = a.Kind, value = a.Value, document_path = a.DocumentPath }).ToList()
-            };
+            var envelope = McpSymbolEnvelope.Build(snapshotId, freshness, info, locations);
+            envelope["source"] = source;
+            envelope["annotations"] = JsonSerializer.SerializeToNode(annotations.Select(SurfacePayloads.AnnotationRow).ToList(), LurpJsonOptions.Indented);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

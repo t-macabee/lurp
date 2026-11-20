@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -10,8 +9,7 @@ internal static class SearchHandler
 
     public static void Run(string[] args, IOutputSink output)
     {
-        var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
-        if (string.IsNullOrEmpty(queryArg)) HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=search.");
+        var queryArg = HandlerBootstrap.RequireFlag(args, FlagCatalog.Query, "search");
 
         var typeArg = (HandlerBootstrap.GetArgValue(args, "--type=") ?? "all").ToLowerInvariant();
         if (typeArg is not ("all" or "source" or "symbol")) HandlerBootstrap.Fail("ERROR: --type must be one of: all, source, symbol.");
@@ -30,12 +28,7 @@ internal static class SearchHandler
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            SearchCursor? cursor = null;
-            if (!string.IsNullOrEmpty(cursorArg))
-            {
-                cursor = SearchCursor.TryDecode(cursorArg);
-                if (cursor == null) HandlerBootstrap.Fail("ERROR: --cursor is not a valid cursor for this database.");
-            }
+            var cursor = HandlerBootstrap.DecodeCursor(cursorArg, SearchCursor.TryDecode);
 
             var results = new List<object>();
             var summaryLines = new List<string>();
@@ -83,27 +76,16 @@ internal static class SearchHandler
 
             var meta = new { snapshot_id = snapshotId, query = queryArg, type = typeArg, result_count = results.Count, next_cursor = nextCursor, freshness = FreshnessJson.Cheap(freshness) };
 
-            switch (outputMode)
+            CliOutputWriter.Write(outputMode, output, () =>
             {
-                case OutputMode.Summary:
-                    foreach (var line in summaryLines)
-                        output.WriteLine(line);
-                    output.WriteLine($"-- {results.Count} result(s){(nextCursor != null ? "; more available (--cursor)" : "")}");
-                    break;
-
-                case OutputMode.Jsonl:
-                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-                    foreach (var result in results)
-                        output.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
-                    break;
-
-                // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
-                default:
-                    output.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, query = queryArg, type = typeArg, results, next_cursor = nextCursor, freshness = FreshnessJson.Cheap(freshness) },
-                        HandlerBootstrap.IndentedJson));
-                    break;
-            }
+                foreach (var line in summaryLines)
+                    output.WriteLine(line);
+                output.WriteLine($"-- {results.Count} result(s){(nextCursor != null ? "; more available (--cursor)" : "")}");
+            },
+            () => new { snapshot_id = snapshotId, query = queryArg, type = typeArg, results, next_cursor = nextCursor, freshness = FreshnessJson.Cheap(freshness) },
+            () => meta,
+            CliOutputWriter.JsonlItemTypes["search"],
+            results);
 
         }, output);
     }

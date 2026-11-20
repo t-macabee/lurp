@@ -171,6 +171,42 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Fact]
+    public void SearchAndGrep_InvalidCursor_UseUnifiedMessage()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true, out _);
+        try
+        {
+            var args = new[] { "--query=x", "--cursor=not-valid", $"--output-dir={dir}" };
+            var output = new CapturingOutputSink();
+            var search = Assert.Throws<CliExitException>(() => SearchHandler.Run([.. args, "--type=symbol"], output));
+            var grep = Assert.Throws<CliExitException>(() => GrepHandler.Run(args, output));
+
+            const string expected = "ERROR: --cursor is not a valid continuation token.";
+            Assert.Equal(expected, search.Message);
+            Assert.Equal(expected, grep.Message);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void RequireFlag_FormatsPlaceholderFromFlagSpec_AndRejectsMissing()
+    {
+        var output = new CapturingOutputSink();
+        Assert.Equal("ERROR: --symbol=<id> is required for --mode=find-symbol.",
+            Assert.Throws<CliExitException>(() => FindSymbolHandler.Run([], output)).Message);
+        Assert.Equal("ERROR: --symbol=<id> is required for --mode=get-symbol.",
+            Assert.Throws<CliExitException>(() => GetSymbolHandler.Run([], output)).Message);
+        Assert.Equal("ERROR: --symbol=<id> is required for --mode=annotate.",
+            Assert.Throws<CliExitException>(() => AnnotationHandler.RunAnnotate([], output)).Message);
+        Assert.Equal("ERROR: --document=<relative-path> is required for --mode=get-source.",
+            Assert.Throws<CliExitException>(() => GetSourceHandler.Run([], output)).Message);
+    }
+
+    [Fact]
     public void ParsePositiveIntArg_Invalid_Throws()
     {
         var ex = Assert.Throws<CliExitException>(() =>

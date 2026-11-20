@@ -279,7 +279,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
         var tool = new RefreshTool(session);
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpRefresh());
 
-        Assert.Equal(Message(MigrationRunner.LatestVersion + 1), ex.Message);
+        Assert.Equal(Message(MigrationRunner.LatestVersion + 1)["ERROR: ".Length..], ex.Message);
         Assert.Equal(MigrationRunner.LatestVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
         Assert.Equal(snapshotId, session.PinnedSnapshotId);
     }
@@ -321,7 +321,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
         var tool = new RetractAnnotationTool(session);
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpRetractAnnotation(annotation_id: annotationId));
 
-        Assert.Equal(Message(StaleVersion), ex.Message);
+        Assert.Equal(Message(StaleVersion)["ERROR: ".Length..], ex.Message);
         Assert.Equal(StaleVersion, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
         using (var store = new SqliteIndexStore(_dbPath))

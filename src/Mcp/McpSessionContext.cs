@@ -85,16 +85,58 @@ internal sealed class McpSessionContext : IAsyncDisposable
         return store;
     }
 
+    public static string RunTool(Func<string> body, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            return body();
+        }
+        catch (Exception ex) when (ex is not (McpProtocolException or OperationCanceledException))
+        {
+            throw McpErrorMapper.Map(ex);
+        }
+    }
+
+    public string RunReadTool(string? requestedSnapshotId, Func<SqliteIndexStore, string, string> body,
+        CancellationToken cancellationToken) =>
+        RunTool(() =>
+        {
+            var snapshotId = RequirePinnedSnapshot(requestedSnapshotId);
+            using var store = OpenReadStore();
+            return body(store, snapshotId);
+        }, cancellationToken);
+
+    public async Task<string> RunReadToolAsync(string? requestedSnapshotId, Func<SqliteIndexStore, string, Task<string>> body,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            var snapshotId = RequirePinnedSnapshot(requestedSnapshotId);
+            using var store = OpenReadStore();
+            return await body(store, snapshotId);
+        }
+        catch (Exception ex) when (ex is not (McpProtocolException or OperationCanceledException))
+        {
+            throw McpErrorMapper.Map(ex);
+        }
+    }
+
+    internal static bool IsLatestAlias(string? snapshotId) =>
+        string.Equals(snapshotId, "latest", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     ///     Validates that <paramref name="requestedSnapshotId"/> matches the pinned snapshot.
     ///     Returns the pinned snapshot id when valid, otherwise throws <see cref="McpProtocolException"/> with <c>InvalidParams</c>.
-    ///     While the session is pinned, per-call <c>latest</c> is disabled: callers must either omit <c>snapshot_id</c>
-    ///     or pass the pinned id; to advance, call <c>lurp_refresh</c> with an ack. CLI mode outside <c>serve</c> keeps its old behavior.
+    ///     <c>latest</c> resolves to the session pin. To advance the pin, call <c>lurp_refresh</c> with an ack.
     /// </summary>
     public string RequirePinnedSnapshot(string? requestedSnapshotId)
     {
-        if (string.IsNullOrEmpty(requestedSnapshotId) || string.Equals(requestedSnapshotId, PinnedSnapshotId, StringComparison.Ordinal))
-            return PinnedSnapshotId;
+        var pinnedSnapshotId = PinnedSnapshotId;
+        if (string.IsNullOrEmpty(requestedSnapshotId) || IsLatestAlias(requestedSnapshotId) ||
+            string.Equals(requestedSnapshotId, pinnedSnapshotId, StringComparison.Ordinal))
+            return pinnedSnapshotId;
 
         using (var store = OpenReadStore())
         {
@@ -102,7 +144,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
                 throw new McpProtocolException($"snapshot '{requestedSnapshotId}' not found.", McpErrorCode.InvalidParams);
         }
 
-        throw new McpProtocolException($"snapshot mismatch: session pinned to {PinnedSnapshotId}; call lurp_refresh to advance.", McpErrorCode.InvalidParams);
+        throw new McpProtocolException($"snapshot mismatch: session pinned to {pinnedSnapshotId}; call lurp_refresh to advance.", McpErrorCode.InvalidParams);
     }
 
     public FreshnessStamp GetFreshness()
@@ -114,6 +156,15 @@ internal sealed class McpSessionContext : IAsyncDisposable
     public static FreshnessStamp GetFreshness(SqliteIndexStore store, string snapshotId)
     {
         return WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, FreshnessMode.Auto);
+    }
+
+    public static TCursor? DecodeCursor<TCursor>(string? rawCursor, Func<string, TCursor?> decoder) where TCursor : class
+    {
+        if (string.IsNullOrEmpty(rawCursor))
+            return null;
+
+        return decoder(rawCursor)
+            ?? throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
     }
 
     public object GetFreshnessJson(int maxDocuments = 10)
@@ -139,7 +190,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
         }
         catch (CliExitException ex)
         {
-            throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
+            throw McpErrorMapper.Map(ex);
         }
     }
 

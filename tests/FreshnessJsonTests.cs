@@ -6,7 +6,7 @@ namespace Lurp.Tests;
 /// <summary>
 ///     B22: <see cref="FreshnessJson" /> is the single freshness builder. The cheap shape
 ///     keeps the eight keys the read-only surfaces always emitted; both <c>lurp_status</c>
-///     paths emit the twelve-key shape with the same key sequence.
+///     paths emit the thirteen-key shape with the same key sequence.
 /// </summary>
 public sealed class FreshnessJsonTests
 {

@@ -10,8 +10,8 @@ internal static class GetSymbolHandler
     internal static readonly string[] ViewNames = ["metadata", "signature", "body", "declaration", "containing-type", "surrounding"];
     public static void Run(string[] args, IOutputSink output)
     {
-        var symbolArg = HandlerBootstrap.RequireArg(args, "--symbol=", "ERROR: --symbol=<symbolId> is required for --mode=get-symbol.");
-        var viewArg = HandlerBootstrap.RequireArg(args, "--view=", "ERROR: --view=<view-kind> is required for --mode=get-symbol.",
+        var symbolArg = HandlerBootstrap.RequireFlag(args, FlagCatalog.Symbol, "get-symbol");
+        var viewArg = HandlerBootstrap.RequireFlag(args, FlagCatalog.View, "get-symbol",
             "  Valid values: metadata, signature, body, declaration, containing-type, surrounding");
 
         var contextLinesArg = HandlerBootstrap.GetArgValue(args, "--context-lines=");

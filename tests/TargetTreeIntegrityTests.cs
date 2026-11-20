@@ -78,11 +78,12 @@ public sealed class TargetTreeIntegrityTests
             AssertCliOk(annotate);
             using var annotateDoc = JsonDocument.Parse(annotate.Stdout);
             var annotationId = annotateDoc.RootElement.GetProperty("annotation_id").GetInt64();
-            var mcpAnnotate = Cli(CliTimeout, "--mode=annotate", $"--symbol={symbolId}", "--annotation-kind=note",
+            // CLI annotate creates the row that MCP lurp_retract_annotation retracts.
+            var secondAnnotate = Cli(CliTimeout, "--mode=annotate", $"--symbol={symbolId}", "--annotation-kind=note",
                 "--value=tree integrity mcp", $"--solution={solutionPath}");
-            AssertCliOk(mcpAnnotate);
-            using var mcpAnnotateDoc = JsonDocument.Parse(mcpAnnotate.Stdout);
-            var mcpAnnotationId = mcpAnnotateDoc.RootElement.GetProperty("annotation_id").GetInt64();
+            AssertCliOk(secondAnnotate);
+            using var secondAnnotateDoc = JsonDocument.Parse(secondAnnotate.Stdout);
+            var mcpAnnotationId = secondAnnotateDoc.RootElement.GetProperty("annotation_id").GetInt64();
 
             AssertCliOk(Cli(CliTimeout, "--mode=get-annotations", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=json", "--quiet"));
             AssertCliOk(Cli(CliTimeout, "--mode=retract-annotation", $"--annotation-id={annotationId}", $"--solution={solutionPath}"));

@@ -24,37 +24,23 @@ internal sealed class StatusTool
     }
 
     [McpServerTool(Name = "lurp_status", Title = "Lurp Status", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). The response is capped at max_bytes (default 40000): over the cap, the largest manifest parts are summarized or left out, truncated is true and detail.manifest.omitted_fields names them; pass projects to narrow the manifest to named projects.")]
-    public async Task<string> LurpStatus(
+    [Description("Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). max_bytes (default 40000) bounds the manifest parts only. Over the target, the largest manifest parts are summarized or left out, truncated is true, and detail.manifest.omitted_fields names them. Freshness and document_freshness are returned in full. The payload appears twice on the wire (content[0].text and structuredContent), and client size limits apply to both copies. Pass projects to narrow the manifest to named projects.")]
+    public Task<string> LurpStatus(
         string? snapshot_id = null,
         [Description("Legacy; use sections. true selects sections=manifest; false or omitted selects none. Accepts true, false, 1 or 0; any other value is an error.")] object? detail = null,
         [Description("Sections to include, comma-separated: freshness, manifest, documents, references, completeness or all. Values combine as a union; documents returns the per-document version map. Unknown values are an error.")] string? sections = null,
         int? max_documents = null,
         int? max_mismatches = null,
-        [Description("JSON array of document paths (strings) for the per-document map. Any other JSON type is an error.")] object? documents = null,
+        [Description("Array of document paths (strings) for the per-document map. An empty array returns no map. An empty or whitespace entry is an error.")] string[]? documents = null,
         bool? full = null,
         [Description("Project names (the keys of detail.manifest.target_frameworks). Builds the manifest from these projects only: their per-project maps, documents and binding rows. Needs a manifest section: any sections value except freshness.")] string[]? projects = null,
-        [Description("Response size cap in UTF-8 bytes (default 40000, at most 400000). Over the cap, the largest manifest parts are summarized or left out and named in detail.manifest.omitted_fields. Above about 44000 bytes of reference identities, MCP clients with a 25000-token output limit may flag the result as truncated.")] int? max_bytes = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        [Description("Manifest size target in UTF-8 bytes (default 40000, at most 400000). Over the target, the largest manifest parts are summarized or left out and named in detail.manifest.omitted_fields. Other sections stay in full. Client size limits apply to both wire copies (content[0].text and structuredContent).")] int? max_bytes = null,
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadToolAsync(snapshot_id, async (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-            var maxDocs = max_documents ?? DefaultMaxDocuments;
-            var maxMism = max_mismatches ?? StatusHandler.DefaultMaxMismatches;
-            if (maxDocs < 1)
-                throw new McpProtocolException("max_documents must be a positive integer.", McpErrorCode.InvalidParams);
-            if (maxMism < 1)
-                throw new McpProtocolException("max_mismatches must be a positive integer.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(max_documents, McpLimits.MaxLimit, "max_documents");
-            McpLimits.RequireAtMost(max_mismatches, McpLimits.MaxLimit, "max_mismatches");
-
-            var maxBytes = max_bytes ?? DefaultMaxBytes;
-            if (maxBytes < 1)
-                throw new McpProtocolException("max_bytes must be a positive integer.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(max_bytes, McpLimits.MaxStatusBytes, "max_bytes");
+            var maxDocs = McpLimits.RequirePositiveAtMost(max_documents, DefaultMaxDocuments, McpLimits.MaxLimit, "max_documents");
+            var maxMism = McpLimits.RequirePositiveAtMost(max_mismatches, StatusHandler.DefaultMaxMismatches, McpLimits.MaxLimit, "max_mismatches");
+            var maxBytes = McpLimits.RequirePositiveAtMost(max_bytes, DefaultMaxBytes, McpLimits.MaxStatusBytes, "max_bytes");
 
             HashSet<string>? projectFilter = null;
             if (projects != null)
@@ -74,22 +60,19 @@ internal sealed class StatusTool
             if (projectFilter != null && !includeManifest)
                 throw new McpProtocolException("projects needs a manifest section: use any sections value except freshness.", McpErrorCode.InvalidParams);
 
-            var requestedDocs = ParseDocuments(documents);
-            if (documents != null && requestedDocs == null)
-                throw new McpProtocolException("documents must be an array of strings.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(requestedDocs?.Count, McpLimits.MaxLimit, "documents length");
-
-            // Normalize requested docs early for validation and later use
             List<string>? normalizedRequested = null;
-            if (requestedDocs != null)
+            if (documents is { Length: > 0 })
             {
-                normalizedRequested = new List<string>();
-                foreach (var raw in requestedDocs)
+                McpLimits.RequireAtMost(documents.Length, McpLimits.MaxLimit, "documents length");
+                normalizedRequested = new List<string>(documents.Length);
+                foreach (var raw in documents)
                 {
-                    var norm = HandlerBootstrap.NormalizeDocumentPath(raw) ?? raw;
-                    if (string.IsNullOrWhiteSpace(norm))
+                    if (string.IsNullOrWhiteSpace(raw))
                         throw new McpProtocolException("documents contains an empty path.", McpErrorCode.InvalidParams);
-                    normalizedRequested.Add(norm);
+                    var normalized = HandlerBootstrap.NormalizeDocumentPath(raw);
+                    if (string.IsNullOrWhiteSpace(normalized))
+                        throw new McpProtocolException("documents contains an empty path.", McpErrorCode.InvalidParams);
+                    normalizedRequested.Add(normalized);
                 }
             }
 
@@ -104,7 +87,6 @@ internal sealed class StatusTool
                     var result = await CheckFullFreshnessAsync(store, snapshotId, cancellationToken);
                     fullResultForDoc = result;
                     freshness = FreshnessJson.ForStatus(snapshotId, result, DateTime.UtcNow, maxDocs, maxMism, includeMismatches);
-                    FreshnessJson.AddFullCheckError(freshness, null);
                 }
                 catch (OperationCanceledException)
                 {
@@ -115,7 +97,7 @@ internal sealed class StatusTool
                     var stamp = McpSessionContext.GetFreshness(store, snapshotId);
                     cheapStampForDoc = stamp;
                     freshness = FreshnessJson.ForStatus(stamp, maxDocs);
-                    FreshnessJson.AddFullCheckError(freshness, FreshnessJson.DescribeFullCheckFailure(ex));
+                    FreshnessJson.SetFullCheckError(freshness, FreshnessJson.DescribeFullCheckFailure(ex));
                 }
             }
             else
@@ -124,13 +106,18 @@ internal sealed class StatusTool
                 cheapStampForDoc = stamp;
                 freshness = FreshnessJson.ForStatus(stamp, maxDocs);
                 if (full == true)
-                    FreshnessJson.AddFullCheckError(freshness, FreshnessJson.FullCheckNotRun);
+                    FreshnessJson.SetFullCheckError(freshness, FreshnessJson.FullCheckNotRun);
             }
 
-            object? detailObj = null;
+            StatusDetail? detailObj = null;
             JsonNode? manifestNode = null;
             if (includeManifest)
             {
+                var filters = new
+                {
+                    projects = projectFilter?.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+                    max_bytes = maxBytes
+                };
                 try
                 {
                     var latestRow = store.LoadSnapshot(snapshotId);
@@ -149,21 +136,8 @@ internal sealed class StatusTool
                     manifestNode = latestRow != null
                         ? SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestRow, includeCompleteness, projectFilter), includeDocumentsInManifest, includeReferences, "sections=documents", "sections=references")
                         : null;
-                    detailObj = new
-                    {
-                        database_path = dbPath,
-                        schema_version = schemaVersion,
-                        contract_version = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
-                        latest_snapshot_id = snapshotId,
-                        manifest = manifestNode,
-                        filters = new
-                        {
-                            projects = projectFilter?.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
-                            max_bytes = maxBytes
-                        },
-                        git_root = latestRow?.GitRoot,
-                        solution_path = latestRow?.SolutionPath
-                    };
+                    detailObj = new StatusDetail(dbPath, schemaVersion, VersionConstants.CliMcpContractVersion,
+                        snapshotId, manifestNode, filters, latestRow?.GitRoot, latestRow?.SolutionPath, null, null, null);
                 }
                 catch (McpProtocolException)
                 {
@@ -171,12 +145,9 @@ internal sealed class StatusTool
                 }
                 catch (Exception ex)
                 {
-                    detailObj = new
-                    {
-                        error = ex.GetType().Name,
-                        error_message = ex.Message,
-                        note = "detail unavailable due to a store error"
-                    };
+                    detailObj = new StatusDetail(_session.DbPath, null, VersionConstants.CliMcpContractVersion,
+                        null, null, filters, null, null, ex.GetType().Name, ex.Message,
+                        "detail unavailable due to a store error");
                 }
             }
 
@@ -189,16 +160,8 @@ internal sealed class StatusTool
 
             string Serialize(bool truncated)
             {
-                var envelope = new Dictionary<string, object?>
-                {
-                    ["snapshot_id"] = snapshotId,
-                    ["contract_version"] = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
-                    ["freshness"] = freshness,
-                    ["pinned"] = true,
-                    ["detail"] = detailObj,
-                    ["document_freshness"] = documentFreshness,
-                    ["truncated"] = truncated
-                };
+                var envelope = new StatusResponse(snapshotId, VersionConstants.CliMcpContractVersion,
+                    freshness, true, detailObj, documentFreshness, truncated);
                 return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
 
@@ -213,20 +176,7 @@ internal sealed class StatusTool
                 json = Serialize(true);
 
             return json;
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 
     private static List<object> ComputeDocumentFreshness(SqliteIndexStore store, string snapshotId, FreshnessStamp? cheapStamp, WorkspaceFreshness.FreshnessResult? fullResult, List<string> requested)
     {
@@ -280,71 +230,6 @@ internal sealed class StatusTool
         if (detailValue)
             return new StatusSectionSet(Manifest: true, Documents: false, References: false, Completeness: false);
         return default;
-    }
-
-    private static List<string>? ParseDocuments(object? documents)
-    {
-        if (documents == null) return null;
-        if (documents is string s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return null;
-            return new List<string> { s };
-        }
-        if (documents is string[] arr)
-        {
-            var list = arr.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
-            return list.Count == 0 ? null : list;
-        }
-        if (documents is JsonElement je)
-        {
-            if (je.ValueKind == JsonValueKind.Array)
-            {
-                var list = new List<string>();
-                foreach (var el in je.EnumerateArray())
-                {
-                    if (el.ValueKind == JsonValueKind.String)
-                    {
-                        var str = el.GetString();
-                        if (!string.IsNullOrWhiteSpace(str)) list.Add(str!);
-                    }
-                    else if (el.ValueKind != JsonValueKind.Null)
-                    {
-                        // coerce numbers etc to string?
-                        var str = el.ToString();
-                        if (!string.IsNullOrWhiteSpace(str)) list.Add(str);
-                    }
-                }
-                return list.Count == 0 ? null : list;
-            }
-            if (je.ValueKind == JsonValueKind.String)
-            {
-                var str = je.GetString();
-                return string.IsNullOrWhiteSpace(str) ? null : new List<string> { str! };
-            }
-            if (je.ValueKind == JsonValueKind.Null || je.ValueKind == JsonValueKind.Undefined)
-                return null;
-            return null;
-        }
-        if (documents is IEnumerable<string> enStr)
-        {
-            var list = enStr.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
-            return list.Count == 0 ? null : list;
-        }
-        if (documents is IEnumerable<object> enObj)
-        {
-            var list = new List<string>();
-            foreach (var o in enObj)
-            {
-                if (o is string str && !string.IsNullOrWhiteSpace(str)) list.Add(str);
-                else if (o is JsonElement je2 && je2.ValueKind == JsonValueKind.String)
-                {
-                    var str2 = je2.GetString();
-                    if (!string.IsNullOrWhiteSpace(str2)) list.Add(str2!);
-                }
-            }
-            return list.Count == 0 ? null : list;
-        }
-        return null;
     }
 
     private async Task<WorkspaceFreshness.FreshnessResult> CheckFullFreshnessAsync(SqliteIndexStore store, string snapshotId, CancellationToken cancellationToken)
@@ -408,3 +293,12 @@ internal sealed class StatusTool
         }
     }
 }
+
+internal sealed record StatusDetail(
+    string? database_path, int? schema_version, int? contract_version, string? latest_snapshot_id,
+    JsonNode? manifest, object? filters, string? git_root, string? solution_path,
+    string? error, string? error_message, string? note);
+
+internal sealed record StatusResponse(
+    string snapshot_id, int contract_version, Dictionary<string, object?> freshness,
+    bool pinned, StatusDetail? detail, List<object>? document_freshness, bool truncated);

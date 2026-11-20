@@ -49,6 +49,23 @@ public sealed class McpBoundaryTests : IntegrationTestBase
     }
 
     [Fact]
+    public void RequirePositiveAtMost_ValidatesDefaultLowerAndUpperBounds()
+    {
+        Assert.Equal(3, McpLimits.RequirePositiveAtMost(null, 3, 5, "x"));
+        Assert.Equal(1, McpLimits.RequirePositiveAtMost(1, 3, 5, "x"));
+        Assert.Equal(5, McpLimits.RequirePositiveAtMost(5, 3, 5, "x"));
+
+        foreach (var value in new[] { 0, -1 })
+        {
+            var error = Assert.Throws<McpProtocolException>(() => McpLimits.RequirePositiveAtMost(value, 3, 5, "x"));
+            Assert.Equal("x must be a positive integer.", error.Message);
+        }
+
+        var aboveMax = Assert.Throws<McpProtocolException>(() => McpLimits.RequirePositiveAtMost(6, 3, 5, "x"));
+        Assert.Equal("x must be <= 5.", aboveMax.Message);
+    }
+
+    [Fact]
     public void WriteTools_CarryExpectedAnnotations()
     {
         // ReadOnly=false so a client can see the surface is not read-only, and

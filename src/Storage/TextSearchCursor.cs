@@ -11,7 +11,7 @@ public sealed record TextSearchCursor(string SnapshotId, string Fingerprint, str
 {
     public static string ComputeFingerprint(string query, bool includeGenerated, bool ignoreCase)
     {
-        return $"{query}\u0001{includeGenerated}\u0001{ignoreCase}";
+        return CursorUtils.JoinFingerprint(query, includeGenerated, ignoreCase);
     }
 
     public string Encode()

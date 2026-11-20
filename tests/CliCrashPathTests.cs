@@ -98,20 +98,13 @@ public sealed class CliCrashPathTests
         }
     }
 
-    // A project with no framework references has no corlib, so IndexRunner's gate
-    // rejects the whole solution with WorkspaceUnreadableException and nothing is marked
-    // complete. Same fixture as the blind-project store test.
     private static (string SolutionDir, string OutputDir) CreateUnreadableSolution()
     {
         var solutionDir = Path.Combine(Path.GetTempPath(), $"lurp-unreadable-{Guid.NewGuid():N}");
         var outputDir = Path.Combine(Path.GetTempPath(), $"lurp-unreadable-out-{Guid.NewGuid():N}");
         Directory.CreateDirectory(solutionDir);
         Directory.CreateDirectory(outputDir);
-        IntegrationTestBase.WriteSolution(
-            solutionDir,
-            "Blind",
-            new Dictionary<string, string> { ["Marker.cs"] = "namespace Blind; public class Marker { }" },
-            msbuildProperties: new Dictionary<string, string> { ["DisableImplicitFrameworkReferences"] = "true" });
+        IntegrationTestBase.WriteUnreadableSolution(solutionDir);
         return (solutionDir, outputDir);
     }
 

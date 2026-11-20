@@ -20,11 +20,9 @@ internal sealed class RefreshTool
     public string LurpRefresh(
         string? ack = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        McpSessionContext.RunTool(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
             // Validate snapshot_id param against pin if provided (hardened pin validation)
             if (!string.IsNullOrEmpty(snapshot_id))
                 _session.RequirePinnedSnapshot(snapshot_id);
@@ -33,66 +31,22 @@ internal sealed class RefreshTool
             var latest = _session.GetLatestSnapshotId() ?? oldSnapshotId;
             var changed = !string.Equals(oldSnapshotId, latest, StringComparison.Ordinal);
 
-            // No ack: report without moving
             if (string.IsNullOrEmpty(ack))
             {
-                var freshness = _session.GetFreshnessJson();
-                var requiresAck = changed;
-                var envelope = new
-                {
-                    old_snapshot_id = oldSnapshotId,
-                    new_snapshot_id = latest,
-                    changed,
-                    freshness,
-                    requires_ack = requiresAck
-                };
-                return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
+                var response = new RefreshResponse(oldSnapshotId, latest, changed, changed, false, _session.GetFreshnessJson());
+                return JsonSerializer.Serialize(response, LurpJsonOptions.Indented);
             }
 
-            // Ack provided: must equal latest
             if (!string.Equals(ack, latest, StringComparison.Ordinal))
                 throw new McpProtocolException($"ack must equal the new_snapshot_id of a lurp_refresh call without ack ({latest}).", McpErrorCode.InvalidParams);
 
-            // If ack equals old (no change), no advance needed
-            if (string.Equals(ack, oldSnapshotId, StringComparison.Ordinal))
-            {
-                var freshness = _session.GetFreshnessJson();
-                var envelopeSame = new
-                {
-                    old_snapshot_id = oldSnapshotId,
-                    new_snapshot_id = latest,
-                    changed = false,
-                    freshness,
-                    requires_ack = false,
-                    pinned = true
-                };
-                return JsonSerializer.Serialize(envelopeSame, LurpJsonOptions.Indented);
-            }
+            if (changed)
+                _session.AdvancePin(latest);
 
-            // Ack equals latest and differs from old: advance pin
-            _session.AdvancePin(latest);
-            var newFreshness = _session.GetFreshnessJson();
-            var envelopeAdv = new
-            {
-                old_snapshot_id = oldSnapshotId,
-                new_snapshot_id = latest,
-                changed = false,
-                freshness = newFreshness,
-                pinned = true
-            };
-            return JsonSerializer.Serialize(envelopeAdv, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+            var acknowledged = new RefreshResponse(oldSnapshotId, latest, false, false, true, _session.GetFreshnessJson());
+            return JsonSerializer.Serialize(acknowledged, LurpJsonOptions.Indented);
+        }, cancellationToken);
 }
+
+internal sealed record RefreshResponse(
+    string old_snapshot_id, string new_snapshot_id, bool changed, bool requires_ack, bool pinned, object freshness);

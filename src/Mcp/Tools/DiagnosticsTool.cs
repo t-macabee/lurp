@@ -27,14 +27,9 @@ internal sealed class DiagnosticsTool
         string? cursor = null,
         bool include_generated = false,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             string? normalizedDocument = null;
             if (!string.IsNullOrEmpty(document))
             {
@@ -47,18 +42,9 @@ internal sealed class DiagnosticsTool
             var severityFilter = string.IsNullOrEmpty(severity) ? null : severity;
             var idFilter = string.IsNullOrEmpty(id) ? null : id;
 
-            var limitVal = limit ?? DiagnosticsHandler.DefaultLimit;
-            if (limitVal < 1)
-                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
+            var limitVal = McpLimits.RequirePositiveAtMost(limit, DiagnosticsHandler.DefaultLimit, McpLimits.MaxLimit, "limit");
 
-            DiagnosticsCursor? cursorObj = null;
-            if (!string.IsNullOrEmpty(cursor))
-            {
-                cursorObj = DiagnosticsCursor.TryDecode(cursor);
-                if (cursorObj == null)
-                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
-            }
+            var cursorObj = McpSessionContext.DecodeCursor(cursor, DiagnosticsCursor.TryDecode);
 
             DiagnosticsPage page;
             try
@@ -75,19 +61,7 @@ internal sealed class DiagnosticsTool
 
             var freshness = _session.GetFreshnessJson();
 
-            var diagnostics = page.Items.Select(static d => new
-            {
-                project_name = d.Record.ProjectName,
-                document_path = d.NormalizedDocumentPath,
-                in_snapshot = d.InSnapshot,
-                severity = d.Record.Severity,
-                id = d.Record.Id,
-                message = d.Record.Message,
-                start_line = LineNumbers.ToOneBased(d.Record.StartLine),
-                start_column = d.Record.StartColumn,
-                end_line = LineNumbers.ToOneBased(d.Record.EndLine),
-                end_column = d.Record.EndColumn
-            }).ToList();
+            var diagnostics = page.Items.Select(SurfacePayloads.DiagnosticRow).ToList();
 
             var envelope = new
             {
@@ -105,18 +79,5 @@ internal sealed class DiagnosticsTool
             };
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

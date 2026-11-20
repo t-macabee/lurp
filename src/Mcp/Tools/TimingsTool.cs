@@ -20,13 +20,9 @@ internal sealed class TimingsTool
     [Description("Show step-by-step timing data and snapshot metrics for the pinned snapshot.")]
     public string LurpTimings(
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
             var built = TimingsPayload.Build(store, snapshotId);
             var freshness = _session.GetFreshnessJson();
 
@@ -41,18 +37,5 @@ internal sealed class TimingsTool
             };
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

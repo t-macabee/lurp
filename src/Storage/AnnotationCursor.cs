@@ -12,7 +12,7 @@ public sealed record AnnotationCursor(string SnapshotId, string Fingerprint, lon
 {
     public static string ComputeFingerprint(string? symbolId, string? documentPath, string? kind)
     {
-        return $"{symbolId ?? string.Empty}\u0001{documentPath ?? string.Empty}\u0001{kind ?? string.Empty}";
+        return CursorUtils.JoinFingerprint(symbolId, documentPath, kind);
     }
 
     public string Encode()

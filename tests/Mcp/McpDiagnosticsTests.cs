@@ -80,7 +80,15 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         var allCount = docAll.RootElement.GetProperty("diagnostic_count").GetInt32();
 
         // The fixture's five unused locals each produce a CS0219 warning.
-        Assert.True(defaultCount >= 5, $"expected at least 5 default diagnostics, got {defaultCount}");
+        using var warningsDoc = JsonDocument.Parse(tool.LurpDiagnostics(id: "CS0219"));
+        Assert.Equal(5, warningsDoc.RootElement.GetProperty("diagnostic_count").GetInt32());
+        var warnings = warningsDoc.RootElement.GetProperty("diagnostics").EnumerateArray().ToArray();
+        Assert.All(warnings, row =>
+        {
+            Assert.Equal("CS0219", row.GetProperty("id").GetString());
+            Assert.Equal("Warning", row.GetProperty("severity").GetString());
+        });
+        Assert.Equal([3, 4, 5, 6, 7], warnings.Select(row => row.GetProperty("start_line").GetInt32()));
         Assert.Equal(defaultCount + hiddenCount, allCount);
         foreach (var d in docDefault.RootElement.GetProperty("diagnostics").EnumerateArray())
             Assert.NotEqual("Hidden", d.GetProperty("severity").GetString());

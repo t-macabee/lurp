@@ -25,14 +25,9 @@ internal sealed class AnnotationsTool
         int? limit = null,
         string? cursor = null,
         string? snapshot_id = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
+        CancellationToken cancellationToken = default) =>
+        _session.RunReadTool(snapshot_id, (store, snapshotId) =>
         {
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            cancellationToken.ThrowIfCancellationRequested();
-            using var store = _session.OpenReadStore();
-
             var hasSymbol = !string.IsNullOrEmpty(symbol);
             var hasDocument = !string.IsNullOrEmpty(document);
 
@@ -41,18 +36,9 @@ internal sealed class AnnotationsTool
 
             var kindFilter = string.IsNullOrEmpty(kind) ? null : kind;
 
-            var limitVal = limit ?? AnnotationHandler.DefaultLimit;
-            if (limitVal < 1)
-                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
-            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
+            var limitVal = McpLimits.RequirePositiveAtMost(limit, AnnotationHandler.DefaultLimit, McpLimits.MaxLimit, "limit");
 
-            AnnotationCursor? cursorObj = null;
-            if (!string.IsNullOrEmpty(cursor))
-            {
-                cursorObj = AnnotationCursor.TryDecode(cursor);
-                if (cursorObj == null)
-                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
-            }
+            var cursorObj = McpSessionContext.DecodeCursor(cursor, AnnotationCursor.TryDecode);
 
             string? resolvedSymbol = null;
             string? normalizedDocument = null;
@@ -93,31 +79,11 @@ internal sealed class AnnotationsTool
                 symbol_id = resolvedSymbol,
                 document = normalizedDocument,
                 kind = kindFilter,
-                annotations = page.Items.Select(static a => new
-                {
-                    annotation_id = a.AnnotationId,
-                    symbol_id = a.SymbolId,
-                    kind = a.Kind,
-                    value = a.Value,
-                    document_path = a.DocumentPath
-                }).ToList(),
+                annotations = page.Items.Select(SurfacePayloads.AnnotationRow).ToList(),
                 annotation_count = page.TotalCount,
                 next_cursor = page.NextCursor
             };
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-        }
-        catch (McpProtocolException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
+        }, cancellationToken);
 }

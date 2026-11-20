@@ -149,6 +149,9 @@ internal static class DocRenderers
                 rendered += $", default `{value}`";
             }
 
+            if (parameter.GetCustomAttribute<McpRequiredAttribute>() is not null)
+                rendered += ", required";
+
             rendered += ")";
             parts.Add(rendered);
         }
