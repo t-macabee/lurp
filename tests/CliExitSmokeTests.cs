@@ -483,6 +483,31 @@ public sealed class CliExitSmokeTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Timings_Json_WithoutRows_PrintsTheSameKeys()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true, out var snapshotId);
+        try
+        {
+            var result = CapturingOutputSink.Capture(sink => TimingsHandler.Run([$"--output-dir={dir}", "--json"], sink));
+
+            Assert.Null(result.Failure);
+            using var doc = JsonDocument.Parse(result.Stdout);
+            var root = doc.RootElement;
+            Assert.Equal(["snapshot_id", "total_ms", "steps", "metrics"], root.EnumerateObject().Select(p => p.Name).ToArray());
+            Assert.Equal(snapshotId, root.GetProperty("snapshot_id").GetString());
+            Assert.Equal(0L, root.GetProperty("total_ms").GetInt64());
+            Assert.Equal(JsonValueKind.Array, root.GetProperty("steps").ValueKind);
+            Assert.Equal(0, root.GetProperty("steps").GetArrayLength());
+            Assert.Equal(JsonValueKind.Object, root.GetProperty("metrics").ValueKind);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
     // R137: --mode=timings goes through HandlerBootstrap.WithStore like every other
     // read mode, so a missing database is an ERROR on stderr with exit 1 instead of
     // a stdout note with exit 0.

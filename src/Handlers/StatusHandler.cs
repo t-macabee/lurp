@@ -11,31 +11,26 @@ internal static class StatusHandler
 
     public static async Task Run(string[] args, IOutputSink output)
     {
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
-
-        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-
-        // Status renders one document, not a sequence, so it shares the same
-        // --output=summary|json vocabulary the other read commands use (jsonl is
-        // rejected, same as --mode=context for its non-tier path). Route it through
-        // the single ParseOutputMode chokepoint so the vocabulary and its error text
-        // cannot drift from the read commands. --json stays a back-compat alias for
-        // --output=json; the historical default (neither flag given) stays the
-        // human-readable summary text.
+        // Parse every flag first before resolving the database directory (D72, D188.5).
         var asJson = HandlerBootstrap.ParseOutputMode(
                 args,
                 allowJsonl: false,
                 defaultMode: args.Contains("--json") ? OutputMode.Json : OutputMode.Summary)
             == OutputMode.Json;
 
-        // Parse --detail= once, before any database access, so a bad value fails the
-        // same way whatever the database state (B51). An empty or missing value means
-        // no extra sections.
         var detailSections = default(StatusSectionSet);
         var detailArg = HandlerBootstrap.GetArgValue(args, "--detail=");
         if (!string.IsNullOrWhiteSpace(detailArg)
             && !StatusSections.TryParse(detailArg, allowSurfaceNames: false, out detailSections, out var badDetail))
             HandlerBootstrap.Fail($"ERROR: --detail: unknown value '{badDetail}'. Use {StatusSections.Vocabulary(false)}.");
+
+        var maxMismatches = HandlerBootstrap.ParsePositiveIntArg(args, "--max-mismatches=", DefaultMaxMismatches);
+        var explicitSolutionArg = HandlerBootstrap.GetArgValue(args, "--solution=");
+        if (explicitSolutionArg != null && !File.Exists(explicitSolutionArg))
+            HandlerBootstrap.Fail($"ERROR: --solution=<path> must point to an existing file: '{explicitSolutionArg}'.");
+
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
+        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
 
         if (!File.Exists(dbPath))
         {
@@ -65,9 +60,7 @@ internal static class StatusHandler
             var includeDocuments = detailSections.Documents;
             var includeReferences = detailSections.References;
             var includeCompleteness = detailSections.Completeness;
-            var maxMismatches = ParseMaxArg(args, "--max-mismatches=", DefaultMaxMismatches);
-            var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
-                                  ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
+            var solutionPathArg = explicitSolutionArg ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
                 ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeReferences, includeCompleteness, output);
@@ -104,16 +97,33 @@ internal static class StatusHandler
 
         if (asJson)
         {
-            output.WriteLine(JsonSerializer.Serialize(new
-            {
-                database_path = dbPath,
-                database_exists = File.Exists(dbPath),
-                schema_version = actualVersion,
-                schema_version_expected = expectedVersion,
-                schema_version_mismatch = true,
-                contract_version = VersionConstants.CliMcpContractVersion,
-                schema_version_note = explanation
-            }, HandlerBootstrap.IndentedJson));
+            WriteJson(new StatusJsonPayload(
+                database_path: dbPath,
+                database_exists: File.Exists(dbPath),
+                schema_version: actualVersion,
+                schema_version_expected: expectedVersion,
+                schema_version_mismatch: true,
+                schema_version_note: explanation,
+                contract_version: VersionConstants.CliMcpContractVersion,
+                indexed: null,
+                latest_snapshot_id: null,
+                effective_latest_snapshot_id: null,
+                selected_latest_snapshot_id: null,
+                pinned_snapshot_id: null,
+                pinned_at_utc: null,
+                previous_pinned_snapshot_id: null,
+                stale_pinned_snapshot_id: null,
+                pin_active: null,
+                freshness_checked: false,
+                note: null,
+                is_fresh: null,
+                mismatches: null,
+                mismatches_truncated: null,
+                mismatches_total: null,
+                timing_summary: null,
+                timing_total_ms: null,
+                manifest: null,
+                latest_failure: null), output);
             return;
         }
 
@@ -127,15 +137,34 @@ internal static class StatusHandler
     {
         if (asJson)
         {
-            output.WriteLine(JsonSerializer.Serialize(new
-            {
-                database_path = dbPath,
-                database_exists = File.Exists(dbPath),
-                schema_version = schemaVersion,
-                contract_version = VersionConstants.CliMcpContractVersion,
-                indexed = false,
-                latest_failure = ToPayload(latestFailure)
-            }, HandlerBootstrap.IndentedJson));
+            var exists = File.Exists(dbPath);
+            WriteJson(new StatusJsonPayload(
+                database_path: dbPath,
+                database_exists: exists,
+                schema_version: schemaVersion,
+                schema_version_expected: MigrationRunner.LatestVersion,
+                schema_version_mismatch: exists ? false : null,
+                schema_version_note: null,
+                contract_version: VersionConstants.CliMcpContractVersion,
+                indexed: false,
+                latest_snapshot_id: null,
+                effective_latest_snapshot_id: null,
+                selected_latest_snapshot_id: null,
+                pinned_snapshot_id: null,
+                pinned_at_utc: null,
+                previous_pinned_snapshot_id: null,
+                stale_pinned_snapshot_id: null,
+                pin_active: null,
+                freshness_checked: false,
+                note: null,
+                is_fresh: null,
+                mismatches: null,
+                mismatches_truncated: null,
+                mismatches_total: null,
+                timing_summary: null,
+                timing_total_ms: null,
+                manifest: null,
+                latest_failure: ToPayload(latestFailure)), output);
             return;
         }
 
@@ -146,6 +175,8 @@ internal static class StatusHandler
         output.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
     }
 
+    private const string SnapshotOnlyNote = "Pass --solution=path or set LURP_SOLUTION_PATH to check freshness against the current workspace.";
+
     private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness, IOutputSink output)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
@@ -154,26 +185,33 @@ internal static class StatusHandler
         {
             var timings = store.GetTimings(latestSnapshotId);
 
-            output.WriteLine(JsonSerializer.Serialize(new
-            {
-                database_path = dbPath,
-                schema_version = schemaVersion,
-                contract_version = VersionConstants.CliMcpContractVersion,
-                latest_snapshot_id = latestSnapshotId,
-                effective_latest_snapshot_id = latestSnapshotId,
-                selected_latest_snapshot_id = pin.SelectedLatestSnapshotId,
-                pinned_snapshot_id = pin.PinnedRow?.PinnedSnapshotId,
-                pinned_at_utc = pin.PinnedRow?.PinnedAtUtc,
-                previous_pinned_snapshot_id = pin.PinnedRow?.PreviousPinnedSnapshotId,
-                stale_pinned_snapshot_id = pin.StalePinnedSnapshotId,
-                pin_active = pin.PinActive,
-                freshness_checked = false,
-                note = "Pass --solution=path or set LURP_SOLUTION_PATH to check freshness against the current workspace.",
-                timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
-                timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-                manifest = SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments, includeReferences, "--detail=documents", "--detail=references"),
-                latest_failure = ToPayload(pin.LatestFailure)
-            }, HandlerBootstrap.IndentedJson));
+            WriteJson(new StatusJsonPayload(
+                database_path: dbPath,
+                database_exists: true,
+                schema_version: schemaVersion,
+                schema_version_expected: MigrationRunner.LatestVersion,
+                schema_version_mismatch: false,
+                schema_version_note: null,
+                contract_version: VersionConstants.CliMcpContractVersion,
+                indexed: true,
+                latest_snapshot_id: latestSnapshotId,
+                effective_latest_snapshot_id: latestSnapshotId,
+                selected_latest_snapshot_id: pin.SelectedLatestSnapshotId,
+                pinned_snapshot_id: pin.PinnedRow?.PinnedSnapshotId,
+                pinned_at_utc: pin.PinnedRow?.PinnedAtUtc,
+                previous_pinned_snapshot_id: pin.PinnedRow?.PreviousPinnedSnapshotId,
+                stale_pinned_snapshot_id: pin.StalePinnedSnapshotId,
+                pin_active: pin.PinActive,
+                freshness_checked: false,
+                note: SnapshotOnlyNote,
+                is_fresh: null,
+                mismatches: null,
+                mismatches_truncated: null,
+                mismatches_total: null,
+                timing_summary: timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
+                timing_total_ms: timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : null,
+                manifest: SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments, includeReferences, "--detail=documents", "--detail=references"),
+                latest_failure: ToPayload(pin.LatestFailure)), output);
             return;
         }
 
@@ -192,28 +230,33 @@ internal static class StatusHandler
 
             var capped = FreshnessJson.CapMismatches(freshness.Mismatches, maxMismatches);
 
-            output.WriteLine(JsonSerializer.Serialize(new
-            {
-                database_path = dbPath,
-                schema_version = schemaVersion,
-                contract_version = VersionConstants.CliMcpContractVersion,
-                latest_snapshot_id = latestSnapshotId,
-                effective_latest_snapshot_id = latestSnapshotId,
-                selected_latest_snapshot_id = pin.SelectedLatestSnapshotId,
-                pinned_snapshot_id = pin.PinnedRow?.PinnedSnapshotId,
-                pinned_at_utc = pin.PinnedRow?.PinnedAtUtc,
-                previous_pinned_snapshot_id = pin.PinnedRow?.PreviousPinnedSnapshotId,
-                stale_pinned_snapshot_id = pin.StalePinnedSnapshotId,
-                pin_active = pin.PinActive,
-                is_fresh = freshness.IsFresh,
-                mismatches = capped.Rows,
-                mismatches_truncated = capped.Truncated,
-                mismatches_total = capped.Total,
-                timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
-                timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-                manifest = SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments, includeReferences, "--detail=documents", "--detail=references"),
-                latest_failure = ToPayload(pin.LatestFailure)
-            }, HandlerBootstrap.IndentedJson));
+            WriteJson(new StatusJsonPayload(
+                database_path: dbPath,
+                database_exists: true,
+                schema_version: schemaVersion,
+                schema_version_expected: MigrationRunner.LatestVersion,
+                schema_version_mismatch: false,
+                schema_version_note: null,
+                contract_version: VersionConstants.CliMcpContractVersion,
+                indexed: true,
+                latest_snapshot_id: latestSnapshotId,
+                effective_latest_snapshot_id: latestSnapshotId,
+                selected_latest_snapshot_id: pin.SelectedLatestSnapshotId,
+                pinned_snapshot_id: pin.PinnedRow?.PinnedSnapshotId,
+                pinned_at_utc: pin.PinnedRow?.PinnedAtUtc,
+                previous_pinned_snapshot_id: pin.PinnedRow?.PreviousPinnedSnapshotId,
+                stale_pinned_snapshot_id: pin.StalePinnedSnapshotId,
+                pin_active: pin.PinActive,
+                freshness_checked: true,
+                note: null,
+                is_fresh: freshness.IsFresh,
+                mismatches: capped.Rows,
+                mismatches_truncated: capped.Truncated,
+                mismatches_total: capped.Total,
+                timing_summary: timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
+                timing_total_ms: timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : null,
+                manifest: SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments, includeReferences, "--detail=documents", "--detail=references"),
+                latest_failure: ToPayload(pin.LatestFailure)), output);
             return;
         }
 
@@ -224,6 +267,39 @@ internal static class StatusHandler
 
         ShowTimingIfAvailable(store, latestSnapshotId, output);
     }
+
+    private static void WriteJson(StatusJsonPayload payload, IOutputSink output)
+    {
+        output.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.IndentedJson));
+    }
+
+    private sealed record StatusJsonPayload(
+        string database_path,
+        bool database_exists,
+        int? schema_version,
+        int schema_version_expected,
+        bool? schema_version_mismatch,
+        string? schema_version_note,
+        int contract_version,
+        bool? indexed,
+        string? latest_snapshot_id,
+        string? effective_latest_snapshot_id,
+        string? selected_latest_snapshot_id,
+        string? pinned_snapshot_id,
+        DateTime? pinned_at_utc,
+        string? previous_pinned_snapshot_id,
+        string? stale_pinned_snapshot_id,
+        bool? pin_active,
+        bool freshness_checked,
+        string? note,
+        bool? is_fresh,
+        IReadOnlyList<object>? mismatches,
+        bool? mismatches_truncated,
+        int? mismatches_total,
+        object? timing_summary,
+        long? timing_total_ms,
+        object? manifest,
+        LatestFailurePayload? latest_failure);
 
     /// <summary>The header lines both <c>status</c> text branches print: database, schema, contract, latest snapshot, pin block, stale pin and latest failure.</summary>
     private static void WriteTextHeader(string dbPath, int schemaVersion, string latestSnapshotId, PinPreamble pin, IOutputSink output)
@@ -283,15 +359,5 @@ internal static class StatusHandler
         var totalMs = timings.Sum(t => t.ElapsedMs);
         output.WriteLine($"Timing summary ({totalMs} ms total):");
         foreach (var t in timings) output.WriteLine($"  {t.StepName}: {t.ElapsedMs} ms");
-    }
-
-    private static int ParseMaxArg(string[] args, string prefix, int defaultValue)
-    {
-        var raw = HandlerBootstrap.GetArgValue(args, prefix);
-        if (string.IsNullOrEmpty(raw))
-            return defaultValue;
-        if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value) || value < 1)
-            HandlerBootstrap.Fail($"ERROR: {prefix.TrimEnd('=')} must be a positive integer.");
-        return value;
     }
 }

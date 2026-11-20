@@ -756,12 +756,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _searchSource!.SearchSource(query, snapshotId, limit, includeGenerated, snippetTokens);
     }
 
-    public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
-    {
-        EnsureOpen();
-        return _searchSymbols!.SearchSymbols(query, snapshotId, limit, includeGenerated, kind);
-    }
-
     /// <summary>
     ///     Keyset-paginated symbol search. Fetches one extra row beyond <paramref name="limit" />
     ///     to determine whether a next page exists, then returns an opaque cursor for it rather

@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Lurp.Handlers;
-using Lurp.Queries;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -41,8 +40,7 @@ internal sealed class NavigateTool
 
             var includeGenerated = include_generated ?? false;
 
-            var queries = new FastTravelQueries(store);
-            var target = queries.Navigate(normalized, line.Value, snapshotId, includeGenerated);
+            var target = store.NavigateToLocation(normalized, line.Value, snapshotId, includeGenerated);
 
             var freshness = _session.GetFreshnessJson();
 

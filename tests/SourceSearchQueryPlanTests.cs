@@ -36,11 +36,12 @@ public sealed class SourceSearchQueryPlanTests : IntegrationTestBase
 
     private static void AssertGeneratedFilterPlans(SqliteConnection connection, string snapshotId)
     {
+        Lurp.Storage.TextCaseMatching.Register(connection);
         const string covering = "COVERING INDEX idx_document_versions_generated (document_version_id=? AND is_generated=?)";
 
         var ftsPlan = QueryPlanFixture.Explain(connection, FtsMatchQuerySql, new Dictionary<string, object>
         {
-            ["@query"] = "Probe",
+            ["@query"] = "content : \"Probe\"",
             ["@snapshotId"] = snapshotId
         });
         Assert.Contains(ftsPlan, detail => detail.Contains(covering, StringComparison.Ordinal));
@@ -48,7 +49,8 @@ public sealed class SourceSearchQueryPlanTests : IntegrationTestBase
         var fallbackPlan = QueryPlanFixture.Explain(connection, FallbackQuerySql, new Dictionary<string, object>
         {
             ["@snapshotId"] = snapshotId,
-            ["@likePattern"] = "%Probe%",
+            ["@query"] = "Probe",
+            ["@excludedPaths"] = "[]",
             ["@remaining"] = 20
         });
         Assert.Contains(fallbackPlan, detail => detail.Contains(covering, StringComparison.Ordinal));

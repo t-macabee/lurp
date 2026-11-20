@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v47, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.6.1, schema v48, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---

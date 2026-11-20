@@ -4,6 +4,7 @@
 
 using Lurp.Adapters;
 using Lurp.Handlers;
+using Lurp.Storage;
 using Lurp.Workspace;
 
 namespace Lurp;
@@ -44,7 +45,7 @@ internal static class FlagCatalog
     // Read-command output controls (search, find-symbol, impact, context)
     public static readonly FlagSpec Output = new("--output=", "Payload rendering (default: `json`). `summary` is a digest; `jsonl` emits a `{\"type\":\"meta\"}` envelope followed by one compact object per result, so a consumer can stream and stop early. `jsonl` is rejected for a whole capsule, whose payload is a single document.", AllowedValues: ["summary", "json", "jsonl"]);
     public static readonly FlagSpec Quiet = new("--quiet", "Emit only the payload: suppresses the freshness stderr line, and for `--mode=context` prints just the written capsule path instead of the capsule itself.");
-    public static readonly FlagSpec Freshness = new("--freshness=", "How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes every document; `off` skips the check. An unknown value is an error.", AllowedValues: ["auto", "hash", "off"]);
+    public static readonly FlagSpec Freshness = new("--freshness=", "How hard to check that the snapshot still matches the working tree (default: `auto`). `auto` compares file times with the time of the index run that last built or reused the snapshot; `auto` and `hash` also list a new `.cs` file under the git root (outside `bin`, `obj`, `.git`) that is not in the snapshot and is newer than that run, or that sits in a directory changed after it; `hash` also re-hashes every tracked document; `off` skips the check. An unknown value is an error.", AllowedValues: ["auto", "hash", "off"]);
     public static readonly FlagSpec RequireFresh = new("--require-fresh", "Exit `2` when the snapshot is not fresh.");
 
     // Modes that accept --include-generated: outline, get-symbol, search, find-symbol,
@@ -70,10 +71,10 @@ internal static class FlagCatalog
     public static readonly FlagSpec View = new("--view=", "What to return.", AllowedValues: GetSymbolHandler.ViewNames);
 
     // search
-    public static readonly FlagSpec Query = new("--query=", "Search term. Symbol search matches whole identifier tokens first; when no token matches, it falls back to case-insensitive substring matches over fully qualified symbol names (camel-case segments and prefixes count).", "term");
+    public static readonly FlagSpec Query = new("--query=", "Search term. Symbol search lists whole-token matches of the fully qualified name first (by rank), then case-insensitive substring matches of the fully qualified name (camel-case segments and prefixes count), for plain identifier queries. `--limit` cuts this one list; `--cursor` continues it.", "term");
     public static readonly FlagSpec Type = new("--type=", "Search scope (default: `all`). An unknown value is an error.", AllowedValues: ["all", "source", "symbol"]);
-    public static readonly FlagSpec Kind = new("--kind=", "Filter symbol results by Roslyn SymbolKind (e.g. `Type`, `Method`, `Field`, `Property`).", "SymbolKind");
-    public static readonly FlagSpec SnippetTokens = new("--snippet-tokens=", $"Token window for source snippets (default: {SearchHandler.DefaultSnippetTokens}).", "n");
+    public static readonly FlagSpec Kind = new("--kind=", "Filter symbol results by kind (case-insensitive). An unknown value is an error.", AllowedValues: DeadCandidateLiveness.CandidateKinds);
+    public static readonly FlagSpec SnippetTokens = new("--snippet-tokens=", $"Max tokens in the window around the first match for source snippets (default: {SearchHandler.DefaultSnippetTokens}).", "n");
 
     // Modes that accept --limit=: outline, search, impact, get-annotations, diagnostics, grep, and dead-candidates.
     public static readonly FlagSpec Limit = new("--limit=", $"Max declarations per page (default: {OutlineHandler.DefaultLimit}).", "n");

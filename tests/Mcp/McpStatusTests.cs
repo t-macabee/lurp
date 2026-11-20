@@ -201,7 +201,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         await RunFullIndexNoDeleteAsync(DbPath);
         // Now touch all files to make them look stale relative to previous pinned snapshot?
         // Instead we test the capping logic directly via the uncapped path:
-        var jsonCheap = await tool.LurpStatus(detail: false);
+        var jsonCheap = await tool.LurpStatus(detail: false, max_documents: 10);
         using var docCheap = JsonDocument.Parse(jsonCheap);
         var sampleCheap = docCheap.RootElement.GetProperty("freshness").GetProperty("changed_documents_sample");
         Assert.True(sampleCheap.GetArrayLength() <= 10);

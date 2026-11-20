@@ -16,6 +16,9 @@ internal static class SearchHandler
         var typeArg = (HandlerBootstrap.GetArgValue(args, "--type=") ?? "all").ToLowerInvariant();
         if (typeArg is not ("all" or "source" or "symbol")) HandlerBootstrap.Fail("ERROR: --type must be one of: all, source, symbol.");
         var kindArg = HandlerBootstrap.GetArgValue(args, "--kind=");
+        string? canonicalKind = null;
+        if (!string.IsNullOrEmpty(kindArg) && !DeadCandidateLiveness.TryGetCandidateKind(kindArg, out canonicalKind))
+            HandlerBootstrap.Fail($"ERROR: --kind must be one of: {DeadCandidateLiveness.CandidateKindsText} (case-insensitive). Got '{kindArg}'.");
         var includeGenerated = args.Contains("--include-generated");
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
@@ -49,36 +52,31 @@ internal static class SearchHandler
 
             if (typeArg is "symbol" or "all")
             {
+                SymbolSearchPage page;
+                try
+                {
+                    page = store.SearchSymbolsPage(
+                        queryArg,
+                        snapshotId,
+                        limit,
+                        includeGenerated,
+                        canonicalKind,
+                        typeArg == "symbol" ? cursor : null);
+                }
+                catch (ArgumentException ex)
+                {
+                    HandlerBootstrap.Fail($"ERROR: {ex.Message}");
+                    return;
+                }
+
+                foreach (var r in page.Items)
+                {
+                    results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
+                    summaryLines.Add($"symbol  {r.SymbolId}  {r.FullyQualifiedName}  ({r.Kind})");
+                }
+
                 if (typeArg == "symbol")
-                {
-                    SymbolSearchPage page;
-                    try
-                    {
-                        page = store.SearchSymbolsPage(queryArg, snapshotId, limit, includeGenerated, kindArg, cursor);
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        HandlerBootstrap.Fail($"ERROR: {ex.Message}");
-                        return;
-                    }
-
-                    foreach (var r in page.Items)
-                    {
-                        results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
-                        summaryLines.Add($"symbol  {r.SymbolId}  {r.FullyQualifiedName}  ({r.Kind})");
-                    }
-
                     nextCursor = page.NextCursor;
-                }
-                else
-                {
-                    var symbolResults = store.SearchSymbols(queryArg, snapshotId, limit, includeGenerated, kindArg);
-                    foreach (var r in symbolResults)
-                    {
-                        results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
-                        summaryLines.Add($"symbol  {r.SymbolId}  {r.FullyQualifiedName}  ({r.Kind})");
-                    }
-                }
             }
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);

@@ -66,6 +66,7 @@ public sealed class DiagnosticGeneratedFilterTests : IDisposable
     {
         var bytes = Encoding.UTF8.GetBytes(content);
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+        var lineStarts = LineBreaks.ComputeLineStartsJson(bytes);
         using var cmd1 = conn.CreateCommand();
         cmd1.CommandText = "INSERT INTO documents (document_id, relative_path) VALUES (@did, @path);";
         cmd1.Parameters.AddWithValue("@did", docId);
@@ -75,13 +76,14 @@ public sealed class DiagnosticGeneratedFilterTests : IDisposable
         using var cmd2 = conn.CreateCommand();
         cmd2.CommandText = """
             INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts, is_generated)
-            VALUES (@vid, @did, @hash, @content, 'utf-8', @bc, '[0]', @gen);
+            VALUES (@vid, @did, @hash, @content, 'utf-8', @bc, @ls, @gen);
             """;
         cmd2.Parameters.AddWithValue("@vid", versionId);
         cmd2.Parameters.AddWithValue("@did", docId);
         cmd2.Parameters.AddWithValue("@hash", hash);
         cmd2.Parameters.AddWithValue("@content", bytes);
         cmd2.Parameters.AddWithValue("@bc", bytes.Length);
+        cmd2.Parameters.AddWithValue("@ls", lineStarts);
         cmd2.Parameters.AddWithValue("@gen", isGenerated ? 1 : 0);
         cmd2.ExecuteNonQuery();
 

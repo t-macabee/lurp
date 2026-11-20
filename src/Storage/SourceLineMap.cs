@@ -63,6 +63,25 @@ public static class SourceLineMap
         return end == start ? string.Empty : Encoding.UTF8.GetString(content, start, end - start);
     }
 
+    public static string ExtractLineText(byte[] content, int[] lineStarts, int lineIndex, string documentVersionId)
+    {
+        if (lineIndex < 0 || lineIndex >= lineStarts.Length)
+            throw new InvalidOperationException(
+                $"Line index {lineIndex} is outside the {lineStarts.Length} lines of document version '{documentVersionId}'.");
+
+        var lineStart = lineStarts[lineIndex];
+        var hasNextLine = lineIndex + 1 < lineStarts.Length;
+        var lineEnd = hasNextLine ? lineStarts[lineIndex + 1] : content.Length;
+        if (lineStart < 0 || lineEnd > content.Length || lineStart > lineEnd)
+            throw new InvalidOperationException(
+                $"Line span [{lineStart}, {lineEnd}) is outside the {content.Length} bytes of document version '{documentVersionId}'.");
+
+        if (hasNextLine)
+            lineEnd -= LineBreaks.TrailingLineBreakByteLength(content.AsSpan(lineStart, lineEnd - lineStart));
+
+        return lineEnd <= lineStart ? string.Empty : Encoding.UTF8.GetString(content, lineStart, lineEnd - lineStart);
+    }
+
     /// <summary>Byte bounds of whole lines <paramref name="firstLineIndex" /> to <paramref name="lastLineIndex" /> (0-based), widened by <paramref name="contextLines" /> on each side and clamped to the document.</summary>
     public static (int ByteStart, int ByteEnd, int FirstLineIndex, int LastLineIndex) ExpandLineWindow(
         int[] lineStarts, int firstLineIndex, int lastLineIndex, int contextLines, int contentLength)

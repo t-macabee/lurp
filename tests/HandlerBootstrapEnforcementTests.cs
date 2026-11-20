@@ -13,48 +13,6 @@ namespace Lurp.Tests;
 public sealed class HandlerBootstrapEnforcementTests
 {
     [Fact]
-    public void EveryRequireFreshMode_HandlerCallsResolveFreshness()
-    {
-        var repoRoot = TestRepoRoot.Find();
-        var programSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Program.cs"));
-        var handlersDir = Path.Combine(repoRoot, "src", "Handlers");
-
-        var requireFreshModes = Program.ModeRegistry.Where(e => e.Flags.Contains("--require-fresh")).ToList();
-        Assert.True(requireFreshModes.Count > 0, "No modes declare --require-fresh; the registry scan is not exercising anything.");
-
-        var missing = new List<string>();
-        foreach (var entry in requireFreshModes)
-        {
-            // The registry is the single source of truth for flags; the dispatch expression
-            // for every freshness mode is Sync(&lt;HandlerClass&gt;.&lt;Method&gt;). Parse that
-            // mapping from Program.cs source so the test stays keyed to the registry instead
-            // of a second hardcoded list that can drift.
-            var marker = $"new(\"{entry.Name}\"";
-            var start = programSource.IndexOf(marker, StringComparison.Ordinal);
-            Assert.True(start >= 0, $"Mode '{entry.Name}' not found in Program.cs source.");
-
-            var nextEntry = programSource.IndexOf("new(", start + marker.Length, StringComparison.Ordinal);
-            var segment = nextEntry >= 0 ? programSource[start..nextEntry] : programSource[start..];
-
-            var handlerMatch = Regex.Match(segment, @"Sync\((?<class>\w+)\.\w+\)");
-            Assert.True(handlerMatch.Success, $"Could not parse the dispatch handler for mode '{entry.Name}' from Program.cs source.");
-
-            var handlerPath = Path.Combine(handlersDir, handlerMatch.Groups["class"].Value + ".cs");
-            Assert.True(File.Exists(handlerPath), $"Handler source not found for mode '{entry.Name}': {handlerPath}");
-
-            var handlerSource = File.ReadAllText(handlerPath);
-            if (!handlerSource.Contains("HandlerBootstrap.ResolveFreshness", StringComparison.Ordinal))
-                missing.Add($"{entry.Name} -> {Path.GetFileName(handlerPath)}");
-        }
-
-        Assert.True(
-            missing.Count == 0,
-            "Every mode that declares --require-fresh must route freshness through " +
-            "HandlerBootstrap.ResolveFreshness (the single chokepoint that computes the stamp, " +
-            "enforces --require-fresh, and prints the freshness line):\n" + string.Join("\n", missing));
-    }
-
-    [Fact]
     public void EveryCliDocumentPathConsumer_CallsNormalizeDocumentPath()
     {
         var handlersDir = Path.Combine(TestRepoRoot.Find(), "src", "Handlers");

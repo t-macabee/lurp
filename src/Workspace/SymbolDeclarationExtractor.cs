@@ -225,12 +225,6 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
             SymbolKind.Property => SymKind.Property,
             SymbolKind.Field => SymKind.Field,
             SymbolKind.Event => SymKind.Event,
-            SymbolKind.Parameter => SymKind.Parameter,
-            SymbolKind.Local => SymKind.Local,
-            SymbolKind.RangeVariable => SymKind.RangeVariable,
-            SymbolKind.ArrayType => SymKind.ArrayType,
-            SymbolKind.PointerType => SymKind.PointerType,
-            SymbolKind.TypeParameter => SymKind.TypeParameter,
             _ => SymKind.Unknown
         };
     }

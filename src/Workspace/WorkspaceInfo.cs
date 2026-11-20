@@ -175,7 +175,7 @@ public sealed class WorkspaceInfo
                 }
 
                 var hash = DocumentVersionId.Compute(docId, normalized);
-                var lineStarts = ComputeLineStarts(normalized);
+                var lineStarts = LineBreaks.ComputeLineStartsJson(normalized);
 
                 map[docId] = hash;
                 contentMap[docId] = (normalized, "utf-8", lineStarts);
@@ -245,17 +245,6 @@ public sealed class WorkspaceInfo
             normalized = [];
             return false;
         }
-    }
-
-    private static string ComputeLineStarts(byte[] bytes)
-    {
-        var offsets = new List<int> { 0 };
-        for (var i = 0; i < bytes.Length; i++)
-            if (bytes[i] == (byte)'\n')
-                if (i + 1 < bytes.Length)
-                    offsets.Add(i + 1);
-
-        return JsonSerializer.Serialize(offsets);
     }
 
     private static string GetRelativePath(string fullPath, string normalizedRoot)

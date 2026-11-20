@@ -42,6 +42,10 @@ internal sealed class SearchTool
             if (typeArg is not ("source" or "symbol" or "all"))
                 throw new McpProtocolException("type must be one of: source, symbol, all.", McpErrorCode.InvalidParams);
 
+            string? canonicalKind = null;
+            if (!string.IsNullOrEmpty(kind) && !DeadCandidateLiveness.TryGetCandidateKind(kind, out canonicalKind))
+                throw new McpProtocolException($"kind must be one of: {DeadCandidateLiveness.CandidateKindsText}. Got '{kind}'.", McpErrorCode.InvalidParams);
+
             var includeGenerated = include_generated ?? false;
             var limitVal = limit ?? SearchHandler.DefaultLimit;
             if (limitVal < 1)
@@ -72,41 +76,31 @@ internal sealed class SearchTool
 
             if (typeArg is "symbol" or "all")
             {
+                SearchCursor? cursorObj = null;
+                if (typeArg == "symbol" && !string.IsNullOrEmpty(cursor))
+                {
+                    cursorObj = SearchCursor.TryDecode(cursor);
+                    if (cursorObj == null)
+                        throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
+                }
+
+                SymbolSearchPage page;
+                try
+                {
+                    page = store.SearchSymbolsPage(query, snapshotId, limitVal, includeGenerated, canonicalKind, cursorObj);
+                }
+                catch (ArgumentException ex)
+                {
+                    throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
+                }
+
+                foreach (var r in page.Items)
+                {
+                    results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
+                }
+
                 if (typeArg == "symbol")
-                {
-                    SearchCursor? cursorObj = null;
-                    if (!string.IsNullOrEmpty(cursor))
-                    {
-                        cursorObj = SearchCursor.TryDecode(cursor);
-                        if (cursorObj == null)
-                            throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
-                    }
-
-                    SymbolSearchPage page;
-                    try
-                    {
-                        page = store.SearchSymbolsPage(query, snapshotId, limitVal, includeGenerated, kind, cursorObj);
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
-                    }
-
-                    foreach (var r in page.Items)
-                    {
-                        results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
-                    }
-
                     nextCursor = page.NextCursor;
-                }
-                else
-                {
-                    var symbolResults = store.SearchSymbols(query, snapshotId, limitVal, includeGenerated, kind);
-                    foreach (var r in symbolResults)
-                    {
-                        results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
-                    }
-                }
             }
 
             var envelope = new

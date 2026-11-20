@@ -49,7 +49,7 @@ public sealed class DeclarationSnapshotLinkTests : IDisposable
         return new SymbolDeclaration
         {
             SymbolId = new SymbolId(docCommentId, "Asm", fqn),
-            Kind = IndexedSymbolKind.NamedType,
+            Kind = IndexedSymbolKind.Type,
             DocumentVersionId = documentVersionId,
             FullSpan = new DeclarationSpan(fullStart, fullEnd),
             SignatureSpan = new DeclarationSpan(fullStart, fullEnd),

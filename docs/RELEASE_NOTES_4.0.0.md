@@ -312,6 +312,9 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   and freshness (`InternalsVisibleToChanged`).
 - Schema v47 adds `snapshot_symbols.bare_fqn` (the FQN without type-parameter
   lists) and indexes on (`snapshot_id`, `fqn`) and (`snapshot_id`, `bare_fqn`).
+- Schema v48 recomputes the line table of every stored document with the Roslyn
+  line breaks (CR, LF, CRLF, NEL, LS, PS); text that ends with a line break has
+  a last, empty line.
 
 ## Snapshot lifecycle
 
@@ -396,6 +399,27 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   included, each with `is_generated`; `declaration_count` equals its length.
   `--include-generated` only decides whether a symbol with only generated
   declarations resolves.
+- `grep` reports non-overlapping occurrences; `match_count` can be lower than in
+  3.6.1; `--ignore-case` now matches non-ASCII letters.
+- `search --kind` and `lurp_search` `kind` accept `Type`, `Method`, `Property`,
+  `Field`, `Event` (case-insensitive); another value is an error.
+- Symbol search matches the fully qualified name only (not the kind, the
+  doc-comment id or the assembly identity), lists token matches before substring
+  matches for every `--limit`, and pages into the substring matches.
+- `search --type=source` matches the document text only, and `snippet` is a
+  window around the first match with `<mark>` markers in both the token and the
+  fragment paths.
+- Line numbers of files with CR, NEL, LS or PS line breaks now agree with the
+  compiler; a span that ends the file with a line break ends at column 0 of the
+  next line; `get-source` counts the last, empty line.
+- A read after an index run that reused the snapshot is `fresh`; a new source
+  file makes the cheap freshness check `stale`; `.gitignore` changes no longer
+  block the incremental shortcut.
+- `status --json` prints one key set in every branch; an explicit `--solution=`
+  that does not exist is an error; `timings --json` prints `total_ms`,
+  `steps`, `metrics` also without timing rows (the `note` key goes).
+- `get-source` names `--start-line` in its range error; every document reader
+  uses `Document '<path>' not found in snapshot '<id>'.`
 
 ## Symbol resolution and navigation
 
@@ -418,7 +442,7 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 | Component | 3.6.1 | 4.0.0 |
 |---|---|---|
 | Tool | 3.6.1 | 4.0.0 |
-| Database schema | v37 | v47 |
+| Database schema | v37 | v48 |
 | Extractor | 1.11.0 | 1.12.0 |
 | CLI/MCP contract | v6 | v7 |
 | Output schema | v6 | v7 |

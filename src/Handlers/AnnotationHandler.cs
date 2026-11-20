@@ -95,7 +95,7 @@ internal static class AnnotationHandler
                 // Distinguish "no annotations here" from "no such document"
                 var docs = store.GetDocumentVersionIdsByPath(snapshotId);
                 if (!docs.ContainsKey(normalizedDocument!))
-                    HandlerBootstrap.Fail($"ERROR: Document '{normalizedDocument}' not found in snapshot '{snapshotId}'.");
+                    HandlerBootstrap.Fail($"ERROR: {DocumentMessages.NotFound(normalizedDocument!, snapshotId)}");
             }
 
             AnnotationCursor? cursor = null;

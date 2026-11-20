@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -312,16 +314,26 @@ public sealed class McpOutlineTests : IntegrationTestBase
         await using var session = CreateSession();
         var tool = new OutlineTool(session);
 
-        var json = tool.LurpOutline(document: docPath, include_generated: true);
+        var json = tool.LurpOutline(document: docPath);
         using var doc = JsonDocument.Parse(json);
-        var symbolIds = doc.RootElement.GetProperty("declarations").EnumerateArray()
+        var actualDocCommentIds = doc.RootElement.GetProperty("declarations").EnumerateArray()
             .Select(e => e.GetProperty("symbol_id").GetString()!)
-            .ToList();
+            .Select(static id => id[..id.IndexOf('|')])
+            .ToHashSet(StringComparer.Ordinal);
 
-        Assert.Contains(symbolIds, id => id.StartsWith("T:OutlineRecordProj.R|", StringComparison.Ordinal));
-        Assert.Contains(symbolIds, id => id.StartsWith("P:OutlineRecordProj.R.A|", StringComparison.Ordinal));
-        foreach (var name in new[] { "Equals", "GetHashCode", "ToString", "PrintMembers", "Deconstruct", "op_Equality", "op_Inequality" })
-            Assert.DoesNotContain(symbolIds, id => id.Contains($"R.{name}", StringComparison.Ordinal));
+        var source = File.ReadAllText(Path.Combine(TestDir, docPath));
+        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+        var compilation = CSharpCompilation.Create(
+            "OutlineRecordProj",
+            [syntaxTree],
+            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
+        var recordType = compilation.GetTypeByMetadataName("OutlineRecordProj.R")!;
+        var expectedDocCommentIds = new ISymbol[] { recordType }
+            .Concat(recordType.GetMembers().Where(static m => !m.IsImplicitlyDeclared))
+            .Select(static s => s.GetDocumentationCommentId()!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(expectedDocCommentIds, actualDocCommentIds);
     }
 
     [Fact]

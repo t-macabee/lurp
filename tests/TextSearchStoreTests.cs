@@ -51,11 +51,11 @@ public sealed class TextSearchStoreTests : IDisposable
         conn.Close();
     }
 
-    private static void InsertDoc(SqliteConnection conn, string relPath, string content, string docId, string versionId, bool isGenerated = false)
+    private static void InsertDoc(SqliteConnection conn, string relPath, string content, string docId, string versionId, bool isGenerated = false, string snapshotId = SnapshotId)
     {
         var bytes = Encoding.UTF8.GetBytes(content);
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
-        var lineStarts = ComputeLineStarts(bytes);
+        var lineStarts = LineBreaks.ComputeLineStartsJson(bytes);
         using var cmd2 = conn.CreateCommand();
         cmd2.CommandText = "INSERT OR IGNORE INTO documents (document_id, relative_path) VALUES (@did, @path);";
         cmd2.Parameters.AddWithValue("@did", docId);
@@ -73,16 +73,9 @@ public sealed class TextSearchStoreTests : IDisposable
         cmd3.ExecuteNonQuery();
         using var cmd4 = conn.CreateCommand();
         cmd4.CommandText = "INSERT OR IGNORE INTO snapshot_documents (snapshot_id, document_version_id) VALUES (@sid, @vid);";
-        cmd4.Parameters.AddWithValue("@sid", SnapshotId);
+        cmd4.Parameters.AddWithValue("@sid", snapshotId);
         cmd4.Parameters.AddWithValue("@vid", versionId);
         cmd4.ExecuteNonQuery();
-    }
-
-    private static string ComputeLineStarts(byte[] bytes)
-    {
-        var offs = new List<int>{0};
-        for (int i=0;i<bytes.Length;i++) if (bytes[i]==(byte)'\n' && i+1 < bytes.Length) offs.Add(i+1);
-        return System.Text.Json.JsonSerializer.Serialize(offs);
     }
 
     [Fact]
@@ -96,12 +89,8 @@ public sealed class TextSearchStoreTests : IDisposable
         // Baz has 1, Foo has 2 => total 3, ordering: Baz first, Foo next two
         var first = page.Items[0];
         Assert.Equal("src/TestProject/Baz.cs", first.DocumentPath);
-        // Baz's match is at line 9? Let's count: 1 namespace,2 blank,3 public class Baz,4 {,5     public string Password...,6     public void Qux(),7     {,8         var a = (string?)null;,9     },10 }
-        // Actually content we inserted: "namespace TestProject;\n\npublic class Baz\n{\n    public string Password => \"Newpassword1!\";\n    public void Qux()\n    {\n        var a = (string?)null;\n    }\n}\n"
-        // Lines: 1 namespace,2 empty,3 public class Baz,4 {,5     public string...,6     public void Qux(),7     {,8         var a = (string?)null;,9     },10 }
-        // So line 8 is the match
         Assert.Equal(8, first.StartLine);
-        // Column 0-based: "        var a = " is 8 spaces + "var a = " (8) =16
+        // Column 0-based: "        var a = " is 8 spaces + "var a = " (8) = 16
         Assert.Equal(16, first.StartColumn);
         Assert.Equal(8, first.EndLine);
         // Check line_text
@@ -118,21 +107,52 @@ public sealed class TextSearchStoreTests : IDisposable
     }
 
     [Fact]
-    public void Grep_Pagination_Works()
+    public void Grep_IgnoreCase_MatchesNonAsciiLetters()
     {
-        var page1 = _store.SearchTextPage("Newpassword1!", SnapshotId, 2, false, false, null);
-        Assert.Equal(3, page1.TotalCount);
+        const string snap = "snap-uni";
+        using (var conn = TestDatabase.Open(_dbPath))
+        {
+            using (var pragma = conn.CreateCommand()) { pragma.CommandText = "PRAGMA foreign_keys=OFF;"; pragma.ExecuteNonQuery(); }
+            InsertDoc(conn, "P/Uni.cs", "namespace Ns;\n// ÜNÏCODE marker\nclass Uni { }\n", "doc-uni", "ver-uni", snapshotId: snap);
+        }
+
+        var page = _store.SearchTextPage("ünïcode", snap, 50, includeGenerated: false, ignoreCase: true, cursor: null);
+        Assert.Equal(1, page.TotalCount);
+        var item = Assert.Single(page.Items);
+        Assert.Equal("P/Uni.cs", item.DocumentPath);
+        Assert.Equal(2, item.StartLine);
+        Assert.Equal(3, item.StartColumn);
+        Assert.Equal(2, item.EndLine);
+        Assert.Equal(10, item.EndColumn);
+        Assert.Equal("// ÜNÏCODE marker", item.LineText);
+    }
+
+    [Fact]
+    public void Grep_Pagination_ReturnsEachPageInOrder()
+    {
+        const string snap = "snap-page";
+        using (var conn = TestDatabase.Open(_dbPath))
+        {
+            using (var pragma = conn.CreateCommand()) { pragma.CommandText = "PRAGMA foreign_keys=OFF;"; pragma.ExecuteNonQuery(); }
+            InsertDoc(conn, "a/One.cs", "Foo Foo\nFoo\n", "doc-one", "ver-one", snapshotId: snap);
+            InsertDoc(conn, "b/Two.cs", "Foo\n", "doc-two", "ver-two", snapshotId: snap);
+        }
+
+        var page1 = _store.SearchTextPage("Foo", snap, 2, includeGenerated: false, ignoreCase: false, cursor: null);
+        Assert.Equal(4, page1.TotalCount);
         Assert.Equal(2, page1.Items.Count);
         Assert.NotNull(page1.NextCursor);
+        Assert.Equal(("a/One.cs", 1, 0), (page1.Items[0].DocumentPath, page1.Items[0].StartLine, page1.Items[0].StartColumn));
+        Assert.Equal(("a/One.cs", 1, 4), (page1.Items[1].DocumentPath, page1.Items[1].StartLine, page1.Items[1].StartColumn));
+
         var cursor = TextSearchCursor.TryDecode(page1.NextCursor!);
         Assert.NotNull(cursor);
-        var page2 = _store.SearchTextPage("Newpassword1!", SnapshotId, 2, false, false, cursor);
-        Assert.Single(page2.Items);
+        var page2 = _store.SearchTextPage("Foo", snap, 2, includeGenerated: false, ignoreCase: false, cursor: cursor);
+        Assert.Equal(4, page2.TotalCount);
+        Assert.Equal(2, page2.Items.Count);
         Assert.Null(page2.NextCursor);
-        Assert.Equal(3, page2.TotalCount);
-        // All items distinct
-        var allPaths = page1.Items.Select(i => i.DocumentPath + ":" + i.StartLine).Concat(page2.Items.Select(i => i.DocumentPath + ":" + i.StartLine)).ToList();
-        Assert.Equal(3, allPaths.Distinct().Count());
+        Assert.Equal(("a/One.cs", 2, 0), (page2.Items[0].DocumentPath, page2.Items[0].StartLine, page2.Items[0].StartColumn));
+        Assert.Equal(("b/Two.cs", 1, 0), (page2.Items[1].DocumentPath, page2.Items[1].StartLine, page2.Items[1].StartColumn));
     }
 
     [Fact]
@@ -174,39 +194,21 @@ public sealed class TextSearchStoreTests : IDisposable
     }
 
     [Fact]
-    public void Grep_Overlapping_Matches()
+    public void Grep_Occurrences_DoNotOverlap()
     {
-        // Insert a doc with "aaa" for overlapping test
-        using var conn = TestDatabase.Open(_dbPath);
-        using (var pragma = conn.CreateCommand()) { pragma.CommandText = "PRAGMA foreign_keys=OFF;"; pragma.ExecuteNonQuery(); }
-        var content = "aaa";
-        var bytes = Encoding.UTF8.GetBytes(content);
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
-        var ls = "[0]";
-        using (var cmd = conn.CreateCommand())
+        const string snap = "snap-overlap";
+        using (var conn = TestDatabase.Open(_dbPath))
         {
-            cmd.CommandText = "INSERT OR IGNORE INTO documents (document_id, relative_path) VALUES ('doc-aaa', 'src/TestProject/Aaa.cs');";
-            cmd.ExecuteNonQuery();
+            using (var pragma = conn.CreateCommand()) { pragma.CommandText = "PRAGMA foreign_keys=OFF;"; pragma.ExecuteNonQuery(); }
+            InsertDoc(conn, "P/A.cs", "var s = \"aaa\";\n", "doc-pa", "ver-pa", snapshotId: snap);
+            InsertDoc(conn, "P/B.cs", "var t = \"aaaa\";\n", "doc-pb", "ver-pb", snapshotId: snap);
         }
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = "INSERT OR IGNORE INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts) VALUES ('ver-aaa', 'doc-aaa', @hash, @content, 'utf-8', @bc, @ls);";
-            cmd.Parameters.AddWithValue("@hash", hash);
-            cmd.Parameters.AddWithValue("@content", bytes);
-            cmd.Parameters.AddWithValue("@bc", bytes.Length);
-            cmd.Parameters.AddWithValue("@ls", ls);
-            cmd.ExecuteNonQuery();
-        }
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = "INSERT OR IGNORE INTO snapshot_documents (snapshot_id, document_version_id) VALUES (@sid, 'ver-aaa');";
-            cmd.Parameters.AddWithValue("@sid", SnapshotId);
-            cmd.ExecuteNonQuery();
-        }
-        conn.Close();
-        var page = _store.SearchTextPage("aa", SnapshotId, 50, false, false, null);
-        // "aaa" contains "aa" twice overlapping at offsets 0 and 1
-        Assert.Equal(2, page.TotalCount);
+
+        var page = _store.SearchTextPage("aa", snap, 50, includeGenerated: false, ignoreCase: false, cursor: null);
+        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(
+            [("P/A.cs", 1, 9), ("P/B.cs", 1, 9), ("P/B.cs", 1, 11)],
+            page.Items.Select(i => (i.DocumentPath, i.StartLine, i.StartColumn)).ToArray());
     }
 
     [Fact]

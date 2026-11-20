@@ -1,5 +1,6 @@
 using Lurp.Handlers;
 using Lurp.Storage;
+using Lurp.Workspace;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -115,12 +116,12 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
     [Fact]
     public void EveryReadMode_Registry_DeclaresFreshnessFlags()
     {
-        var required = new[] { "search", "grep", "find-symbol", "impact", "context", "get-source", "get-symbol", "navigate", "outline", "diagnostics", "dead-candidates" };
-        // get-annotations is a read mode outside T1's scope, so it is exempted explicitly
-        // here too. index/annotate/retract-annotation/pin-snapshot are mutations, not reads.
-        // The partition assertion below forces any brand-new mode to be classified one way
-        // or the other, so a new read mode added without freshness fails the build.
-        var exempt = new[] { "index", "annotate", "retract-annotation", "pin-snapshot", "timings", "diff", "status", "get-annotations", "serve" };
+        var required = new[] { "search", "grep", "find-symbol", "impact", "context", "get-source", "get-symbol", "navigate", "outline", "diagnostics", "get-annotations", "dead-candidates" };
+        // index/annotate/retract-annotation/pin-snapshot/timings/diff/status/serve are not
+        // snapshot-read freshness modes. The partition assertion below forces any brand-new
+        // mode to be classified one way or the other, so a new read mode added without
+        // freshness fails the build.
+        var exempt = new[] { "index", "annotate", "retract-annotation", "pin-snapshot", "timings", "diff", "status", "serve" };
 
         var registryNames = Program.ModeRegistry.Select(e => e.Name).ToArray();
         var classified = required.Concat(exempt).OrderBy(n => n, StringComparer.Ordinal).ToArray();
@@ -274,4 +275,135 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         Assert.Contains(Document, sample.EnumerateArray().Select(e => e.GetString()));
     }
 
+    [Fact]
+    public async Task Cheap_AfterAnIndexRunReusesTheSnapshot_IsFresh()
+    {
+        Seed();
+        var snapshot1 = await RunFullIndexAsync(DbPath);
+        DateTime selected1;
+        using (var store = OpenStore(DbPath))
+            selected1 = store.LoadSnapshotMetadata(snapshot1)!.SelectedAtUtc;
+
+        var widgetPath = Path.Combine(TestDir, "src", Project, "Widget.cs");
+        var touchTime = DateTime.UtcNow;
+        if (touchTime <= selected1)
+            touchTime = selected1.AddMilliseconds(50);
+        File.SetLastWriteTimeUtc(widgetPath, touchTime);
+        while (DateTime.UtcNow <= touchTime)
+            await Task.Delay(10);
+
+        using (var store = OpenStore(DbPath))
+        {
+            var sink = new CapturingOutputSink();
+            await IndexRunner.RunAsync(store, SolutionPath, [], null, "incremental", false, sink, false, false, CancellationToken.None);
+            var snapshot2 = store.GetLatestSnapshotId()!;
+            Assert.Equal(snapshot1, snapshot2);
+
+            var selected2 = store.LoadSnapshotMetadata(snapshot2)!.SelectedAtUtc;
+            Assert.True(selected2 > selected1);
+
+            var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshot2, FreshnessMode.Auto);
+            Assert.Equal("fresh", stamp.State);
+            Assert.Equal(0, stamp.ChangedDocumentCount);
+        }
+    }
+
+    [Theory]
+    [InlineData(FreshnessMode.Auto)]
+    [InlineData(FreshnessMode.Hash)]
+    public async Task Cheap_NewSourceFile_IsStale(FreshnessMode mode)
+    {
+        Seed();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var newFilePath = Path.Combine(TestDir, "src", Project, "NewFile.cs");
+        File.WriteAllText(newFilePath, "namespace Core; class NewFile { }\n");
+        File.SetLastWriteTimeUtc(newFilePath, DateTime.UtcNow.AddSeconds(5));
+
+        using var store = OpenStore(DbPath);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, mode);
+        Assert.Equal("stale", stamp.State);
+        Assert.Equal(1, stamp.ChangedDocumentCount);
+        Assert.Equal(["src/Core/NewFile.cs"], stamp.ChangedDocumentsSample);
+    }
+
+    [Fact]
+    public async Task Cheap_FileMovedInWithAnOldTime_IsStale()
+    {
+        Seed();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        DateTime selectedAtUtc;
+        using (var store = OpenStore(DbPath))
+            selectedAtUtc = store.LoadSnapshotMetadata(snapshotId)!.SelectedAtUtc;
+
+        var projectDir = Path.Combine(TestDir, "src", Project);
+        var movedPath = Path.Combine(projectDir, "Moved.cs");
+        File.WriteAllText(movedPath, "namespace Core; class Moved { }\n");
+        File.SetLastWriteTimeUtc(movedPath, selectedAtUtc.AddDays(-1));
+        Directory.SetLastWriteTimeUtc(projectDir, DateTime.UtcNow.AddSeconds(5));
+
+        using (var store = OpenStore(DbPath))
+        {
+            var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, FreshnessMode.Auto);
+            Assert.Equal("stale", stamp.State);
+            Assert.Equal(1, stamp.ChangedDocumentCount);
+            Assert.Equal(["src/Core/Moved.cs"], stamp.ChangedDocumentsSample);
+        }
+    }
+
+    [Fact]
+    public async Task EveryReadMode_NewSourceFile_ReportsStaleAndHonorsRequireFresh()
+    {
+        Seed();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var symbolId = ResolveSymbolId(snapshotId, SymbolFqn);
+
+        var newFilePath = Path.Combine(TestDir, "src", Project, "NewFile.cs");
+        File.WriteAllText(newFilePath, "namespace Core; class NewFile { }\n");
+        File.SetLastWriteTimeUtc(newFilePath, DateTime.UtcNow.AddSeconds(5));
+
+        var modeSpecs = new Dictionary<string, (string[] Args, bool HasJsonFreshnessBlock)>(StringComparer.Ordinal)
+        {
+            ["search"] = (["--query=Widget"], true),
+            ["grep"] = (["--query=Widget"], true),
+            ["find-symbol"] = ([$"--symbol={symbolId}"], true),
+            ["impact"] = ([$"--symbol={symbolId}"], true),
+            ["context"] = ([$"--symbol={symbolId}", "--tier=direct_callees"], true),
+            ["get-source"] = ([$"--document={Document}"], false),
+            ["get-symbol"] = ([$"--symbol={symbolId}", "--view=metadata"], true),
+            ["navigate"] = ([$"--file={Document}", "--line=3"], true),
+            ["outline"] = ([$"--document={Document}"], true),
+            ["diagnostics"] = ([], true),
+            ["get-annotations"] = ([$"--symbol={symbolId}"], true),
+            ["dead-candidates"] = ([], true)
+        };
+
+        var requireFreshModes = Program.ModeRegistry
+            .Where(static e => e.Flags.Contains("--require-fresh"))
+            .Select(static e => e.Name)
+            .OrderBy(static n => n, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(requireFreshModes, modeSpecs.Keys.OrderBy(static n => n, StringComparer.Ordinal).ToArray());
+
+        foreach (var (mode, (modeArgs, hasJsonFreshness)) in modeSpecs)
+        {
+            var entry = Program.FindMode(mode)!;
+
+            var normalSink = new CapturingOutputSink();
+            var normalArgs = HandlerArgs(mode, modeArgs, quiet: false, requireFresh: false);
+            await entry.Handler(normalArgs, normalSink);
+
+            Assert.Contains("freshness: state=stale", normalSink.Stderr);
+            Assert.Contains("changedDocuments=1", normalSink.Stderr);
+
+            if (hasJsonFreshness)
+                Assert.Equal("stale", FreshnessState(normalSink.Stdout));
+
+            var requireFreshSink = new CapturingOutputSink();
+            var requireFreshArgs = HandlerArgs(mode, modeArgs, quiet: false, requireFresh: true);
+            var ex = await Assert.ThrowsAsync<CliExitException>(() => entry.Handler(requireFreshArgs, requireFreshSink));
+            Assert.Equal(2, ex.ExitCode);
+        }
+    }
 }

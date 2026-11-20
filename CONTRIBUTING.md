@@ -42,7 +42,7 @@ attribute APIs. NuGet and GitHub Actions updates are watched by
 
 ## Repository layout
 
-- `src/`: the tool. `Lurp` Exe (Program.cs, Handlers/, Workspace/, Adapters/), and `Lurp.Storage` Lib (Storage/ with `PathNormalizer.cs`, Migrations/). `src/Mcp/` holds the MCP server and tools (`McpServeHandler.cs`, `Tools/`), `src/Shared/` the FQN/symbol-ID helpers (`FqnNormalizer.cs`, `SymbolIdFactory.cs`), `src/Queries/` the fast-travel queries (`FastTravelQueries.cs`) and `src/Helpers/` the compilation helper (`CompilationHelper.cs`).
+- `src/`: the tool. `Lurp` Exe (Program.cs, Handlers/, Workspace/, Adapters/), and `Lurp.Storage` Lib (Storage/ with `PathNormalizer.cs`, Migrations/). `src/Mcp/` holds the MCP server and tools (`McpServeHandler.cs`, `Tools/`), `src/Shared/` the FQN/symbol-ID helpers (`FqnNormalizer.cs`, `SymbolIdFactory.cs`), and `src/Helpers/` the compilation helper (`CompilationHelper.cs`).
 - `tests/`: the `Lurp.Tests` project (xunit).
 - `docs/`: [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CLI_REFERENCE.md](docs/CLI_REFERENCE.md), the release notes `docs/RELEASE_NOTES_<version>.md` (listed in [README.md](README.md#documentation--license)) and the point-in-time demo page `MODEL_VIEW.html` (generated, see `scripts/model-view/`).
 - `notes/`: internal evidence log ([TRUST_KERNEL.md](notes/TRUST_KERNEL.md)).

@@ -41,13 +41,6 @@ public enum IndexedSymbolKind
     Property,
     Field,
     Event,
-    Parameter,
-    Local,
-    RangeVariable,
-    NamedType,
-    ArrayType,
-    PointerType,
-    TypeParameter,
     Unknown
 }
 

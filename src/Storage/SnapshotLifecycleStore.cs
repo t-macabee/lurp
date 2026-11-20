@@ -275,7 +275,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                        s.sdk_version, s.compiler_version, s.built_at_utc,
                        s.database_schema_version, s.output_schema_version,
                        s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                       s.skipped_adapters, s.build_strategy
+                       s.skipped_adapters, s.build_strategy, s.selected_at_utc
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.status = @status
@@ -287,7 +287,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                        s.sdk_version, s.compiler_version, s.built_at_utc,
                        s.database_schema_version, s.output_schema_version,
                        s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                       s.skipped_adapters, s.build_strategy
+                       s.skipped_adapters, s.build_strategy, s.selected_at_utc
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.workspace_id = @workspaceId
@@ -316,6 +316,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             SdkVersion = row.SdkVersion,
             CompilerVersion = row.CompilerVersion,
             CreatedAtUtc = row.CreatedAtUtc,
+            SelectedAtUtc = row.SelectedAtUtc,
             Documents = documents,
             DatabaseSchemaVersion = row.DatabaseSchemaVersion,
             OutputSchemaVersion = row.OutputSchemaVersion,
@@ -336,7 +337,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                    s.sdk_version, s.compiler_version, s.built_at_utc,
                    s.database_schema_version, s.output_schema_version,
                    s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                   s.skipped_adapters, s.build_strategy
+                   s.skipped_adapters, s.build_strategy, s.selected_at_utc
             FROM snapshots s
             JOIN workspaces w ON w.workspace_id = s.workspace_id
             WHERE s.snapshot_id = @snapshotId;
@@ -360,6 +361,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             SdkVersion = row.SdkVersion,
             CompilerVersion = row.CompilerVersion,
             CreatedAtUtc = row.CreatedAtUtc,
+            SelectedAtUtc = row.SelectedAtUtc,
             Documents = documents,
             DatabaseSchemaVersion = row.DatabaseSchemaVersion,
             OutputSchemaVersion = row.OutputSchemaVersion,
@@ -386,7 +388,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                    s.sdk_version, s.compiler_version, s.built_at_utc,
                    s.database_schema_version, s.output_schema_version,
                    s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                   s.skipped_adapters, s.build_strategy
+                   s.skipped_adapters, s.build_strategy, s.selected_at_utc
             FROM snapshots s
             JOIN workspaces w ON w.workspace_id = s.workspace_id
             WHERE s.snapshot_id = @snapshotId;
@@ -409,6 +411,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             SdkVersion = row.SdkVersion,
             CompilerVersion = row.CompilerVersion,
             CreatedAtUtc = row.CreatedAtUtc,
+            SelectedAtUtc = row.SelectedAtUtc,
             DatabaseSchemaVersion = row.DatabaseSchemaVersion,
             OutputSchemaVersion = row.OutputSchemaVersion,
             ExtractorVersion = row.ExtractorVersion,
@@ -440,6 +443,9 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             ? new List<string>()
             : skippedAdaptersRaw.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
         var buildStrategy = reader.IsDBNull(13) ? SnapshotBuildStrategies.Incremental : reader.GetString(13);
+        var selectedAtUtc = reader.IsDBNull(14)
+            ? builtAtUtc
+            : DateTime.Parse(reader.GetString(14), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
         return new SnapshotRow
         {
@@ -450,6 +456,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             SdkVersion = sdkVersion ?? "",
             CompilerVersion = compilerVersion ?? "",
             CreatedAtUtc = builtAtUtc,
+            SelectedAtUtc = selectedAtUtc,
             DatabaseSchemaVersion = databaseSchemaVersion,
             OutputSchemaVersion = outputSchemaVersion,
             ExtractorVersion = extractorVersion ?? "",

@@ -12,18 +12,8 @@ internal static class GetSourceHandler
         var startLineRaw = HandlerBootstrap.GetArgValue(args, "--start-line=");
         var endLineRaw = HandlerBootstrap.GetArgValue(args, "--end-line=");
 
-        int? startLine = null, endLine = null;
-
-        if (!string.IsNullOrEmpty(startLineRaw))
-        {
-            if (!int.TryParse(startLineRaw, out var v) || v < 1) HandlerBootstrap.Fail("ERROR: --start-line must be a positive integer (>=1).");
-            startLine = v;
-        }
-        if (!string.IsNullOrEmpty(endLineRaw))
-        {
-            if (!int.TryParse(endLineRaw, out var v) || v < 1) HandlerBootstrap.Fail("ERROR: --end-line must be a positive integer (>=1).");
-            endLine = v;
-        }
+        int? startLine = string.IsNullOrEmpty(startLineRaw) ? null : HandlerBootstrap.ParsePositiveIntArg(args, "--start-line=", 1);
+        int? endLine = string.IsNullOrEmpty(endLineRaw) ? null : HandlerBootstrap.ParsePositiveIntArg(args, "--end-line=", 1);
         var contextLines = HandlerBootstrap.ParseNonNegativeIntArg(HandlerBootstrap.GetArgValue(args, "--context-lines="), "--context-lines=");
         if (contextLines.HasValue && startLine == null && endLine == null)
             HandlerBootstrap.Fail("ERROR: --context-lines requires --start-line or --end-line.");
@@ -41,18 +31,13 @@ internal static class GetSourceHandler
             {
                 slice = store.GetSourceSlice(documentArg, snapshotId, startLine, endLine, contextLines);
             }
-            catch (ArgumentOutOfRangeException ex)
+            catch (Lurp.Storage.SourceLineOutOfRangeException ex)
             {
-                HandlerBootstrap.Fail($"ERROR: {ex.Message}");
-                return;
-            }
-            catch (ArgumentException ex)
-            {
-                HandlerBootstrap.Fail($"ERROR: {ex.Message}");
+                HandlerBootstrap.Fail($"ERROR: --start-line={ex.RequestedStartLine} is beyond the last line ({ex.TotalLines}) of '{documentArg}'.");
                 return;
             }
 
-            if (slice == null) HandlerBootstrap.Fail($"ERROR: Document '{documentArg}' not found in snapshot.");
+            if (slice == null) HandlerBootstrap.Fail($"ERROR: {DocumentMessages.NotFound(documentArg, snapshotId)}");
 
             // Raw source goes to stdout verbatim (no JSON envelope), so freshness
             // travels on the channel that exists for it: the stderr line, plus the

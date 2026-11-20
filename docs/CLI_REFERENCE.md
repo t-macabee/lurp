@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. A database location is otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)): pass `--output-dir=` for a specific database, or `--solution=` (or `LURP_SOLUTION_PATH`) to use the default cache location described under [`--mode=index`](#--modeindex). Only `--solution=` and `--output-dir=` have an environment variable; every other required flag has none.
 
-**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v47, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v48, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -40,7 +40,7 @@ Accepted by the read commands: `--mode=search`, `--mode=grep`, `--mode=find-symb
 |---|---|---|
 | `--output=<summary\|json\|jsonl>` | No | Payload rendering (default: `json`). `summary` is a digest; `jsonl` emits a `{"type":"meta"}` envelope followed by one compact object per result, so a consumer can stream and stop early. `jsonl` is rejected for a whole capsule, whose payload is a single document. |
 | `--quiet` | No | Emit only the payload: suppresses the freshness stderr line, and for `--mode=context` prints just the written capsule path instead of the capsule itself. |
-| `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes every document; `off` skips the check. An unknown value is an error. |
+| `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`). `auto` compares file times with the time of the index run that last built or reused the snapshot; `auto` and `hash` also list a new `.cs` file under the git root (outside `bin`, `obj`, `.git`) that is not in the snapshot and is newer than that run, or that sits in a directory changed after it; `hash` also re-hashes every tracked document; `off` skips the check. An unknown value is an error. |
 | `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
 <!-- /generated:flags:read-options -->
 
@@ -50,6 +50,8 @@ Accepted by the read commands: `--mode=search`, `--mode=grep`, `--mode=find-symb
 bytes or one JSON document — so they accept `--freshness=`, `--require-fresh`, and
 `--quiet` but reject `--output=`.
 
+### Freshness
+
 Freshness is delivered in two tiers, because two payload shapes exist:
 
 - **Every read mode emits a freshness signal**: a stderr line reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, plus an exit code. `--require-fresh` exits `2` when the snapshot is not fresh, so a stale read is never presented as a current one.
@@ -58,11 +60,30 @@ Freshness is delivered in two tiers, because two payload shapes exist:
 
 The context capsule has no `freshness` block, because the capsule is also written to a file and must be the same bytes for the same snapshot. Its freshness is the stderr line and the `--require-fresh` exit code. `lurp_context` returns the capsule inside an envelope that carries `freshness`.
 
+| Key | Read | `lurp_status` | Mismatch row | Meaning |
+|---|---|---|---|---|
+| `state` | 1 | 1 | — | Freshness state: `fresh`, `stale`, or `unknown`. |
+| `method` | 2 | 2 | — | Check method used (`stat`, `stat+hash`, `full`, or `skipped`). |
+| `changed_document_count` | 3 | 6 | — | Total number of changed, missing, or new `.cs` documents detected. |
+| `changed_documents_sample` | 4 | 7 | — | Capped sample of changed document paths (`null` when `mismatches` carries rows). |
+| `changed_documents_sample_truncated` | 5 | 8 | — | Whether `changed_documents_sample` was truncated to the sample cap. |
+| `checked_at_utc` | 6 | 5 | — | UTC timestamp when the freshness check ran. |
+| `snapshot_id` | 7 | 4 | — | Snapshot id evaluated by the freshness check. |
+| `scope` | 8 | 3 | — | Check scope (`documents_only` for cheap read checks, `full` for workspace-loaded checks). |
+| `is_fresh` | — | 9 | — | Boolean `true`/`false` for `fresh`/`stale`, or `null` when `state` is `unknown`. |
+| `mismatches` | — | 10 | — | Capped list of full-check mismatch objects (`null` when no full check ran or omitted). |
+| `mismatches_truncated` | — | 11 | — | Whether `mismatches` was truncated to `--max-mismatches` (`null` on cheap checks). |
+| `mismatches_total` | — | 12 | — | Total mismatch count from the full check (`null` on cheap checks). |
+| `kind` | — | — | 1 | Mismatch classification name (`MismatchKind`). |
+| `description` | — | — | 2 | Human-readable summary of the mismatch. |
+| `document` | — | — | 3 | Affected document path, or `null` when the mismatch is workspace-wide. |
+| `detail` | — | — | 4 | Additional mismatch detail (such as hash or version transition), or `null`. |
+
 **Exit codes:** a diagnosed command failure prints one `ERROR:` line to stderr and exits `1`; `--require-fresh` exits `2`; a workspace that cannot be loaded exits `2`. This includes a missing .NET SDK: `--mode=index` and `--mode=status --solution=` print `ERROR: Indexing requires a .NET SDK that can build the target solution. Install a .NET SDK, restore the solution, and retry.` and exit `2`. Read modes need only the .NET runtime; solution-backed status is the exception. An unexpected internal failure also prints one line and exits `1` — a full stack trace is printed only with `--verbose` or `LURP_DEBUG=1`.
 
 **Null fields:** every CLI and MCP JSON response prints every key of its mode; a key with no value is `null`. A yes/no key is `true` or `false`; it is `null` only when the list or check it describes was not produced. The context capsule and the snapshot manifest are separate documents and omit null keys.
 
-**Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). An edge keeps every site of its relation in source order; impact hops and capsule path hops list up to 20 sites with `site_count`. A reported `start_line` resolves to the same symbol when no other declaration on that line has a smaller span or a better rank; for the other declarations on that line (the parameter properties of a record, the accessors of a property) the answer is the one with the smaller span or the better rank.
+**Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. A line ends at CR, LF, CRLF, NEL (U+0085), LS (U+2028) or PS (U+2029), as in Roslyn; text that ends with a line break has a last, empty line. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). An edge keeps every site of its relation in source order; impact hops and capsule path hops list up to 20 sites with `site_count`. A reported `start_line` resolves to the same symbol when no other declaration on that line has a smaller span or a better rank; for the other declarations on that line (the parameter properties of a record, the accessors of a property) the answer is the one with the smaller span or the better rank.
 
 **Declaration spans:** `outline` entries, `locations` in `find-symbol` and `get-symbol --view=metadata`, and the `navigate` `target` cover the whole declaration with its leading and trailing trivia. So `start_line` can be a blank line or a comment above the declaration. The end is an exclusive position, as in Roslyn and the Language Server Protocol: `end_line` (and `end_column` where present) name the point just after the span. When the span ends with a line break, that point is column 0 of the next line. To read the declaration with `--mode=get-source`, pass `--end-line=<end_line - 1>` in that case, or use `--mode=get-symbol --view=declaration`.
 
@@ -70,7 +91,7 @@ The context capsule has no `freshness` block, because the capsule is also writte
 
 **`--include-generated`:** accepted by `search`, `grep`, `outline`, `get-symbol`, `find-symbol`, `navigate`, `context`, `diagnostics`, and `dead-candidates`. Default excludes generated code decided by one rule: Roslyn's file-name patterns (`TemporaryGeneratedFile_*`, `*.designer.cs`, `*.generated.cs`, `*.g.cs`, `*.g.i.cs`, case-insensitive), `*ModelSnapshot.cs` (case-insensitive), or a single-line or multi-line leading comment before the first token containing `<auto-generated` or `<autogenerated` (case-sensitive); passing the flag includes it.
 
-**Document-path base:** every `--document=<relative-path>` argument (and the matching MCP `document` property) is relative to the directory containing the `--solution=` file, **not** the repository/git root. When the solution lives in a subdirectory of the repo (e.g. `--solution=eNote/eNote.sln`), a git-root-relative path like `eNote/eNote.Tests/Foo.cs` will not resolve — pass `eNote.Tests/Foo.cs` instead. Confirmed 2026-08-20 against a live target: `get-source` fails fast with `ERROR: Document '...' not found in snapshot.` on a mismatched path; `dead-candidates --document=` does not error on a mismatch — it's a filter, not a required lookup, so a wrong prefix silently returns `candidate_count: 0` instead of surfacing the mistake. A completeness row for a file outside the solution's git root (for example source-generator output in the build cache, or a NuGet package source) carries a `../` path.
+**Document-path base:** every `--document=<relative-path>` argument (and the matching MCP `document` property) is relative to the directory containing the `--solution=` file, **not** the repository/git root. When the solution lives in a subdirectory of the repo (e.g. `--solution=eNote/eNote.sln`), a git-root-relative path like `eNote/eNote.Tests/Foo.cs` will not resolve — pass `eNote.Tests/Foo.cs` instead. Confirmed 2026-08-20 against a live target: `get-source` fails fast with `ERROR: Document '...' not found in snapshot '<id>'.` on a mismatched path; `dead-candidates --document=` does not error on a mismatch — it's a filter, not a required lookup, so a wrong prefix silently returns `candidate_count: 0` instead of surfacing the mistake. A completeness row for a file outside the solution's git root (for example source-generator output in the build cache, or a NuGet package source) carries a `../` path.
 
 ## Modes
 
@@ -129,7 +150,7 @@ Retrieve source text for a document.
 | `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
 <!-- /generated:flags:get-source -->
 
-Accepts the shared [read-command options](#read-command-options) except `--output=` (the source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code, never as a JSON wrapper). There is no CLI `--outline` flag for this mode; the MCP tool `lurp_get_source` offers an `outline` parameter instead.
+Accepts the shared [read-command options](#read-command-options) except `--output=` (the source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code, never as a JSON wrapper). A `--start-line` after the last line is an error; an `--end-line` after the last line is cut to the last line. There is no CLI `--outline` flag for this mode; the MCP tool `lurp_get_source` offers an `outline` parameter instead.
 
 ---
 
@@ -215,17 +236,19 @@ Full-text search over source text and symbols.
 <!-- generated:flags:search -->
 | Argument | Required | Description |
 |---|---|---|
-| `--query=<term>` | Yes | Search term. Symbol search matches whole identifier tokens first; when no token matches, it falls back to case-insensitive substring matches over fully qualified symbol names (camel-case segments and prefixes count). |
+| `--query=<term>` | Yes | Search term. Symbol search lists whole-token matches of the fully qualified name first (by rank), then case-insensitive substring matches of the fully qualified name (camel-case segments and prefixes count), for plain identifier queries. `--limit` cuts this one list; `--cursor` continues it. |
 | `--type=<all\|source\|symbol>` | No | Search scope (default: `all`). An unknown value is an error. |
-| `--kind=<SymbolKind>` | No | Filter symbol results by Roslyn SymbolKind (e.g. `Type`, `Method`, `Field`, `Property`). |
+| `--kind=<Type\|Method\|Property\|Field\|Event>` | No | Filter symbol results by kind (case-insensitive). An unknown value is an error. |
 | `--limit=<n>` | No | Max results per scope (default: 20). |
-| `--snippet-tokens=<n>` | No | Token window for source snippets (default: 64). |
-| `--cursor=<token>` | No | Continue from a previous page's `next_cursor` (`--type=symbol` only). |
+| `--snippet-tokens=<n>` | No | Max tokens in the window around the first match for source snippets (default: 64). |
+| `--cursor=<token>` | No | Continue from a previous page's `next_cursor` (`--type=symbol` only). The cursor continues into the substring matches. |
 | `--include-generated` | No | Include source-generated symbols. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
 <!-- /generated:flags:search -->
 
 Punctuation in queries is quoted as an FTS5 phrase literal (`SearchUtils.ToFtsPhrase`), so dotted names like `CourseService.CreateAsync` and queries containing `"`, `*`, `:`, `()`, `<>` no longer throw `fts5: syntax error`.
+
+A source result holds the first match of the query in the document text (the path is not searched). `snippet` is a window of at most `--snippet-tokens` tokens (runs of letters and digits) around that match; the match is wrapped in `<mark>` and `</mark>`; `…` marks a cut end.
 
 Also accepts the shared [read-command options](#read-command-options).
 
@@ -252,7 +275,7 @@ Literal/exact-text search over source content with per-occurrence line numbers.
 
 Also accepts the shared [read-command options](#read-command-options).
 
-Output is JSON with `snapshot_id`, `query`, `ignore_case`, `results` (array of `{ document_path, start_line, start_column, end_line, end_column, line_text }` — lines 1-based, columns 0-based), `match_count` (total matches across every page, not the page size), and `next_cursor`. `match_count` is the total, not the page length — do not use it to drive a pagination loop; use `next_cursor` (a `null` `next_cursor` marks the last page). Each result is one exact occurrence, ordered by `document_path` then `start_line`/`start_column`, so the same `start_line` can be passed to `get-source --start-line=` or `navigate --file= --line=` to re-resolve the location.
+Output is JSON with `snapshot_id`, `query`, `ignore_case`, `results` (array of `{ document_path, start_line, start_column, end_line, end_column, line_text }` — lines 1-based, columns 0-based), `match_count` (total matches across every page, not the page size), and `next_cursor`. `match_count` is the total, not the page length — do not use it to drive a pagination loop; use `next_cursor` (a `null` `next_cursor` marks the last page). Each result is one exact occurrence, ordered by `document_path` then `start_line`/`start_column`, so the same `start_line` can be passed to `get-source --start-line=` or `navigate --file= --line=` to re-resolve the location. Occurrences do not overlap: the search resumes after the end of each match, so `match_count` equals the number of replacements of a replace-all. `--ignore-case` compares the invariant upper case of each character (`OrdinalIgnoreCase`), so non-ASCII letters match.
 
 ---
 
@@ -504,7 +527,7 @@ Show the current database status.
 <!-- generated:flags:status -->
 | Argument | Required | Description |
 |---|---|---|
-| `--solution=<path>` | No | If provided, compares the current workspace against the latest snapshot and reports freshness mismatches. |
+| `--solution=<path>` | No | If provided, it must be an existing file; compares the current workspace against the latest snapshot. Every flag is checked before the database is read. |
 | `--detail=<documents\|references\|completeness\|all>` | No | Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. Unknown values are an error. |
 | `--json` | No | Emit structured JSON instead of plain text. Back-compat alias for `--output=json`. |
 | `--output=<summary\|json>` | No | Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document. |
@@ -513,7 +536,9 @@ Show the current database status.
 
 When the latest snapshot failed, `latest_failure` has `snapshot_id`, `reason_code`, `message` and `created_at_utc`; when no snapshot failed, the key is `null` in every branch, the never-indexed branches included. The text output prints a `Latest failed index:` line when a snapshot failed. A failed snapshot is not reported when a later index run succeeded (the selected latest snapshot was selected at or after it).
 
-`status` never migrates the database. When the database schema version is not the one this build needs, `status` still exits 0: the text output prints both versions and the `--mode=index` hint, and `--json` returns a reduced object with `schema_version_expected`, `schema_version_mismatch` and `schema_version_note` (see [Schema version of the database](#schema-version-of-the-database)).
+`status` never migrates the database. When the database schema version is not the one this build needs, `status` still exits 0: the text output prints both versions and the `--mode=index` hint, and `--json` returns the same key set with `schema_version_expected`, `schema_version_mismatch` and `schema_version_note` (`indexed` and `latest_failure` are `null`; see [Schema version of the database](#schema-version-of-the-database)).
+
+`status --json` prints the same keys in every branch; a key with no value in a branch is `null` (`indexed` is `null` in the schema-mismatch branch, `false` when not indexed, and `true` when indexed; `schema_version_mismatch` is `true` in the schema-mismatch branch, `null` when no database exists, and `false` otherwise; `freshness_checked` is `true` only when checked against a workspace; `latest_failure` is `null` in the schema-mismatch branch).
 
 The manifest always carries a completeness block (`binding_incompleteness_summary`
 plus `binding_incompleteness_total`); `--detail=completeness` (or `all`) adds the
@@ -549,11 +574,7 @@ line on stderr.
 | `--json` | No | Emit structured JSON instead of plain text. |
 <!-- /generated:flags:timings -->
 
-`--json` adds a `metrics` object (metric name → value) next to `steps`; `total_ms`
-and `percent` are computed from timing rows only. `peak_working_set_mb` covers the
-Lurp process only; MSBuild BuildHost child processes are not counted. Text output
-prints a Metrics section below the table. The MCP `lurp_timings` tool returns the
-same `metrics` object for the session-pinned snapshot.
+`--json` always prints `snapshot_id`, `total_ms`, `steps` and `metrics`; with no timing rows `total_ms` is 0 and `steps` is empty. `total_ms` and `percent` are computed from timing rows only. `peak_working_set_mb` covers the Lurp process only; MSBuild BuildHost child processes are not counted. Text output prints a Metrics section below the table. The MCP `lurp_timings` tool returns the same `metrics` object for the session-pinned snapshot.
 
 ---
 

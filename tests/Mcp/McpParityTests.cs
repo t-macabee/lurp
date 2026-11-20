@@ -120,11 +120,9 @@ public sealed class McpParityTests : IntegrationTestBase
         var toolResults = doc.RootElement.GetProperty("results").GetArrayLength();
 
         using var directStore = OpenStore(DbPath);
-        var directResults = directStore.SearchSymbols("Foo", snapshotId, 20, false, null);
-        // When limit is 20, counts should match (tool uses SearchSymbols for all-type symbol branch without pagination)
-        // For type=symbol, tool uses SearchSymbolsPage which may have same count
+        var directPage = directStore.SearchSymbolsPage("Foo", snapshotId, 20, false, null, null);
         // The fixture declares Foo, so both paths must find it.
-        Assert.True(directResults.Count > 0, "direct store search found no 'Foo' symbol");
+        Assert.True(directPage.Items.Count > 0, "direct store search found no 'Foo' symbol");
         Assert.True(toolResults > 0, "lurp_search found no 'Foo' symbol");
     }
 

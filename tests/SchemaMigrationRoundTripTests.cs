@@ -322,7 +322,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
     }
 
-    // This test re-runs the newest migration (047). When a migration is added, move the test to it; that migration must be safe to run twice.
+    // This test re-runs the newest migration (048). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
@@ -334,10 +334,10 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
-                DELETE FROM schema_metadata WHERE version = 47;
-                DROP INDEX IF EXISTS idx_snapshot_symbols_bare_fqn;
-                DROP INDEX IF EXISTS idx_snapshot_symbols_fqn;
-                ALTER TABLE snapshot_symbols DROP COLUMN bare_fqn;
+                DELETE FROM schema_metadata WHERE version = 48;
+                INSERT INTO documents (document_id, relative_path) VALUES ('fk-doc', 'src/Fk.cs');
+                INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts, is_generated)
+                VALUES ('fk-dv', 'fk-doc', 'fk-hash', X'610D620A', 'utf-8', 4, '[0]', 0);
                 INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
                 """;
             command.ExecuteNonQuery();
@@ -349,9 +349,9 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         Assert.Equal(MigrationRunner.LatestVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
         using var verify = TestDatabase.OpenReadOnly(_dbPath);
-        using var columnCommand = verify.CreateCommand();
-        columnCommand.CommandText = "SELECT COUNT(*) FROM pragma_table_info('snapshot_symbols') WHERE name = 'bare_fqn';";
-        Assert.Equal(0L, (long)columnCommand.ExecuteScalar()!);
+        using var lineStartsCommand = verify.CreateCommand();
+        lineStartsCommand.CommandText = "SELECT line_starts FROM document_versions WHERE document_version_id = 'fk-dv';";
+        Assert.Equal("[0]", (string?)lineStartsCommand.ExecuteScalar());
     }
 
     [Fact]
@@ -1145,6 +1145,78 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             Assert.Equal("global::Ns.Repo.Add", bareFqns["M:Ns.Repo`1.Add(`0)|Asm"]);
             Assert.Equal("global::Ns.Plain", bareFqns["T:Ns.Plain|Asm"]);
             Assert.Null(bareFqns["T:Ns.NullFqn|Asm"]);
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void RoundTrip_Migration048_RecomputesLineStartsAndKeepsImmutabilityTrigger()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v37-linestarts-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo37 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 37)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo37)
+                    migration.Up(connection);
+
+                var bytes = System.Text.Encoding.UTF8.GetBytes("a\rb\n");
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (37, '2025-01-01T00:00:00.0000000Z', 'Migration_037_DocumentVersionsDocumentIdIndex');
+
+                    INSERT INTO documents (document_id, relative_path)
+                    VALUES ('d1', 'src/Cr.cs');
+
+                    INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts)
+                    VALUES ('dv1', 'd1', 'h1', @content, 'utf-8', @byteCount, '[0]');
+                    """;
+                command.Parameters.AddWithValue("@content", bytes);
+                command.Parameters.AddWithValue("@byteCount", bytes.Length);
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            var runner = new MigrationRunner(dbPath);
+            runner.RunMigrations();
+            Assert.Equal(48, runner.GetCurrentSchemaVersion());
+
+            using var verify = TestDatabase.Open(dbPath);
+            using (var readCmd = verify.CreateCommand())
+            {
+                readCmd.CommandText = "SELECT line_starts FROM document_versions WHERE document_version_id = 'dv1';";
+                Assert.Equal("[0,2,4]", (string?)readCmd.ExecuteScalar());
+            }
+
+            using (var contentCmd = verify.CreateCommand())
+            {
+                contentCmd.CommandText = "UPDATE document_versions SET content = X'61' WHERE document_version_id = 'dv1';";
+                var ex = Assert.Throws<SqliteException>(() => contentCmd.ExecuteNonQuery());
+                Assert.Contains("document_versions is immutable", ex.Message, StringComparison.Ordinal);
+            }
+
+            using (var genCmd = verify.CreateCommand())
+            {
+                genCmd.CommandText = "UPDATE document_versions SET is_generated = 1 WHERE document_version_id = 'dv1';";
+                Assert.Equal(1, genCmd.ExecuteNonQuery());
+            }
         }
         finally
         {

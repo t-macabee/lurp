@@ -31,10 +31,14 @@ public static class WorkspaceFreshness
 {
     /// <summary>
     ///     Cheap read-path freshness check: no Roslyn workspace load. Compares each
-    ///     document's on-disk last-write time against the snapshot's build time;
-    ///     in <see cref="FreshnessMode.Hash" /> mode, every document is re-hashed and
-    ///     compared with the stored content hash (a touched but unchanged file stays
-    ///     fresh; an edit that kept an old timestamp is caught).
+    ///     document's on-disk last-write time against the snapshot's selection time
+    ///     (<see cref="SnapshotRow.SelectedAtUtc" />); in <see cref="FreshnessMode.Hash" />
+    ///     mode, every tracked document is re-hashed and compared with the stored content
+    ///     hash (a touched but unchanged file stays fresh; an edit that kept an old
+    ///     timestamp is caught). Both <see cref="FreshnessMode.Auto" /> and
+    ///     <see cref="FreshnessMode.Hash" /> also walk the repository for new <c>.cs</c>
+    ///     source files newer than <see cref="SnapshotRow.SelectedAtUtc" /> (or in a
+    ///     directory modified after it).
     /// </summary>
     public static FreshnessStamp CheckFreshnessCheap(SqliteIndexStore store, string snapshotId, FreshnessMode mode)
     {
@@ -49,57 +53,76 @@ public static class WorkspaceFreshness
 
         try
         {
-            var gitRoot = metadata.GitRoot;
-            var builtAtUtc = metadata.CreatedAtUtc;
-            var versionsByPath = store.GetDocumentVersionIdsByPath(snapshotId);
-
-            var changed = new List<string>();
-            foreach (var (relativePath, storedVersionId) in versionsByPath)
-            {
-                var fullPath = Path.GetFullPath(Path.Combine(gitRoot, relativePath));
-
-                if (!File.Exists(fullPath))
-                {
-                    changed.Add(relativePath);
-                    continue;
-                }
-
-                var lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
-                if (mode == FreshnessMode.Auto)
-                {
-                    if (lastWriteUtc <= builtAtUtc)
-                        continue;
-                    changed.Add(relativePath);
-                    continue;
-                }
-
-                var rawBytes = File.ReadAllBytes(fullPath);
-                if (!WorkspaceInfo.TryNormalizeSourceBytesForFreshnessCheck(rawBytes, out var normalized))
-                {
-                    // File is no longer valid UTF-8/UTF-16 text (e.g. replaced with
-                    // binary, or re-saved in a different encoding) since it was
-                    // indexed. That is a genuine content change, not a crash.
-                    changed.Add(relativePath);
-                    continue;
-                }
-
-                var currentHash = DocumentVersionId.Compute(new DocumentId(relativePath), normalized).Hash;
-                // document_version_id is persisted as "{documentId}:{contentHash}"
-                // (Migration_016); the hash is always the substring after the
-                // final colon, since content_hash itself never contains one.
-                var storedHash = storedVersionId[(storedVersionId.LastIndexOf(':') + 1)..];
-                if (!string.Equals(currentHash, storedHash, StringComparison.Ordinal))
-                    changed.Add(relativePath);
-            }
-
-            var method = mode == FreshnessMode.Hash ? "stat+hash" : "stat";
-            var state = changed.Count == 0 ? "fresh" : "stale";
-            return new FreshnessStamp(state, method, changed.Count, changed, checkedAt, snapshotId, "documents_only");
+            var (stamp, _) = CheckFreshnessCheapCore(store, metadata, mode, checkBuildInputs: false, gitRootOverride: null, checkedAt);
+            return stamp;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
         {
             return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId, "documents_only");
         }
+    }
+
+    private static (FreshnessStamp Stamp, bool HasNewerBuildInput) CheckFreshnessCheapCore(
+        SqliteIndexStore store,
+        SnapshotRow metadata,
+        FreshnessMode mode,
+        bool checkBuildInputs,
+        string? gitRootOverride,
+        DateTime checkedAt)
+    {
+        var snapshotId = metadata.SnapshotId;
+        var gitRoot = gitRootOverride ?? metadata.GitRoot;
+        var selectedAtUtc = metadata.SelectedAtUtc;
+        var versionsByPath = store.GetDocumentVersionIdsByPath(snapshotId);
+
+        var changed = new List<string>();
+        foreach (var (relativePath, storedVersionId) in versionsByPath)
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(gitRoot, relativePath));
+
+            if (!File.Exists(fullPath))
+            {
+                changed.Add(relativePath);
+                continue;
+            }
+
+            var lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
+            if (mode == FreshnessMode.Auto)
+            {
+                if (lastWriteUtc <= selectedAtUtc)
+                    continue;
+                changed.Add(relativePath);
+                continue;
+            }
+
+            var rawBytes = File.ReadAllBytes(fullPath);
+            if (!WorkspaceInfo.TryNormalizeSourceBytesForFreshnessCheck(rawBytes, out var normalized))
+            {
+                // File is no longer valid UTF-8/UTF-16 text (e.g. replaced with
+                // binary, or re-saved in a different encoding) since it was
+                // indexed. That is a genuine content change, not a crash.
+                changed.Add(relativePath);
+                continue;
+            }
+
+            var currentHash = DocumentVersionId.Compute(new DocumentId(relativePath), normalized).Hash;
+            // document_version_id is persisted as "{documentId}:{contentHash}"
+            // (Migration_016); the hash is always the substring after the
+            // final colon, since content_hash itself never contains one.
+            var storedHash = storedVersionId[(storedVersionId.LastIndexOf(':') + 1)..];
+            if (!string.Equals(currentHash, storedHash, StringComparison.Ordinal))
+                changed.Add(relativePath);
+        }
+
+        var (newSourceFiles, hasNewerBuildInput) = WalkUntrackedFiles(
+            gitRoot, versionsByPath.Keys, selectedAtUtc, checkBuildInputs);
+        changed.AddRange(newSourceFiles);
+        changed.Sort(StringComparer.Ordinal);
+
+        var method = mode == FreshnessMode.Hash ? "stat+hash" : "stat";
+        var state = changed.Count == 0 ? "fresh" : "stale";
+        var stamp = new FreshnessStamp(state, method, changed.Count, changed, checkedAt, snapshotId, "documents_only");
+        return (stamp, hasNewerBuildInput);
     }
 
     public static FreshnessResult CheckFreshness(WorkspaceInfo current, SqliteIndexStore store)
@@ -156,9 +179,9 @@ public static class WorkspaceFreshness
 
     /// <summary>
     /// Checks whether an incremental index run can be safely skipped without loading the workspace.
-    /// The cheap check runs in FreshnessMode.Hash, so it hashes every tracked document and a file
-    /// changed with a preserved old mtime is still detected.
-    /// An untracked .cs file under the root or a .cs file that is not valid text disables the shortcut (safe fallback).
+    /// Uses one shared walk with <see cref="CheckFreshnessCheap" /> in <see cref="FreshnessMode.Hash" />
+    /// mode (hashing every tracked document and checking for new source files and newer build inputs
+    /// against <see cref="SnapshotRow.SelectedAtUtc" />).
     /// </summary>
     public static SnapshotRow? CanSkipIncrementalIndex(SqliteIndexStore store, WorkspaceId workspaceId, string gitRoot, IOutputSink? output = null)
     {
@@ -168,7 +191,9 @@ public static class WorkspaceFreshness
             if (built == null)
                 return null;
 
-            if (CheckFreshnessCheap(store, built.SnapshotId, FreshnessMode.Hash).State != "fresh")
+            var (stamp, hasNewerBuildInput) = CheckFreshnessCheapCore(
+                store, built, FreshnessMode.Hash, checkBuildInputs: true, gitRootOverride: gitRoot, DateTime.UtcNow);
+            if (stamp.State != "fresh" || hasNewerBuildInput)
                 return null;
 
             if (!string.Equals(built.ExtractorVersion, VersionConstants.ExtractorVersion, StringComparison.Ordinal))
@@ -184,9 +209,7 @@ public static class WorkspaceFreshness
             if (store.HasStaleExtractorVersions(built.SnapshotId))
                 return null;
 
-            return HasNoNewSourcesOrBuildInputs(store, built.SnapshotId, built.CreatedAtUtc, gitRoot)
-                ? built
-                : null;
+            return built;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
         {
@@ -194,11 +217,29 @@ public static class WorkspaceFreshness
         }
     }
 
-    private static bool HasNoNewSourcesOrBuildInputs(SqliteIndexStore store, string snapshotId, DateTime builtAtUtc, string gitRoot)
+    private static readonly EnumerationOptions WalkEnumerationOptions = new()
+    {
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.ReparsePoint
+    };
+
+    private static readonly EnumerationOptions ObjAssetsEnumerationOptions = new()
+    {
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+        RecurseSubdirectories = true
+    };
+
+    private static (List<string> NewSourceFiles, bool HasNewerBuildInput) WalkUntrackedFiles(
+        string gitRoot,
+        IEnumerable<string> knownDocumentPaths,
+        DateTime selectedAtUtc,
+        bool checkBuildInputs)
     {
         var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
-        var pathComparer = PathNormalizer.PathComparer;
-        var knownDocuments = new HashSet<string>(store.GetDocumentVersionIdsByPath(snapshotId).Keys, pathComparer);
+        var knownDocuments = new HashSet<string>(knownDocumentPaths, PathNormalizer.PathComparer);
+        var newSourceFiles = new List<string>();
+        var hasNewerBuildInput = false;
 
         var dirs = new Stack<string>();
         dirs.Push(normalizedRoot);
@@ -206,26 +247,30 @@ public static class WorkspaceFreshness
         while (dirs.Count > 0)
         {
             var currentDir = dirs.Pop();
+            var dirLastWriteUtc = Directory.GetLastWriteTimeUtc(currentDir);
 
-            foreach (var fullPath in Directory.EnumerateFiles(currentDir))
+            foreach (var fullPath in Directory.EnumerateFiles(currentDir, "*", WalkEnumerationOptions))
             {
                 var relativePath = PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
 
-                if (IsBuildInputPath(relativePath))
+                if (checkBuildInputs && IsBuildInputPath(relativePath))
                 {
-                    if (File.GetLastWriteTimeUtc(fullPath) > builtAtUtc)
-                        return false;
+                    if (File.GetLastWriteTimeUtc(fullPath) > selectedAtUtc)
+                        hasNewerBuildInput = true;
                     continue;
                 }
 
                 if (!relativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                if (!knownDocuments.Contains(relativePath))
-                    return false;
+                if (knownDocuments.Contains(relativePath))
+                    continue;
+
+                if (File.GetLastWriteTimeUtc(fullPath) > selectedAtUtc || dirLastWriteUtc > selectedAtUtc)
+                    newSourceFiles.Add(relativePath);
             }
 
-            foreach (var subDir in Directory.EnumerateDirectories(currentDir))
+            foreach (var subDir in Directory.EnumerateDirectories(currentDir, "*", WalkEnumerationOptions))
             {
                 var relSubDir = PathNormalizer.ToGitRelativeFromNormalizedRoot(subDir, normalizedRoot);
 
@@ -235,12 +280,12 @@ public static class WorkspaceFreshness
 
                 if (BuildOutputPaths.IsBuildOutputPath(relSubDir + "/"))
                 {
-                    if (Path.GetFileName(subDir).Equals("obj", StringComparison.OrdinalIgnoreCase))
+                    if (checkBuildInputs && Path.GetFileName(subDir).Equals("obj", StringComparison.OrdinalIgnoreCase))
                     {
-                        foreach (var assetsFile in Directory.EnumerateFiles(subDir, "project.assets.json", SearchOption.AllDirectories))
+                        foreach (var assetsFile in Directory.EnumerateFiles(subDir, "project.assets.json", ObjAssetsEnumerationOptions))
                         {
-                            if (IsProjectAssetsPath(assetsFile) && File.GetLastWriteTimeUtc(assetsFile) > builtAtUtc)
-                                return false;
+                            if (IsProjectAssetsPath(assetsFile) && File.GetLastWriteTimeUtc(assetsFile) > selectedAtUtc)
+                                hasNewerBuildInput = true;
                         }
                     }
                     continue;
@@ -250,7 +295,7 @@ public static class WorkspaceFreshness
             }
         }
 
-        return true;
+        return (newSourceFiles, hasNewerBuildInput);
     }
 
     private static bool IsProjectAssetsPath(string relativePath)
@@ -269,8 +314,7 @@ public static class WorkspaceFreshness
             return true;
 
         var fileName = Path.GetFileName(relativePath);
-        return relativePath.Equals(".gitignore", StringComparison.OrdinalIgnoreCase) ||
-               fileName.Equals("global.json", StringComparison.OrdinalIgnoreCase) ||
+        return fileName.Equals("global.json", StringComparison.OrdinalIgnoreCase) ||
                fileName.Equals("nuget.config", StringComparison.OrdinalIgnoreCase);
     }
 

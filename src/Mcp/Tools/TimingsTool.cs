@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Lurp.Handlers;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -26,26 +27,17 @@ internal sealed class TimingsTool
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
             cancellationToken.ThrowIfCancellationRequested();
             using var store = _session.OpenReadStore();
-            var timings = store.GetTimings(snapshotId);
-            var metrics = store.GetMetrics(snapshotId);
+            var built = TimingsPayload.Build(store, snapshotId);
             var freshness = _session.GetFreshnessJson();
-
-            var totalMs = timings.Sum(t => t.ElapsedMs);
-            var steps = timings.Select(t => new
-            {
-                step = t.StepName,
-                elapsed_ms = t.ElapsedMs,
-                percent = totalMs > 0 ? Math.Round((double)t.ElapsedMs / totalMs * 100, 1) : 0
-            }).ToList();
 
             var envelope = new
             {
                 snapshot_id = snapshotId,
                 freshness,
                 pinned = true,
-                total_ms = totalMs,
-                steps,
-                metrics
+                total_ms = built.TotalMs,
+                steps = built.Steps,
+                metrics = built.Metrics
             };
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);

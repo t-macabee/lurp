@@ -60,7 +60,7 @@ public static class Program
                 FlagCatalog.Type, FlagCatalog.Kind,
                 FlagCatalog.Limit with { Description = $"Max results per scope (default: {SearchHandler.DefaultLimit})." },
                 FlagCatalog.SnippetTokens,
-                FlagCatalog.Cursor with { Description = "Continue from a previous page's `next_cursor` (`--type=symbol` only)." },
+                FlagCatalog.Cursor with { Description = "Continue from a previous page's `next_cursor` (`--type=symbol` only). The cursor continues into the substring matches." },
                 FlagCatalog.IncludeGenerated,
                 FlagCatalog.Snapshot,
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
@@ -112,7 +112,7 @@ public static class Program
             Sync(ContextHandler.Run)),
         new("status", "Show the current database status.",
             [
-                FlagCatalog.Solution with { Description = "If provided, compares the current workspace against the latest snapshot and reports freshness mismatches." },
+                FlagCatalog.Solution with { Description = "If provided, it must be an existing file; compares the current workspace against the latest snapshot. Every flag is checked before the database is read." },
                 FlagCatalog.Detail,
                 FlagCatalog.Json with { Description = "Emit structured JSON instead of plain text. Back-compat alias for `--output=json`." },
                 FlagCatalog.Output with { AllowedValues = ["summary", "json"], Description = "Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document." },
@@ -147,7 +147,7 @@ public static class Program
             [
                 FlagCatalog.Symbol with { Description = $"{FlagCatalog.Symbol.Description} Mutually exclusive with `--document=`." },
                 FlagCatalog.Document with { Description = "Relative path of the document within the solution. Returns the annotations whose `document_path` is that document and the annotations of every symbol declared in it, user annotations included. Mutually exclusive with `--symbol=`." },
-                FlagCatalog.Kind with { Description = "Filter to one annotation kind.", ValueHint = "kind" },
+                FlagCatalog.Kind with { Description = "Filter to one annotation kind.", ValueHint = "kind", AllowedValues = null },
                 FlagCatalog.Limit with { Description = $"Max annotations per page (default: {AnnotationHandler.DefaultLimit}; positive integer)." },
                 FlagCatalog.Cursor,
                 FlagCatalog.Snapshot,
@@ -181,7 +181,7 @@ public static class Program
             [
                 FlagCatalog.Project with { Description = "Filter to this project (assembly simple name, e.g. `eNote.API`)." },
                 FlagCatalog.Document with { Description = "Filter to symbols declared in this document (forward-slash, relative to the solution root, not the repo root)." },
-                FlagCatalog.Kind with { AllowedValues = DeadCandidateLiveness.CandidateKinds, Description = "Filter by symbol kind (case-insensitive)." },
+                FlagCatalog.Kind with { Description = "Filter by symbol kind (case-insensitive)." },
                 FlagCatalog.Limit with { Description = $"Max dead candidates per page (default: {DeadCandidateLiveness.DefaultPageSize}, max: {DeadCandidateLiveness.MaxPageSize})." },
                 FlagCatalog.Cursor,
                 FlagCatalog.Snapshot,

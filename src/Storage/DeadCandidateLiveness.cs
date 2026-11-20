@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Lurp.Storage;
 
 /// <summary>
@@ -72,14 +74,23 @@ public static class DeadCandidateLiveness
 
     public static string CandidateKindsText { get; } = string.Join(", ", CandidateKinds);
 
-    public static bool IsCandidateKind(string kind)
+    public static bool TryGetCandidateKind(string? input, [NotNullWhen(true)] out string? canonical)
     {
-        foreach (var candidate in CandidateKinds)
+        if (!string.IsNullOrEmpty(input))
         {
-            if (string.Equals(kind, candidate, StringComparison.OrdinalIgnoreCase))
-                return true;
+            foreach (var candidate in CandidateKinds)
+            {
+                if (string.Equals(input, candidate, StringComparison.OrdinalIgnoreCase))
+                {
+                    canonical = candidate;
+                    return true;
+                }
+            }
         }
 
+        canonical = null;
         return false;
     }
+
+    public static bool IsCandidateKind(string kind) => TryGetCandidateKind(kind, out _);
 }

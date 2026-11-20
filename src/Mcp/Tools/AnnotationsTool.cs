@@ -70,7 +70,7 @@ internal sealed class AnnotationsTool
                 // Distinguish "no annotations here" from "no such document"
                 var docs = store.GetDocumentVersionIdsByPath(snapshotId);
                 if (!docs.ContainsKey(normalizedDocument))
-                    throw new McpProtocolException($"Document '{normalizedDocument}' not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException(DocumentMessages.NotFound(normalizedDocument, snapshotId), McpErrorCode.InvalidParams);
             }
 
             AnnotationPage page;

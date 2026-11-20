@@ -1,4 +1,3 @@
-using Lurp.Queries;
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Workspace;
@@ -17,7 +16,7 @@ internal static class NavigateHandler
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshot) =>
         {
-            var target = new FastTravelQueries(store).Navigate(file!, line, snapshot, args.Contains("--include-generated"));
+            var target = store.NavigateToLocation(file!, line, snapshot, args.Contains("--include-generated"));
             if (target == null) HandlerBootstrap.Fail($"ERROR: No indexed declaration contains {file}:{line} in snapshot '{snapshot}'.");
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshot, output);

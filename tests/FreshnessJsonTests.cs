@@ -10,45 +10,14 @@ namespace Lurp.Tests;
 /// </summary>
 public sealed class FreshnessJsonTests
 {
-    private static readonly string[] _cheapKeys =
-    [
-        "state",
-        "method",
-        "changed_document_count",
-        "changed_documents_sample",
-        "changed_documents_sample_truncated",
-        "checked_at_utc",
-        "snapshot_id",
-        "scope"
-    ];
-
-    private static readonly string[] _statusKeys =
-    [
-        "state",
-        "method",
-        "scope",
-        "snapshot_id",
-        "checked_at_utc",
-        "changed_document_count",
-        "changed_documents_sample",
-        "changed_documents_sample_truncated",
-        "is_fresh",
-        "mismatches",
-        "mismatches_truncated",
-        "mismatches_total"
-    ];
-
-    private static readonly string[] _rowKeys = ["kind", "description", "document", "detail"];
-
     private static readonly string[] _aDocuments = ["A.cs"];
 
     [Fact]
-    public void Cheap_HasTheEightKeys_InOrder()
+    public void Cheap_CapsSampleAndSetsTruncated()
     {
         var stamp = Stamp("fresh", "stat", 3, ["a.cs", "b.cs", "c.cs"], "documents_only");
 
         var cut = ToElement(FreshnessJson.Cheap(stamp, 2));
-        Assert.Equal(_cheapKeys, KeyNames(cut));
         Assert.Equal(3, cut.GetProperty("changed_document_count").GetInt32());
         Assert.Equal(2, cut.GetProperty("changed_documents_sample").GetArrayLength());
         Assert.True(cut.GetProperty("changed_documents_sample_truncated").GetBoolean());
@@ -61,12 +30,11 @@ public sealed class FreshnessJsonTests
     [InlineData("fresh", JsonValueKind.True)]
     [InlineData("stale", JsonValueKind.False)]
     [InlineData("unknown", JsonValueKind.Null)]
-    public void ForStatus_Stamp_HasTwelveKeys_IsFreshFollowsState(string state, JsonValueKind expected)
+    public void ForStatus_Stamp_IsFreshFollowsState_AndMismatchFieldsAreNull(string state, JsonValueKind expected)
     {
         var stamp = Stamp(state, "stat", 0, [], "documents_only");
 
         var element = ToElement(FreshnessJson.ForStatus(stamp, 10));
-        Assert.Equal(_statusKeys, KeyNames(element));
         Assert.Equal(expected, element.GetProperty("is_fresh").ValueKind);
         Assert.Equal(JsonValueKind.Null, element.GetProperty("mismatches").ValueKind);
         Assert.Equal(JsonValueKind.Null, element.GetProperty("mismatches_truncated").ValueKind);
@@ -135,7 +103,7 @@ public sealed class FreshnessJsonTests
         Assert.Equal(2, capped.Rows.Count);
 
         var row = ToElement(capped.Rows[0]);
-        Assert.Equal(_rowKeys, KeyNames(row));
+        Assert.Equal(FreshnessKeyTableTests.ReadTableKeys().RowKeys, KeyNames(row));
         Assert.Equal("DocumentModified", row.GetProperty("kind").GetString());
         Assert.Equal("A.cs", row.GetProperty("document").GetString());
     }

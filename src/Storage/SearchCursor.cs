@@ -11,7 +11,7 @@ public sealed record SearchCursor(string SnapshotId, string Fingerprint, string 
 {
     public static string ComputeFingerprint(string query, string? kind, bool includeGenerated)
     {
-        return $"{query}{kind}{includeGenerated}";
+        return $"{query}\u0001{kind}\u0001{includeGenerated}";
     }
 
     public string Encode()

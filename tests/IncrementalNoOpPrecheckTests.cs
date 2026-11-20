@@ -130,7 +130,7 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task TouchedGitIgnore_DoesNotSkipWorkspaceLoad()
+    public async Task TouchedGitIgnore_KeepsTheSkip()
     {
         Seed();
         await RunFullIndexAsync(DbPath);
@@ -140,8 +140,40 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
 
         var output = await RunIncrementalAsync();
 
-        Assert.DoesNotContain("Workspace load skipped", output);
-        Assert.Contains("Loading solution...", output);
+        Assert.Contains("Workspace load skipped: stored snapshot is still current.", output);
+        Assert.DoesNotContain("Loading solution...", output);
+    }
+
+    [Fact]
+    public async Task Cheap_UntrackedFileOlderThanTheSelection_IsFreshAndKeepsTheShortcut()
+    {
+        Seed();
+        var projPath = Path.Combine(TestDir, "src", Project, $"{Project}.csproj");
+        var csproj = File.ReadAllText(projPath).Replace(
+            "</Project>",
+            "  <ItemGroup>\n    <Compile Remove=\"Excluded/**\" />\n  </ItemGroup>\n</Project>",
+            StringComparison.Ordinal);
+        File.WriteAllText(projPath, csproj);
+
+        var excludedDir = Path.Combine(TestDir, "src", Project, "Excluded");
+        Directory.CreateDirectory(excludedDir);
+        var oldFilePath = Path.Combine(excludedDir, "Old.cs");
+        File.WriteAllText(oldFilePath, "namespace Core; class Old { }\n");
+        var oldTime = DateTime.UtcNow.AddHours(-1);
+        File.SetLastWriteTimeUtc(oldFilePath, oldTime);
+        Directory.SetLastWriteTimeUtc(excludedDir, oldTime);
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, FreshnessMode.Auto);
+        Assert.Equal("fresh", stamp.State);
+        Assert.Equal(0, stamp.ChangedDocumentCount);
+
+        var gitRoot = Path.GetDirectoryName(Path.GetFullPath(SolutionPath))!;
+        var workspaceId = WorkspaceId.Create(gitRoot, Path.GetFullPath(SolutionPath));
+        var shortcut = WorkspaceFreshness.CanSkipIncrementalIndex(store, workspaceId, gitRoot);
+        Assert.NotNull(shortcut);
     }
 
     [Fact]

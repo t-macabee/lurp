@@ -9,17 +9,21 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     private static readonly byte[] DeclaredNamePlaceholder = "<DECLARED_NAME>"u8.ToArray();
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
+    internal static string SymbolDeclarationAggregateColumns() => $"""
+                   (SELECT COUNT(*) FROM declarations d2
+                      {SnapshotDeclarationLink.Join("d2", "sdecl2")}
+                    WHERE d2.symbol_id = s.symbol_id) AS decl_count,
+                   (SELECT MAX(d3.is_partial) FROM declarations d3
+                      {SnapshotDeclarationLink.Join("d3", "sdecl3")}
+                    WHERE d3.symbol_id = s.symbol_id) AS is_partial
+        """;
+
     internal IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = $"""
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
-                   (SELECT COUNT(*) FROM declarations d
-                    {SnapshotDeclarationLink.Join("d", "sdecl1")}
-                    WHERE d.symbol_id = s.symbol_id) AS decl_count,
-                   (SELECT MAX(d.is_partial) FROM declarations d
-                    {SnapshotDeclarationLink.Join("d", "sdecl2")}
-                    WHERE d.symbol_id = s.symbol_id) AS is_partial
+            {SymbolDeclarationAggregateColumns()}
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE s.symbol_id = @symbolId AND ss.snapshot_id = @snapshotId;

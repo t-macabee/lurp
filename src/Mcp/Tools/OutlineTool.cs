@@ -60,7 +60,7 @@ internal sealed class OutlineTool
             }
 
             if (page == null)
-                throw new McpProtocolException($"Document '{normalized}' not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException(DocumentMessages.NotFound(normalized, snapshotId), McpErrorCode.InvalidParams);
 
             var freshness = _session.GetFreshnessJson();
 

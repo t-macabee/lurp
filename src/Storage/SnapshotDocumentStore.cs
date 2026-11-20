@@ -46,25 +46,17 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
         var lineStartsJson = reader.IsDBNull(1) ? null : reader.GetString(1);
         var documentVersionId = reader.GetString(2);
 
+        var lineStarts = SourceLineMap.ParseLineStarts(lineStartsJson, documentVersionId)
+            ?? throw new InvalidOperationException($"Missing line_starts for document version '{documentVersionId}'.");
+
+        var totalLines = lineStarts.Length;
+
         // No window requested — return whole file verbatim (back-compatible).
         if (startLine == null && endLine == null && contextLines == null)
         {
             var whole = Encoding.UTF8.GetString(bytes);
-            var lsWhole = SourceLineMap.ParseLineStarts(lineStartsJson, documentVersionId);
-            var totalLinesWhole = lsWhole?.Length ?? CountLinesFallback(bytes);
-            return new SourceSlice(whole, 1, totalLinesWhole, totalLinesWhole, false);
+            return new SourceSlice(whole, 1, totalLines, totalLines, false);
         }
-
-        // If line_starts is missing, fall back to whole file (cannot slice safely).
-        var lineStarts = SourceLineMap.ParseLineStarts(lineStartsJson, documentVersionId);
-        if (lineStarts == null)
-        {
-            var whole = Encoding.UTF8.GetString(bytes);
-            var totalLinesFallback = CountLinesFallback(bytes);
-            return new SourceSlice(whole, 1, totalLinesFallback, totalLinesFallback, false);
-        }
-
-        var totalLines = lineStarts.Length;
 
         // Resolve requested range: defaults to whole file when one bound is absent.
         var requestedStart = startLine ?? 1;
@@ -74,11 +66,9 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
         if (requestedStart < 1) requestedStart = 1;
         if (requestedEnd < 1) requestedEnd = 1;
         if (requestedStart > totalLines)
-            throw new ArgumentOutOfRangeException(nameof(startLine), $"start_line {requestedStart} is beyond total_lines {totalLines}.");
+            throw new SourceLineOutOfRangeException(requestedStart, totalLines);
         if (requestedEnd > totalLines)
             requestedEnd = totalLines;
-        if (requestedStart > requestedEnd)
-            throw new ArgumentException($"start_line {requestedStart} must be <= end_line {requestedEnd}.");
 
         var ctx = contextLines ?? 0;
         if (ctx < 0) ctx = 0;
@@ -91,16 +81,6 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
         var expandedEnd = LineNumbers.ToOneBased(lastLineIndex);
         var truncated = expandedStart != 1 || expandedEnd != totalLines;
         return new SourceSlice(sliced, expandedStart, expandedEnd, totalLines, truncated);
-    }
-
-    private static int CountLinesFallback(byte[] bytes)
-    {
-        if (bytes.Length == 0) return 0;
-        var count = 1;
-        for (var i = 0; i < bytes.Length; i++)
-            if (bytes[i] == (byte)'\n')
-                count++;
-        return count;
     }
 
     internal Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId)

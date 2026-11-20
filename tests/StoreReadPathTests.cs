@@ -118,8 +118,8 @@ public sealed class StoreReadPathTests : IntegrationTestBase
         using var store = OpenStore(DbPath);
         try
         {
-            var results = store.SearchSymbols("Calculator", snapshotId);
-            var match = Assert.Single(results, r => r.FullyQualifiedName == "global::TestProject.Calculator");
+            var page = store.SearchSymbolsPage("Calculator", snapshotId, 20, includeGenerated: false, kind: null, cursor: null);
+            var match = Assert.Single(page.Items, r => r.FullyQualifiedName == "global::TestProject.Calculator");
             Assert.Equal(ResolveSymbolId(snapshotId, "global::TestProject.Calculator"), match.SymbolId);
             Assert.Equal("Type", match.Kind);
         }

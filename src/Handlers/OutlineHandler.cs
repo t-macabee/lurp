@@ -41,7 +41,7 @@ internal static class OutlineHandler
             }
 
             if (page == null)
-                HandlerBootstrap.Fail($"ERROR: Document '{documentArg}' not found in snapshot '{snapshotId}'.");
+                HandlerBootstrap.Fail($"ERROR: {DocumentMessages.NotFound(documentArg, snapshotId)}");
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 

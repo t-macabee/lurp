@@ -14,11 +14,12 @@ internal sealed class TextSearchStore
     public TextSearchStore(SqliteConnection connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        TextCaseMatching.Register(_connection);
     }
 
     /// <summary>
-    ///     The candidate query of <see cref="SearchTextPage" />. instr returns 0 when the
-    ///     literal is not found, >0 when found; for ignoreCase both sides are lowercased.
+    ///     The candidate query of <see cref="SearchTextPage" />. Case-sensitive uses instr;
+    ///     case-insensitive uses the registered OrdinalIgnoreCase SQLite function (D184.4).
     ///     One owner: the plan tests pin this text.
     /// </summary>
     internal static string CandidateSql(bool includeGenerated, bool ignoreCase)
@@ -27,15 +28,14 @@ internal sealed class TextSearchStore
             ? ""
             : GeneratedDocumentFilter.ExcludeGeneratedDocuments("dv.document_version_id");
         var contains = ignoreCase
-            ? " AND instr(lower(CAST(dv.content AS TEXT)), lower(@query)) > 0"
+            ? $" AND {TextCaseMatching.SqlFunctionName}(CAST(dv.content AS TEXT), @query)"
             : " AND instr(CAST(dv.content AS TEXT), @query) > 0";
         return $"""
-            SELECT d.relative_path, dv.content
+            SELECT d.relative_path, dv.content, dv.line_starts, dv.document_version_id
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents d ON d.document_id = dv.document_id
-            WHERE sd.snapshot_id = @snapshotId AND dv.content IS NOT NULL{filter}{contains}
-            ORDER BY d.relative_path;
+            WHERE sd.snapshot_id = @snapshotId AND dv.content IS NOT NULL{filter}{contains};
             """;
     }
 
@@ -57,75 +57,68 @@ internal sealed class TextSearchStore
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         cmd.Parameters.AddWithValue("@query", query);
 
-        var candidates = new List<(string Path, string Content)>();
+        var candidates = new List<(string Path, byte[] Bytes, int[] LineStarts, string DocumentVersionId)>();
         using (var reader = cmd.ExecuteReader())
         {
             while (reader.Read())
             {
                 var path = reader.GetString(0);
-                byte[] bytes = (byte[])reader[1];
-                var content = Encoding.UTF8.GetString(bytes);
-                candidates.Add((path, content));
+                var bytes = (byte[])reader[1];
+                var lineStartsJson = reader.IsDBNull(2) ? null : reader.GetString(2);
+                var documentVersionId = reader.GetString(3);
+                var lineStarts = SourceLineMap.ParseLineStarts(lineStartsJson, documentVersionId)
+                    ?? throw new InvalidOperationException($"Missing line_starts for document version '{documentVersionId}'.");
+                candidates.Add((path, bytes, lineStarts, documentVersionId));
             }
         }
 
+        // Order candidates by Ordinal path to match C# cursor comparisons (D184.5).
+        candidates.Sort((a, b) => StringComparer.Ordinal.Compare(a.Path, b.Path));
+
         // Expand to per-occurrence results in deterministic order: path ascending, offset ascending.
         var all = new List<TextSearchResult>();
-        foreach (var (path, content) in candidates)
+        foreach (var (path, bytes, lineStarts, documentVersionId) in candidates)
         {
-            // Precompute line break positions for fast line/column lookup? For now scan per occurrence;
-            // candidate count is small (typically tens of docs), occurrences per doc moderate.
+            var content = Encoding.UTF8.GetString(bytes);
             var occs = FindOccurrences(content, query, comparison);
+            var charPos = 0;
+            var bytePos = 0;
             foreach (var offset in occs)
             {
-                var (startLine, startColumn) = GetLineColumn(content, offset);
+                bytePos += Encoding.UTF8.GetByteCount(content.AsSpan(charPos, offset - charPos));
+                charPos = offset;
+                var startByteOffset = bytePos;
+
                 var endOffset = offset + query.Length;
-                var (endLine, endColumn) = GetLineColumn(content, endOffset);
-                var lineText = ExtractLineText(content, offset);
+                bytePos += Encoding.UTF8.GetByteCount(content.AsSpan(charPos, endOffset - charPos));
+                charPos = endOffset;
+                var endByteOffset = bytePos;
+
+                var startLineIndex = SourceLineMap.FindLineIndex(lineStarts, startByteOffset);
+                var startLine = LineNumbers.ToOneBased(startLineIndex);
+                var startColumn = SourceLineMap.Utf8Column(bytes, lineStarts[startLineIndex], startByteOffset);
+
+                var endLineIndex = SourceLineMap.FindLineIndex(lineStarts, endByteOffset);
+                var endLine = LineNumbers.ToOneBased(endLineIndex);
+                var endColumn = SourceLineMap.Utf8Column(bytes, lineStarts[endLineIndex], endByteOffset);
+
+                var lineText = SourceLineMap.ExtractLineText(bytes, lineStarts, startLineIndex, documentVersionId);
                 all.Add(new TextSearchResult(path, startLine, startColumn, endLine, endColumn, lineText, offset));
             }
         }
 
-        // Keyset pagination: skip past cursor
+        // Keyset pagination: start at the first result strictly after the cursor key (D184.5).
         var startIndex = 0;
         if (cursor != null)
         {
-            // Find position after the cursor's last item
-            var found = false;
+            startIndex = all.Count;
             for (var i = 0; i < all.Count; i++)
             {
-                var r = all[i];
-                if (string.Equals(r.DocumentPath, cursor.LastDocumentPath, StringComparison.Ordinal) && r.StartOffset == cursor.LastOffset)
-                {
-                    startIndex = i + 1;
-                    found = true;
-                    break;
-                }
-                // If cursor's document path is lexicographically before current result, start here
-                if (string.CompareOrdinal(r.DocumentPath, cursor.LastDocumentPath) > 0)
-                {
-                    // The cursor document was not in the result set? This happens if the cursor's document
-                    // no longer matches the query (should not happen for immutable snapshot). Treat as start at this index.
-                    // But we already scan linearly; if cursor path < current path, we have passed the cursor's position.
-                    // To handle missing cursor due to stale filtering, we fall through to binary search alternative.
-                    // For determinism, we locate the first result strictly after cursor ordering.
-                    // Ordering is path ascending then offset ascending.
-                    // So if r.Path > cursor.Path, then r is after cursor regardless of offset.
-                    startIndex = i;
-                    found = true;
-                    break;
-                }
-                if (string.Equals(r.DocumentPath, cursor.LastDocumentPath, StringComparison.Ordinal) && r.StartOffset > cursor.LastOffset)
+                if (IsAfterCursor(all[i], cursor))
                 {
                     startIndex = i;
-                    found = true;
                     break;
                 }
-            }
-            if (!found)
-            {
-                // Cursor points past the end -> empty page
-                startIndex = all.Count;
             }
         }
 
@@ -143,6 +136,12 @@ internal sealed class TextSearchStore
         return new TextSearchPage(pageItems, nextCursor, totalCount);
     }
 
+    private static bool IsAfterCursor(TextSearchResult result, TextSearchCursor cursor)
+    {
+        var pathComparison = string.CompareOrdinal(result.DocumentPath, cursor.LastDocumentPath);
+        return pathComparison > 0 || (pathComparison == 0 && result.StartOffset > cursor.LastOffset);
+    }
+
     private static List<int> FindOccurrences(string content, string query, StringComparison comparison)
     {
         var offsets = new List<int>();
@@ -155,59 +154,9 @@ internal sealed class TextSearchStore
             if (found < 0)
                 break;
             offsets.Add(found);
-            // Non-overlapping advance; use +1 to allow overlapping matches would risk infinite loop on e.g. "aa" in "aaa" (overlapping finds 0,1).
-            // For grep-style, non-overlapping with +query.Length is expected, but overlapping detection is more correct for exact search.
-            // Choose +1 to report overlapping occurrences (e.g., "aa" in "aaa" finds 2). This matches GNU grep -o behavior.
-            idx = found + 1;
-            // Guard against zero-length query (already filtered) and ensure progress
-            if (idx <= found)
-                idx = found + 1;
+            // Non-overlapping occurrences: resume after the matched span (D66).
+            idx = found + query.Length;
         }
         return offsets;
-    }
-
-    private static (int Line, int Column) GetLineColumn(string content, int offset)
-    {
-        // offset is exclusive end for endLine/endColumn; for start it is inclusive start.
-        // Lines are 1-based, columns 0-based.
-        // Clamp offset to content length
-        if (offset < 0) offset = 0;
-        if (offset > content.Length) offset = content.Length;
-
-        var line = 1;
-        var lastNewline = -1;
-        for (var i = 0; i < offset; i++)
-        {
-            if (content[i] == '\n')
-            {
-                line++;
-                lastNewline = i;
-            }
-        }
-        var column = offset - lastNewline - 1;
-        if (column < 0) column = 0;
-        return (line, column);
-    }
-
-    private static string ExtractLineText(string content, int offset)
-    {
-        if (offset < 0) offset = 0;
-        if (offset > content.Length) offset = content.Length;
-
-        // Find line start: after previous '\n' or 0
-        var lineStart = offset;
-        while (lineStart > 0 && content[lineStart - 1] != '\n')
-            lineStart--;
-
-        // Find line end: next '\n' or end of content
-        var lineEnd = offset;
-        while (lineEnd < content.Length && content[lineEnd] != '\n')
-            lineEnd++;
-
-        var line = content[lineStart..lineEnd];
-        // Strip trailing '\r' from \r\n sequences
-        if (line.EndsWith('\r'))
-            line = line[..^1];
-        return line;
     }
 }

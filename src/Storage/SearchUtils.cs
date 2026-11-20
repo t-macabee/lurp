@@ -18,6 +18,11 @@ internal static class SearchUtils
         return "\"" + query.Replace("\"", "\"\"") + "\"";
     }
 
+    internal static string ToColumnFtsPhrase(string column, string query)
+    {
+        return $"{column} : {ToFtsPhrase(query)}";
+    }
+
     internal static bool IsPlainIdentifierQuery(string query)
     {
         var hasIdentifierChar = false;

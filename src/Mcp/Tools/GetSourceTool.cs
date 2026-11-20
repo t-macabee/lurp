@@ -53,17 +53,15 @@ internal sealed class GetSourceTool
             {
                 slice = store.GetSourceSlice(normalized, snapshotId, start_line, end_line, context_lines);
             }
-            catch (ArgumentOutOfRangeException ex)
+            catch (SourceLineOutOfRangeException ex)
             {
-                throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
-            }
-            catch (ArgumentException ex)
-            {
-                throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
+                throw new McpProtocolException(
+                    $"start_line {ex.RequestedStartLine} is beyond the last line ({ex.TotalLines}) of '{normalized}'.",
+                    McpErrorCode.InvalidParams);
             }
 
             if (slice == null)
-                throw new McpProtocolException($"Document '{normalized}' not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException(DocumentMessages.NotFound(normalized, snapshotId), McpErrorCode.InvalidParams);
 
             var freshness = _session.GetFreshnessJson();
 

@@ -11,6 +11,7 @@ public class SnapshotRow
     public string SdkVersion { get; init; } = string.Empty;
     public string CompilerVersion { get; init; } = string.Empty;
     public DateTime CreatedAtUtc { get; init; }
+    public DateTime SelectedAtUtc { get; init; }
     public List<DocumentVersion> Documents { get; init; } = [];
     public int DatabaseSchemaVersion { get; init; }
     public int OutputSchemaVersion { get; init; }

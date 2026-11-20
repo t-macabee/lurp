@@ -36,7 +36,7 @@ cited below. Evidence cites git commits and named tests directly.
 | 3: Track A vs. Track B decision | Done | Track A chosen |
 | 4: Document/snapshot identity | Done | commit `f550fee` (`ux_snapshot_documents` unique index, `document_versions` immutability trigger, D4/D5 negative tests) |
 | 5: Declaration lookup and partial types | Done | commit `8199760`; partial-type + declaration-source coverage |
-| 6: Fast-travel reads and lexical search | Done | `FastTravelQueries`, persisted-span navigation, `SearchSourceStore.SearchSource` hardened by `994429c` |
+| 6: Fast-travel reads and lexical search | Done | `IDeclarationStore.NavigateToLocation`, persisted-span navigation, `SearchSourceStore.SearchSource` hardened by `994429c` |
 | 7: Migrate dirty state, fingerprints, diagnostics, facts out of JSON | Done | SQLite-only; sole remaining `--output-json=` is a documented one-way export |
 | 8: Facts-table decision | Done | Facts table rejected; attributes stay in `metadata_json` |
 | 9 | Not applicable | Conditional on order 8; not approved |

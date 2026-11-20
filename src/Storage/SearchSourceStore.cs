@@ -13,6 +13,7 @@ internal sealed class SearchSourceStore
     public SearchSourceStore(SqliteConnection connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        TextCaseMatching.Register(_connection);
     }
 
     /// <summary>
@@ -38,7 +39,7 @@ internal sealed class SearchSourceStore
     }
 
     /// <summary>
-    ///     The LIKE fallback query of <see cref="SearchSource" />. One owner: the plan tests
+    ///     The fragment fallback query of <see cref="SearchSource" />. One owner: the plan tests
     ///     pin this text.
     /// </summary>
     internal static string FallbackSql(bool includeGenerated)
@@ -53,7 +54,8 @@ internal sealed class SearchSourceStore
             JOIN snapshot_documents sd ON sd.document_version_id = dv.document_version_id
             WHERE sd.snapshot_id = @snapshotId
               AND dv.content IS NOT NULL
-              AND CAST(dv.content AS TEXT) LIKE @likePattern ESCAPE '\'{filter}
+              AND {TextCaseMatching.SqlFunctionName}(CAST(dv.content AS TEXT), @query)
+              AND d.relative_path NOT IN (SELECT value FROM json_each(@excludedPaths)){filter}
             ORDER BY d.relative_path
             LIMIT @remaining
             """;
@@ -66,71 +68,74 @@ internal sealed class SearchSourceStore
             return [];
 
         snippetTokens = Math.Max(1, snippetTokens);
+        var contentFtsQuery = SearchUtils.ToColumnFtsPhrase("content", query);
 
-        using var command = _connection.CreateCommand();
+        var ftsRows = new List<(long RowId, string DocumentPath)>();
+        using (var command = _connection.CreateCommand())
+        {
+            command.CommandText = "WITH matches AS (\n" + FtsMatchSql(includeGenerated) + """
+                )
+                SELECT source_fts.rowid,
+                       source_fts.document_path
+                FROM source_fts
+                JOIN matches ON matches.rowid = source_fts.rowid
+                WHERE matches.path_rank = 1
+                ORDER BY matches.rank
+                LIMIT @limit;
+                """;
 
-        command.CommandText = "WITH matches AS (\n" + FtsMatchSql(includeGenerated) + @"
-            )
-            SELECT source_fts.document_path,
-                   snippet(source_fts, 1, '<mark>', '</mark>', '…', @snippetTokens) AS snippet
-            FROM source_fts
-            JOIN matches ON matches.rowid = source_fts.rowid
-            WHERE matches.path_rank = 1
-            ORDER BY matches.rank
-            LIMIT @limit;
-        ";
+            command.Parameters.AddWithValue("@query", contentFtsQuery);
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.Parameters.AddWithValue("@limit", limit);
 
-        command.Parameters.AddWithValue("@query", SearchUtils.ToFtsPhrase(query));
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.Parameters.AddWithValue("@limit", limit);
-        command.Parameters.AddWithValue("@snippetTokens", snippetTokens);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                ftsRows.Add((reader.GetInt64(0), reader.GetString(1)));
+        }
 
-        var results = new List<SourceSearchResult>();
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-            results.Add(new SourceSearchResult(reader.GetString(0),
-                reader.IsDBNull(1) ? "" : reader.GetString(1)));
+        var results = new List<SourceSearchResult>(ftsRows.Count);
+        if (ftsRows.Count > 0)
+        {
+            using var highlightCmd = _connection.CreateCommand();
+            highlightCmd.CommandText = """
+                SELECT highlight(source_fts, 1, char(2), char(3))
+                FROM source_fts
+                WHERE source_fts MATCH @query
+                  AND rowid = @rowid;
+                """;
+            var queryParam = highlightCmd.Parameters.Add("@query", SqliteType.Text);
+            queryParam.Value = contentFtsQuery;
+            var rowIdParam = highlightCmd.Parameters.Add("@rowid", SqliteType.Integer);
 
-        // Architecture §10 "identifier fragments" contract: FTS5 unicode61 index
-        // matches whole tokens only, missing camelCase substrings. When FTS5
-        // saturates fewer than the requested limit, fall back to LIKE over
-        // document content for plain identifier queries.
+            foreach (var (rowId, docPath) in ftsRows)
+            {
+                rowIdParam.Value = rowId;
+                var highlighted = highlightCmd.ExecuteScalar() as string ?? "";
+                var snippet = SnippetWindowBuilder.BuildFromHighlighted(highlighted, snippetTokens);
+                results.Add(new SourceSearchResult(docPath, snippet));
+            }
+        }
+
         if (results.Count < limit && SearchUtils.IsPlainIdentifierQuery(query))
         {
             var remaining = limit - results.Count;
-            var seen = new HashSet<string>(results.Select(static r => r.DocumentPath));
             using var fbCmd = _connection.CreateCommand();
             fbCmd.CommandText = FallbackSql(includeGenerated);
-
-            var escaped = query.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
-            fbCmd.Parameters.AddWithValue("@likePattern", $"%{escaped}%");
+            fbCmd.Parameters.AddWithValue("@query", query);
             fbCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+            SqlIdList.Bind(fbCmd, "@excludedPaths", results.Select(static r => r.DocumentPath));
             fbCmd.Parameters.AddWithValue("@remaining", remaining);
+
             using var fbReader = fbCmd.ExecuteReader();
             while (fbReader.Read())
             {
                 var docPath = fbReader.GetString(0);
-                if (!seen.Add(docPath))
-                    continue;
                 var content = fbReader.IsDBNull(1) ? "" : fbReader.GetString(1);
-                var snippet = TruncateSnippet(content, query);
+                var snippet = SnippetWindowBuilder.BuildFromPlainText(content, query, snippetTokens);
                 results.Add(new SourceSearchResult(docPath, snippet));
             }
         }
 
         return results;
-    }
-
-    private static string TruncateSnippet(string content, string query)
-    {
-        if (string.IsNullOrEmpty(content))
-            return "";
-        var idx = content.IndexOf(query, StringComparison.OrdinalIgnoreCase);
-        if (idx < 0)
-            return content.Length <= 320 ? content : content[..317] + "...";
-        var start = Math.Max(0, idx - 80);
-        var end = Math.Min(content.Length, idx + query.Length + 240);
-        var snippet = (start > 0 ? "…" : "") + content[start..end] + (end < content.Length ? "…" : "");
-        return snippet;
     }
 }
