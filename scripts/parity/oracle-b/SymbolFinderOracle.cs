@@ -1,29 +1,30 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Operations;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Parity.Shared;
 
 /// <summary>
-///     Audit B1 Oracle B, shared: Roslyn's own <see cref="SymbolFinder.FindCallersAsync" />
-///     is the caller oracle. For a <see cref="Solution"/>, the extracted edge set
-///     and a symbol-to-node-id resolver, it enumerates every method-like member the
-///     extractor models, asks Roslyn for its callers, normalizes each caller to the
-///     extraction owner, and compares the result with the edge set. The result
-///     carries the expected and missing callers per target, the accepted edge kinds
-///     an unmatched caller lacks, the precision extras, and the skip counts. It uses
-///     no xUnit types.
+///     Oracle B compares Roslyn callers with the extracted edges. It uses SymbolFinder
+///     callers for methods and semantic event assignments for event accessors.
+///     It follows dispatch edges to accept callers through an interface or base member.
+///     It uses the resource type to resolve disposal at a using site. It sets aside
+///     dynamic calls and callers that bind outside the solution.
 /// </summary>
 public static class SymbolFinderOracle
 {
     /// <summary>
     ///     The target method kinds the extractor models: ordinary methods,
-    ///     constructors (including primary constructors), user-defined operators,
-    ///     conversions, and property/event accessors.
+    ///     constructors, user-defined operators, conversions, explicit interface
+    ///     implementations, and property and event accessors.
     /// </summary>
     public static IReadOnlyList<MethodKind> TargetKinds { get; } =
     [
         MethodKind.Ordinary,
+        MethodKind.ExplicitInterfaceImplementation,
         MethodKind.Constructor,
         MethodKind.UserDefinedOperator,
         MethodKind.Conversion,
@@ -33,12 +34,16 @@ public static class SymbolFinderOracle
         MethodKind.EventRemove
     ];
 
-    /// <summary>
-    ///     Static-abstract dispatch is a dispatch relation, not a direct call: the
-    ///     constrained call site is extracted as Calls to the interface member, and
-    ///     the implementing type is not. Skipped targets name this boundary id.
-    /// </summary>
-    public const string StaticAbstractDispatchBoundaryId = "static_abstract_dispatch";
+    public static bool IsTarget(IMethodSymbol method) =>
+        TargetKinds.Contains(method.MethodKind) &&
+        (!method.IsImplicitlyDeclared ||
+         (IsEventAccessor(method) && method.AssociatedSymbol is IEventSymbol { DeclaringSyntaxReferences.Length: > 0 }));
+
+    private static bool IsEventAccessor(IMethodSymbol method) =>
+        method.MethodKind is MethodKind.EventAdd or MethodKind.EventRemove;
+
+    /// <summary>A caller set aside because the runtime selects the target.</summary>
+    public const string DynamicBindingReason = "dynamic_binding";
 
     /// <summary>
     ///     A caller set aside because its called symbol is outside the solution.
@@ -89,7 +94,6 @@ public static class SymbolFinderOracle
         var dispatchAdjacency = BuildDispatchAdjacency(edgeSet);
 
         var targets = new List<Target>();
-        var skippedStaticAbstract = new List<string>();
         var setAsideCallers = new List<SymbolFinderSetAsideCaller>();
         var skippedImplicit = 0;
         var skippedNoId = 0;
@@ -115,18 +119,10 @@ public static class SymbolFinderOracle
                 {
                     if (member is not IMethodSymbol method)
                         continue;
-                    if (method.IsImplicitlyDeclared)
+                    if (!IsTarget(method))
                     {
-                        skippedImplicit++;
-                        continue;
-                    }
-
-                    if (!TargetKinds.Contains(method.MethodKind))
-                        continue;
-
-                    if (method.MethodKind == MethodKind.Ordinary && IsStaticAbstractImplementation(method))
-                    {
-                        skippedStaticAbstract.Add(resolveNodeId(method) ?? method.ToDisplayString());
+                        if (method.IsImplicitlyDeclared)
+                            skippedImplicit++;
                         continue;
                     }
 
@@ -139,9 +135,6 @@ public static class SymbolFinderOracle
                     targets.Add(new Target(
                         id,
                         method,
-                        method.MethodKind == MethodKind.Constructor
-                            ? resolveNodeId(method.ContainingType)
-                            : null,
                         method.AssociatedSymbol is { } owner ? resolveNodeId(owner) : null));
                 }
             }
@@ -162,31 +155,48 @@ public static class SymbolFinderOracle
 
             targetCounts[target.Symbol.MethodKind] = targetCounts.GetValueOrDefault(target.Symbol.MethodKind) + 1;
             var family = DispatchFamily(target.Id, dispatchAdjacency);
-            var callers = await SymbolFinder.FindCallersAsync(target.Symbol, solution, cancellationToken).ConfigureAwait(false);
             var expectedCallers = new HashSet<string>(StringComparer.Ordinal);
             var missingCallers = new List<SymbolFinderMissingCaller>();
 
-            foreach (var caller in callers)
+            var relations = AcceptedRelations(target.Symbol.MethodKind);
+            var relationNames = relations.Select(static relation => relation.Kind).ToArray();
+            if (IsEventAccessor(target.Symbol))
             {
-                var candidates = CallerOwnerIds(caller.CallingSymbol, resolveNodeId).Distinct().ToList();
+                var callers = await FindEventCallersAsync(target.Symbol, solution, compilationByTree, cancellationToken)
+                    .ConfigureAwait(false);
+                foreach (var (owner, locations) in callers)
+                    CheckCaller(owner, locations, reason: null);
+            }
+            else
+            {
+                var callers = await SymbolFinder.FindCallersAsync(target.Symbol, solution, cancellationToken).ConfigureAwait(false);
+                foreach (var caller in callers)
+                {
+                    // SymbolFinder can group a static call and a dynamic call under the same caller.
+                    // Classify each site so a dynamic site cannot hide a missing edge at a static site.
+                    var sites = caller.Locations.GroupBy(location =>
+                        ClassifyCaller(caller.CalledSymbol, location, family, compilationByTree, resolveNodeId, cancellationToken));
+                    foreach (var site in sites)
+                        CheckCaller(caller.CallingSymbol, site, site.Key);
+                }
+            }
 
-                // Per-caller external-dispatch rule: a caller whose called symbol
-                // is outside the solution cannot have an edge (the extractor
-                // filters external targets), so it is set aside rather than
-                // swallowed by a target-level skip. An in-solution called symbol
-                // outside the dispatch family is recorded but still checked, so a
-                // missing MayDispatchTo edge stays a miss.
-                var (expected, reason) = ClassifyCaller(caller, family, compilationByTree, resolveNodeId);
-                if (!expected)
+            targetResults.Add(new SymbolFinderTargetResult(
+                target.Id,
+                target.Symbol.MethodKind,
+                [.. expectedCallers.OrderBy(static id => id, StringComparer.Ordinal)],
+                missingCallers));
+
+            void CheckCaller(ISymbol caller, IEnumerable<Location> locations, string? reason)
+            {
+                var candidates = CallerOwnerIds(caller, resolveNodeId).Distinct(StringComparer.Ordinal).ToList();
+                var lines = locations.Select(location => location.GetLineSpan().StartLinePosition.Line + 1).ToArray();
+                if (reason is not null)
                 {
                     setAsideCallers.Add(new SymbolFinderSetAsideCaller(
-                        target.Id,
-                        target.Symbol.MethodKind,
-                        candidates,
-                        reason!,
-                        CallerLines(caller)));
-                    if (reason == BindsExternalReason)
-                        continue;
+                        target.Id, target.Symbol.MethodKind, candidates, reason, lines));
+                    if (reason is BindsExternalReason or DynamicBindingReason)
+                        return;
                 }
 
                 var matched = false;
@@ -208,7 +218,7 @@ public static class SymbolFinderOracle
                     }
 
                     checkedPairs++;
-                    var isMatch = Matches(edgeSet, callerId, target, family);
+                    var isMatch = Matches(edgeSet, callerId, target.OwnerId, family, relations);
                     evaluated[key] = isMatch;
                     if (!isMatch)
                         continue;
@@ -219,22 +229,16 @@ public static class SymbolFinderOracle
                 }
 
                 if (matched)
-                    continue;
+                    return;
 
                 missingCallers.Add(new SymbolFinderMissingCaller(
                     target.Id,
                     target.Symbol.MethodKind,
                     candidates,
-                    AcceptedEdgeKinds(target),
-                    CallerLines(caller)));
+                    relationNames,
+                    lines));
                 missCounts[target.Symbol.MethodKind] = missCounts.GetValueOrDefault(target.Symbol.MethodKind) + 1;
             }
-
-            targetResults.Add(new SymbolFinderTargetResult(
-                target.Id,
-                target.Symbol.MethodKind,
-                [.. expectedCallers.OrderBy(static id => id, StringComparer.Ordinal)],
-                missingCallers));
         }
 
         // Fix (5): precision is the share of extracted Calls/MethodGroupRef edges
@@ -262,7 +266,6 @@ public static class SymbolFinderOracle
                 matchedPairs,
                 skippedImplicit,
                 skippedNoId,
-                skippedStaticAbstract,
                 targetCounts,
                 missCounts,
                 precision,
@@ -272,40 +275,35 @@ public static class SymbolFinderOracle
     private static bool Matches(
         HashSet<(string Source, string Kind, string Target)> edges,
         string callerId,
-        Target target,
-        HashSet<string> family)
+        string? ownerId,
+        HashSet<string> family,
+        Relation[] relations)
     {
-        // The accepted relations: Calls and MethodGroupRef to the target itself or
-        // to any member of the target's dispatch family (the target plus every id
-        // reachable through MayDispatchTo edges). This mirrors Roslyn reporting a
-        // caller of an interface/abstract member as a caller of its implementation
-        // or override, and the reverse.
-        foreach (var familyId in family)
+        foreach (var relation in relations)
         {
-            if (edges.Contains((callerId, nameof(EdgeKind.Calls), familyId)) ||
-                edges.Contains((callerId, nameof(EdgeKind.MethodGroupRef), familyId)))
-                return true;
-        }
-
-        // Accessor targets are not edge endpoints in extraction; the property or
-        // event is. A getter is the compiler-proved read of its property, a setter
-        // the compiler-proved write; a compound property access emits both. An event
-        // subscription or unsubscription writes the event.
-        if (target.OwnerId is { } ownerId)
-        {
-            if (target.Symbol.MethodKind == MethodKind.PropertyGet &&
-                edges.Contains((callerId, nameof(EdgeKind.Reads), ownerId)))
-                return true;
-            if (target.Symbol.MethodKind == MethodKind.PropertySet &&
-                edges.Contains((callerId, nameof(EdgeKind.Writes), ownerId)))
-                return true;
-            if (target.Symbol.MethodKind is MethodKind.EventAdd or MethodKind.EventRemove &&
-                edges.Contains((callerId, nameof(EdgeKind.Writes), ownerId)))
+            if (relation.OnOwner
+                    ? ownerId is not null && edges.Contains((callerId, relation.Kind, ownerId))
+                    : family.Any(id => edges.Contains((callerId, relation.Kind, id))))
                 return true;
         }
 
         return false;
     }
+
+    private static readonly Relation[] MethodRelations =
+        [new(nameof(EdgeKind.Calls), OnOwner: false), new(nameof(EdgeKind.MethodGroupRef), OnOwner: false)];
+
+    private static readonly Relation[] ReadRelations = [.. MethodRelations, new(nameof(EdgeKind.Reads), OnOwner: true)];
+    private static readonly Relation[] WriteRelations = [.. MethodRelations, new(nameof(EdgeKind.Writes), OnOwner: true)];
+
+    private static Relation[] AcceptedRelations(MethodKind kind) => kind switch
+    {
+        MethodKind.PropertyGet => ReadRelations,
+        MethodKind.PropertySet or MethodKind.EventAdd or MethodKind.EventRemove => WriteRelations,
+        _ => MethodRelations
+    };
+
+    private readonly record struct Relation(string Kind, bool OnOwner);
 
     /// <summary>
     ///     The undirected adjacency map over <see cref="EdgeKind.MayDispatchTo" />
@@ -366,42 +364,178 @@ public static class SymbolFinderOracle
         return family;
     }
 
-    /// <summary>The edge kinds <see cref="Matches" /> accepts for a target.</summary>
-    private static List<string> AcceptedEdgeKinds(Target target)
+    private static async Task<Dictionary<ISymbol, List<Location>>> FindEventCallersAsync(
+        IMethodSymbol accessor,
+        Solution solution,
+        Dictionary<SyntaxTree, Compilation> compilationByTree,
+        CancellationToken cancellationToken)
     {
-        var kinds = new List<string> { nameof(EdgeKind.Calls), nameof(EdgeKind.MethodGroupRef) };
-        if (target is { Symbol.MethodKind: MethodKind.Constructor, ContainingTypeId: not null })
-            kinds.Add(nameof(EdgeKind.Constructs));
-        if (target.OwnerId is not null)
+        var eventSymbol = (IEventSymbol)accessor.AssociatedSymbol!;
+        var references = await SymbolFinder.FindReferencesAsync(eventSymbol, solution, cancellationToken).ConfigureAwait(false);
+        var callers = new Dictionary<ISymbol, List<Location>>(SymbolEqualityComparer.Default);
+        var adds = accessor.MethodKind == MethodKind.EventAdd;
+
+        foreach (var reference in references.SelectMany(static item => item.Locations))
         {
-            if (target.Symbol.MethodKind == MethodKind.PropertyGet)
-                kinds.Add(nameof(EdgeKind.Reads));
-            if (target.Symbol.MethodKind == MethodKind.PropertySet)
-                kinds.Add(nameof(EdgeKind.Writes));
+            var location = reference.Location;
+            if (location.SourceTree is not { } tree || !compilationByTree.TryGetValue(tree, out var compilation))
+                continue;
+
+            var model = compilation.GetSemanticModel(tree);
+            var node = tree.GetRoot(cancellationToken).FindNode(location.SourceSpan, getInnermostNodeForTie: true);
+            var assignment = node.AncestorsAndSelf().OfType<AssignmentExpressionSyntax>().FirstOrDefault();
+            if (assignment is null ||
+                model.GetOperation(assignment, cancellationToken) is not IEventAssignmentOperation assignmentOp ||
+                assignmentOp.Adds != adds ||
+                assignmentOp.EventReference is not IEventReferenceOperation eventRef ||
+                !eventRef.Syntax.Span.Contains(location.SourceSpan) ||
+                !SameEvent(eventSymbol, eventRef.Event))
+                continue;
+
+            var owner = model.GetEnclosingSymbol(location.SourceSpan.Start, cancellationToken);
+            while (owner is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction })
+                owner = owner.ContainingSymbol;
+            if (owner is null)
+                continue;
+
+            if (!callers.TryGetValue(owner, out var locations))
+                callers[owner] = locations = [];
+            locations.Add(location);
         }
 
-        return kinds;
+        return callers;
+
+        static bool SameEvent(IEventSymbol expected, IEventSymbol actual)
+        {
+            expected = expected.OriginalDefinition;
+            actual = actual.OriginalDefinition;
+            // A reference from a different project can represent the same event as metadata.
+            return SymbolEqualityComparer.Default.Equals(expected, actual) ||
+                   (expected.ContainingAssembly.Identity.Equals(actual.ContainingAssembly.Identity) &&
+                    expected.GetDocumentationCommentId() is { } id && id == actual.GetDocumentationCommentId());
+        }
     }
 
-    /// <summary>
-    ///     Classifies a caller by the symbol Roslyn binds for it
-    ///     (<see cref="SymbolCallerInfo.CalledSymbol" />). <c>Expected</c> is true
-    ///     when the called symbol resolves to the target's dispatch family.
-    ///     Otherwise <c>Reason</c> is <see cref="BindsExternalReason" /> when the
-    ///     called symbol is outside the solution, or <see cref="BindsOtherReason" />
-    ///     when it is an in-solution symbol outside the family.
-    /// </summary>
-    private static (bool Expected, string? Reason) ClassifyCaller(
-        SymbolCallerInfo caller,
+    private static string? ClassifyCaller(
+        ISymbol called,
+        Location location,
         HashSet<string> family,
-        IReadOnlyDictionary<SyntaxTree, Compilation> compilationByTree,
-        Func<ISymbol, string?> resolveNodeId)
+        Dictionary<SyntaxTree, Compilation> compilationByTree,
+        Func<ISymbol, string?> resolveNodeId,
+        CancellationToken cancellationToken)
     {
-        var called = caller.CalledSymbol;
-        if (resolveNodeId(called) is { Length: > 0 } calledId && family.Contains(calledId))
-            return (true, null);
+        if (location.SourceTree is { } tree && compilationByTree.TryGetValue(tree, out var compilation))
+        {
+            var root = tree.GetRoot(cancellationToken);
+            var token = root.FindToken(location.SourceSpan.Start);
+            var model = compilation.GetSemanticModel(tree);
+            if (token.IsKind(SyntaxKind.UsingKeyword) && token.Span == location.SourceSpan)
+            {
+                var disposal = model.GetOperation(token.Parent!, cancellationToken);
+                var targets = disposal switch
+                {
+                    IUsingOperation operation => DisposeTargets(operation.Resources, operation.IsAsynchronous),
+                    IUsingDeclarationOperation operation => DisposeTargets(operation.DeclarationGroup, operation.IsAsynchronous),
+                    _ => null
+                };
+                if (targets is not null)
+                {
+                    var inSolution = false;
+                    foreach (var target in targets)
+                    {
+                        if (FamilyContains(target))
+                            return null;
+                        inSolution |= IsInSolution(target, compilationByTree);
+                    }
 
-        return (false, IsInSolution(called, compilationByTree) ? BindsOtherReason : BindsExternalReason);
+                    return inSolution ? BindsOtherReason : BindsExternalReason;
+                }
+
+                IEnumerable<IMethodSymbol> DisposeTargets(IOperation resources, bool isAsync) =>
+                    ResourceTypes(resources)
+                        .Select(type => DisposeTarget(type, isAsync, compilation, called as IMethodSymbol))
+                        .OfType<IMethodSymbol>();
+            }
+
+            var node = root.FindNode(location.SourceSpan, getInnermostNodeForTie: true);
+            foreach (var ancestor in node.AncestorsAndSelf())
+            {
+                // A site inside an operand of the dynamic operation binds statically.
+                if (model.GetOperation(ancestor, cancellationToken) is
+                    (IDynamicInvocationOperation or IDynamicObjectCreationOperation or
+                     IDynamicIndexerAccessOperation or IDynamicMemberReferenceOperation) and var dynamicOperation &&
+                    !dynamicOperation.ChildOperations.Any(child => child.Syntax.Span.Contains(location.SourceSpan)))
+                    return DynamicBindingReason;
+                if (ancestor is StatementSyntax)
+                    break;
+            }
+        }
+
+        if (FamilyContains(called))
+            return null;
+        return IsInSolution(called, compilationByTree) ? BindsOtherReason : BindsExternalReason;
+
+        bool FamilyContains(ISymbol symbol) => resolveNodeId(symbol) is { Length: > 0 } id && family.Contains(id);
+    }
+
+    private static IEnumerable<ITypeSymbol> ResourceTypes(IOperation resources)
+    {
+        if (resources is IVariableDeclarationGroupOperation group)
+        {
+            foreach (var declaration in group.Declarations)
+            foreach (var declarator in declaration.Declarators)
+                yield return declarator.Symbol.Type;
+        }
+        else if (resources.Type is { } type)
+        {
+            yield return type;
+        }
+    }
+
+    private static IMethodSymbol? DisposeTarget(ITypeSymbol type, bool isAsync, Compilation compilation, IMethodSymbol? called)
+    {
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+            type = nullable.TypeArguments[0];
+        if (type.IsRefLikeType)
+            return called;
+
+        var interfaceType = isAsync
+            ? compilation.GetTypeByMetadataName("System.IAsyncDisposable")
+            : compilation.GetSpecialType(SpecialType.System_IDisposable);
+        var member = interfaceType?.GetMembers(isAsync ? "DisposeAsync" : "Dispose").OfType<IMethodSymbol>().FirstOrDefault();
+        if (member is null)
+            return null;
+
+        var implementingType = type switch
+        {
+            ITypeParameterSymbol parameter => EffectiveBaseClass(parameter),
+            INamedTypeSymbol { TypeKind: TypeKind.Interface } => null,
+            INamedTypeSymbol named => named,
+            _ => null
+        };
+
+        return implementingType?.FindImplementationForInterfaceMember(member) as IMethodSymbol ?? member;
+    }
+
+    private static INamedTypeSymbol? EffectiveBaseClass(ITypeParameterSymbol parameter)
+    {
+        var seen = new HashSet<ITypeParameterSymbol>(SymbolEqualityComparer.Default);
+        var pending = new Stack<ITypeParameterSymbol>([parameter]);
+        while (pending.TryPop(out var current))
+        {
+            if (!seen.Add(current))
+                continue;
+
+            foreach (var constraint in current.ConstraintTypes)
+            {
+                if (constraint is INamedTypeSymbol { TypeKind: TypeKind.Class } named)
+                    return named;
+                if (constraint is ITypeParameterSymbol next)
+                    pending.Push(next);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -411,7 +545,7 @@ public static class SymbolFinderOracle
     /// </summary>
     private static bool IsInSolution(
         ISymbol symbol,
-        IReadOnlyDictionary<SyntaxTree, Compilation> compilationByTree)
+        Dictionary<SyntaxTree, Compilation> compilationByTree)
     {
         foreach (var location in symbol.Locations)
         {
@@ -422,10 +556,7 @@ public static class SymbolFinderOracle
         return false;
     }
 
-    private static List<int> CallerLines(SymbolCallerInfo caller) =>
-        [.. caller.Locations.Select(location => location.GetLineSpan().StartLinePosition.Line + 1)];
-
-    private sealed record Target(string Id, IMethodSymbol Symbol, string? ContainingTypeId, string? OwnerId);
+    private sealed record Target(string Id, IMethodSymbol Symbol, string? OwnerId);
 
     private static IEnumerable<string> CallerOwnerIds(ISymbol caller, Func<ISymbol, string?> resolveNodeId)
     {
@@ -456,15 +587,6 @@ public static class SymbolFinderOracle
                     yield return containerId;
                 break;
         }
-    }
-
-    private static bool IsStaticAbstractImplementation(IMethodSymbol method)
-    {
-        if (!method.IsStatic || method.ContainingType.TypeKind != TypeKind.Class)
-            return false;
-        return method.ContainingType.AllInterfaces
-            .SelectMany(interfaceType => interfaceType.GetMembers(method.Name).OfType<IMethodSymbol>())
-            .Any(candidate => candidate.IsStatic && candidate.IsAbstract);
     }
 
     private static IEnumerable<INamedTypeSymbol> AllTypes(INamespaceSymbol ns)
@@ -518,8 +640,8 @@ public sealed record SymbolFinderEdge(string Source, string Kind, string Target)
 ///     A caller Roslyn reported for a target whose called symbol is not the
 ///     target or a member of its dispatch family: the candidate owner ids the
 ///     caller normalizes to, the reason it was set aside
-///     (<see cref="SymbolFinderOracle.BindsExternalReason" /> or
-///     <see cref="SymbolFinderOracle.BindsOtherReason" />), and its source lines.
+///     and its source lines. The reason describes an external target, a dynamic
+///     binding, or an in-solution target outside the dispatch family.
 /// </summary>
 public sealed record SymbolFinderSetAsideCaller(
     string TargetId,
@@ -534,7 +656,6 @@ public sealed record SymbolFinderOracleSummary(
     int MatchedPairs,
     int SkippedImplicit,
     int SkippedNoId,
-    IReadOnlyList<string> SkippedStaticAbstract,
     IReadOnlyDictionary<MethodKind, int> TargetCounts,
     IReadOnlyDictionary<MethodKind, int> MissCounts,
     double Precision,

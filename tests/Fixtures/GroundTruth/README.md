@@ -4,8 +4,14 @@ Committed, indexable source corpora for the ground-truth tests. Consumers:
 `TargetTreeIntegrityTests` checks that the CLI and MCP surface leave the
 `CallShapes` tree unchanged. `GroundTruthGoldenTests` (Oracle C) compares the
 extractor output on `CallShapes` and `CrossProject` with their complete goldens
-as exact sets. `GroundTruthOracleBTests` (Oracle B) checks `SymbolFinder` caller
-recall on the same two corpora. `CrossProjectBoundaryTests` runs the VB boundary
+as exact sets. `GroundTruthOracleBTests` (Oracle B) checks Roslyn callers on
+the same two corpora. It checks ordinary methods, constructors, operators,
+conversions, explicit interface implementations, property accessors, and the
+add and remove accessors of every source event. It sets aside dynamic calls and
+callers whose bound target is outside the solution. For a `using` site, this
+check uses the disposal target from D10. The recall gate samples the source
+methods Roslyn declares in scope. A sampled method with no declaration in the
+index is a miss. `CrossProjectBoundaryTests` runs the VB boundary
 test against `NonCSharp`. `ExtractorVersionGateTests` extracts `CallShapes`,
 `CrossProject` and `ExtractorGate`. The doc examples run against them.
 

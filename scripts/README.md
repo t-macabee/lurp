@@ -1,7 +1,7 @@
 # scripts/
 
-- `r1-compare/`: incremental-vs-full parity comparison harness.
-- `r1-verify-enote.sh`: five-cycle incremental convergence gate for eNoteV2. Runs the local Debug build by default; set `LURP_CMD` to run the packed tool instead (`LURP_CMD='/c/tools/lurp/lurp.exe'`).
+- `r1-compare/`: the R1 comparison. It calls the same snapshot comparison as the parity tests.
+- `r1-verify-enote.sh`: eleven-cycle incremental convergence gate for eNoteV2. It restores its copy of the solution, fails when an index run reports unrestored projects, and compares the incremental index with a full index after every cycle. Runs the local Debug build by default; set `LURP_CMD` to run the packed tool instead (`LURP_CMD='/c/tools/lurp/lurp.exe'`).
 - `ci/`: CI helper PowerShell module and its tests (`LurpCi.psm1`, `LurpCi.Tests.ps1`).
 - `parity/`: real-parity harness projects — `gate/` (console gate), `oracle-b/` (independent symbol oracle), `shared/` (MCP stdio client and sampling fixtures).
 - `smoke/packed-tool-smoke.ps1`: smoke test of an installed packed tool (`-Lurp <tool>/lurp` (`lurp.exe` on Windows)). Runs every CLI mode and every MCP tool against `tests/Fixtures/Smoke`, then kills stdin mid-`lurp_index` and checks the next index recovers. Needs Python 3 for `smoke/snapshot-state.py`; `-SkipKillTest` skips the slow repo-index half.

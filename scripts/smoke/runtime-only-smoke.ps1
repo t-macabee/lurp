@@ -18,16 +18,6 @@ $Lurp = (Resolve-Path $Lurp).Path
 $SolutionPath = (Resolve-Path $SolutionPath).Path
 Import-Module (Join-Path $PSScriptRoot 'LurpSmoke.psm1') -Force -ArgumentList $Lurp
 
-function Assert-True([bool]$Condition, [string]$Message) {
-    if (-not $Condition) { throw "ASSERT FAILED: $Message" }
-}
-
-function ConvertFrom-LurpJson([string]$Text) {
-    $start = $Text.IndexOf('{')
-    if ($start -lt 0) { throw "no JSON object in output:`n$Text" }
-    return $Text.Substring($start) | ConvertFrom-Json
-}
-
 $dotnetName = if ($IsWindows) { 'dotnet.exe' } else { 'dotnet' }
 $dotnetExe = Join-Path $RuntimeDir $dotnetName
 Assert-True (Test-Path $dotnetExe) "no $dotnetName in RuntimeDir '$RuntimeDir'"

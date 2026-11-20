@@ -98,10 +98,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "$sha is not on main" }
           $version = Get-LurpVersion -ProjectPath target/src/Lurp.csproj
           if ($t.Tag) {
-            $tagVersion = $t.Tag -replace '^v', ''
-            if ($version -ne $tagVersion) {
-              throw "Tag $($t.Tag) does not match <Version>$version</Version> in src/Lurp.csproj."
-            }
+            Assert-ReleaseTag -Tag $t.Tag -Version $version
             Write-Host "Tag $($t.Tag) matches <Version>$version</Version>."
           } else {
             Write-Host "dry run on a commit: would publish v$version"

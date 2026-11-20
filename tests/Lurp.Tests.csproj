@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Match the test configuration when the solution builds referenced parity tools. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
     <!-- Default run skips Slow tests; see Lurp.Tests.runsettings. -->
     <RunSettingsFilePath>$(MSBuildThisFileDirectory)Lurp.Tests.runsettings</RunSettingsFilePath>
   </PropertyGroup>
@@ -34,6 +36,8 @@
   <ItemGroup>
     <ProjectReference Include="..\scripts\parity\shared\Lurp.Parity.Shared.csproj" />
     <ProjectReference Include="..\scripts\parity\oracle-b\Lurp.Parity.OracleB.csproj" />
+    <ProjectReference Include="..\scripts\parity\gate\gate.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\scripts\r1-compare\r1-compare.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- The growth gate tests run the perf harness as a process; this reference puts

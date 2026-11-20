@@ -1,404 +1,49 @@
+using Lurp.Parity.Shared;
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
 
 if (args.Length != 2)
+    return DataError("Usage: r1-compare <incremental-db> <full-db>");
+
+foreach (var path in args)
 {
-    Console.Error.WriteLine("Usage: r1-compare <db-path-b> <db-path-c>");
-    Console.Error.WriteLine("  Compares latest snapshots in two databases field-by-field.");
-    Environment.Exit(2);
+    if (!File.Exists(path))
+        return DataError($"File not found: {path}");
 }
 
-var dbPathB = args[0];
-var dbPathC = args[1];
-
-if (!File.Exists(dbPathB)) { Console.Error.WriteLine($"File not found: {dbPathB}"); Environment.Exit(1); }
-if (!File.Exists(dbPathC)) { Console.Error.WriteLine($"File not found: {dbPathC}"); Environment.Exit(1); }
-
-using var storeB = OpenStore(dbPathB);
-using var storeC = OpenStore(dbPathC);
-
-var snapshotB = storeB.LoadLatestSnapshot()?.SnapshotId
-    ?? throw new InvalidOperationException($"No snapshot in {dbPathB}");
-var snapshotC = storeC.LoadLatestSnapshot()?.SnapshotId
-    ?? throw new InvalidOperationException($"No snapshot in {dbPathC}");
-
-Console.WriteLine($"B snapshot: {snapshotB}");
-Console.WriteLine($"C snapshot: {snapshotC}");
-
-var errors = new List<string>();
-
-// --- Snapshot ID equality ---
-if (snapshotB != snapshotC)
+try
 {
-    errors.Add($"Snapshot IDs differ: B={snapshotB} C={snapshotC}");
-}
+    using var incremental = new SqliteIndexStore(args[0]);
+    using var full = new SqliteIndexStore(args[1]);
+    incremental.OpenReadOnly();
+    full.OpenReadOnly();
 
-// --- Symbol IDs ---
-var symbolsB = storeB.GetSymbolIdsInSnapshot(snapshotB);
-var symbolsC = storeC.GetSymbolIdsInSnapshot(snapshotC);
-symbolsB.Sort(StringComparer.Ordinal);
-symbolsC.Sort(StringComparer.Ordinal);
+    var incrementalId = incremental.LoadLatestSnapshot()?.SnapshotId;
+    var fullId = full.LoadLatestSnapshot()?.SnapshotId;
+    if (incrementalId is null)
+        return DataError($"No snapshot in {args[0]}");
+    if (fullId is null)
+        return DataError($"No snapshot in {args[1]}");
 
-if (symbolsB.Count != symbolsC.Count)
-{
-    var onlyB = symbolsB.Except(symbolsC, StringComparer.Ordinal).Take(10).ToList();
-    var onlyC = symbolsC.Except(symbolsB, StringComparer.Ordinal).Take(10).ToList();
-    errors.Add($"Symbol count mismatch: B={symbolsB.Count} C={symbolsC.Count}");
-    if (onlyB.Count > 0) errors.Add($"  Only in B: {string.Join(", ", onlyB)}");
-    if (onlyC.Count > 0) errors.Add($"  Only in C: {string.Join(", ", onlyC)}");
-}
-else if (!symbolsB.SequenceEqual(symbolsC, StringComparer.Ordinal))
-{
-    errors.Add("Symbol ID sets differ (same count, different IDs).");
-}
-
-// --- Symbols (FQN + metadata_json) ---
-var symRowsB = ReadSymbols(dbPathB, snapshotB);
-var symRowsC = ReadSymbols(dbPathC, snapshotC);
-if (!symRowsB.SequenceEqual(symRowsC))
-{
-    errors.Add($"Symbol metadata mismatch ({symRowsB.Count} vs {symRowsC.Count} rows).");
-}
-
-// --- Declarations ---
-var declB = ReadDeclarations(dbPathB, snapshotB);
-var declC = ReadDeclarations(dbPathC, snapshotC);
-if (declB.Count != declC.Count)
-{
-    errors.Add($"Declaration count mismatch: B={declB.Count} C={declC.Count}");
-}
-else if (!declB.SequenceEqual(declC))
-{
-    errors.Add("Declaration data mismatch (same count, different values).");
-}
-
-// --- Edges ---
-var edgesB = storeB.GetEdges(snapshotB);
-var edgesC = storeC.GetEdges(snapshotC);
-NormalizeEdges(edgesB);
-NormalizeEdges(edgesC);
-
-if (edgesB.Count != edgesC.Count)
-{
-    var bSet = edgesB.Select(e => $"{e.SourceSymbolId}|{e.TargetSymbolId}|{e.Kind}|{e.Provenance}").ToHashSet();
-    var cSet = edgesC.Select(e => $"{e.SourceSymbolId}|{e.TargetSymbolId}|{e.Kind}|{e.Provenance}").ToHashSet();
-    var onlyB = bSet.Except(cSet).Take(10).ToList();
-    var onlyC = cSet.Except(bSet).Take(10).ToList();
-    errors.Add($"Edge count mismatch: B={edgesB.Count} C={edgesC.Count}");
-    if (onlyB.Count > 0) errors.Add($"  Only in B: {string.Join("; ", onlyB)}");
-    if (onlyC.Count > 0) errors.Add($"  Only in C: {string.Join("; ", onlyC)}");
-}
-else
-{
-    for (int i = 0; i < edgesB.Count; i++)
+    var differences = SnapshotComparison.Compare(args[0], incrementalId, args[1], fullId);
+    if (differences.Count != 0)
     {
-        var diff = EdgeDiff(edgesB[i], edgesC[i]);
-        if (diff is not null)
-            errors.Add($"Edge[{i}] mismatch: {diff}");
+        foreach (var difference in differences)
+            Console.Error.WriteLine(difference);
+        return 1;
     }
+
+    Console.WriteLine($"PASS: incremental ≡ full ({incremental.CountEdges(incrementalId)} edges, " +
+                      $"{incremental.CountSymbolsInSnapshot(incrementalId)} symbols)");
+    return 0;
+}
+catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException or InvalidOperationException)
+{
+    return DataError(ex.Message);
 }
 
-// --- Diagnostics ---
-var diagB = storeB.GetDiagnostics(snapshotB);
-var diagC = storeC.GetDiagnostics(snapshotC);
-NormalizeDiagnostics(diagB);
-NormalizeDiagnostics(diagC);
-if (diagB.Count != diagC.Count)
-    errors.Add($"Diagnostic count mismatch: B={diagB.Count} C={diagC.Count}");
-else
+static int DataError(string message)
 {
-    var diagMismatches = 0;
-    for (int i = 0; i < diagB.Count; i++)
-    {
-        if (DiagEqual(diagB[i], diagC[i]))
-            continue;
-        diagMismatches++;
-        if (diagMismatches <= 20)
-        {
-            errors.Add(
-                $"Diagnostic[{i}] mismatch: " +
-                $"B=[{diagB[i].ProjectName}|{diagB[i].DocumentPath}|{diagB[i].Severity}|{diagB[i].Id}|{diagB[i].Message}|" +
-                $"{diagB[i].StartLine}|{diagB[i].StartColumn}|{diagB[i].EndLine}|{diagB[i].EndColumn}] " +
-                $"C=[{diagC[i].ProjectName}|{diagC[i].DocumentPath}|{diagC[i].Severity}|{diagC[i].Id}|{diagC[i].Message}|" +
-                $"{diagC[i].StartLine}|{diagC[i].StartColumn}|{diagC[i].EndLine}|{diagC[i].EndColumn}]");
-        }
-    }
-    if (diagMismatches > 0)
-        errors.Add($"Diagnostic mismatches: {diagMismatches} total.");
-}
-
-// --- Binding incompleteness ---
-var incB = NormalizeBindingIncompleteness(storeB.GetBindingIncompleteness(snapshotB));
-var incC = NormalizeBindingIncompleteness(storeC.GetBindingIncompleteness(snapshotC));
-if (!incB.SequenceEqual(incC))
-{
-    static string BiKey(BindingIncompletenessRecord r) =>
-        $"{r.ProjectName}|{r.DocumentPath ?? ""}|{r.Reason}|{r.Count}";
-    var bSet = incB.Select(BiKey).ToHashSet();
-    var cSet = incC.Select(BiKey).ToHashSet();
-    var onlyB = bSet.Except(cSet).Take(10).ToList();
-    var onlyC = cSet.Except(bSet).Take(10).ToList();
-    errors.Add($"Binding incompleteness mismatch: B={incB.Count} rows C={incC.Count} rows.");
-    if (onlyB.Count > 0) errors.Add($"  Only in B (incremental): {string.Join("; ", onlyB)}");
-    if (onlyC.Count > 0) errors.Add($"  Only in C (full): {string.Join("; ", onlyC)}");
-}
-
-// --- Annotations ---
-var annB = storeB.GetAnnotations(snapshotB);
-var annC = storeC.GetAnnotations(snapshotC);
-NormalizeAnnotations(annB);
-NormalizeAnnotations(annC);
-if (annB.Count != annC.Count)
-    errors.Add($"Annotation count mismatch: B={annB.Count} C={annC.Count}");
-else
-{
-    var annMismatches = 0;
-    for (int i = 0; i < annB.Count; i++)
-    {
-        if (AnnotationEqual(annB[i], annC[i]))
-            continue;
-        annMismatches++;
-        if (annMismatches <= 20)
-        {
-            errors.Add(
-                $"Annotation[{i}] mismatch: " +
-                $"B=[{annB[i].SymbolId}|{annB[i].Kind}|{annB[i].Value}|{annB[i].DocumentPath ?? ""}|{annB[i].AnnotationId}] " +
-                $"C=[{annC[i].SymbolId}|{annC[i].Kind}|{annC[i].Value}|{annC[i].DocumentPath ?? ""}|{annC[i].AnnotationId}]");
-        }
-    }
-    if (annMismatches > 0)
-        errors.Add($"Annotation mismatches: {annMismatches} total.");
-}
-
-// --- FTS ---
-var ftsSourceB = ReadSourceFts(dbPathB, snapshotB);
-var ftsSourceC = ReadSourceFts(dbPathC, snapshotC);
-if (!ftsSourceB.SequenceEqual(ftsSourceC))
-    errors.Add("Source FTS mismatch.");
-
-var ftsSymB = ReadSymbolFts(dbPathB, snapshotB);
-var ftsSymC = ReadSymbolFts(dbPathC, snapshotC);
-if (!ftsSymB.SequenceEqual(ftsSymC))
-    errors.Add("Symbol FTS mismatch.");
-
-// --- Result ---
-if (errors.Count == 0)
-{
-    Console.WriteLine($"PASS: B5 ≡ C ({edgesB.Count} edges, {symbolsB.Count} symbols, 0 diffs)");
-    Environment.Exit(0);
-}
-else
-{
-    Console.Error.WriteLine($"FAIL: {errors.Count} difference(s):");
-    foreach (var e in errors)
-        Console.Error.WriteLine($"  - {e}");
-    Environment.Exit(1);
-}
-
-// ========== helpers ==========
-
-static SqliteIndexStore OpenStore(string dbPath)
-{
-    var store = new SqliteIndexStore(dbPath);
-    store.Open();
-    return store;
-}
-
-static List<(string SymbolId, string? Fqn, string? MetadataJson)> ReadSymbols(string dbPath, string snapshotId)
-{
-    using var conn = new SqliteConnection($"Data Source={dbPath}");
-    conn.Open();
-    using var cmd = conn.CreateCommand();
-    cmd.CommandText = "SELECT symbol_id, fqn, metadata_json FROM snapshot_symbols WHERE snapshot_id = @id ORDER BY symbol_id;";
-    cmd.Parameters.AddWithValue("@id", snapshotId);
-    var result = new List<(string, string?, string?)>();
-    using var r = cmd.ExecuteReader();
-    while (r.Read())
-        result.Add((r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
-    return result;
-}
-
-static List<(string SymbolId, string DocPath, int? FullStart, int? FullEnd, int? SigStart, int? SigEnd,
-    int? BodyStart, int? BodyEnd, int? NameStart, int? NameEnd, bool IsPartial, bool IsGenerated, string? GenId)>
-    ReadDeclarations(string dbPath, string snapshotId)
-{
-    using var conn = new SqliteConnection($"Data Source={dbPath}");
-    conn.Open();
-    using var cmd = conn.CreateCommand();
-    cmd.CommandText = @"
-        SELECT d.symbol_id, docs.relative_path,
-               d.full_start, d.full_end, d.signature_start, d.signature_end,
-               d.body_start, d.body_end, d.name_start, d.name_end,
-               d.is_partial, d.is_generated, d.generator_identity
-        FROM snapshot_declarations sdecl
-        JOIN declarations d ON d.declaration_id = sdecl.declaration_id
-        JOIN document_versions dv ON dv.document_version_id = d.document_version_id
-        JOIN documents docs ON docs.document_id = dv.document_id
-        WHERE sdecl.snapshot_id = @id
-        ORDER BY d.symbol_id, docs.relative_path, d.full_start, d.full_end,
-                 d.signature_start, d.signature_end, d.body_start, d.body_end,
-                 d.name_start, d.name_end;";
-    cmd.Parameters.AddWithValue("@id", snapshotId);
-    var result = new List<(string, string, int?, int?, int?, int?, int?, int?, int?, int?, bool, bool, string?)>();
-    using var r = cmd.ExecuteReader();
-    while (r.Read())
-        result.Add((
-            r.GetString(0), r.GetString(1),
-            ReadNI(r, 2), ReadNI(r, 3), ReadNI(r, 4), ReadNI(r, 5),
-            ReadNI(r, 6), ReadNI(r, 7), ReadNI(r, 8), ReadNI(r, 9),
-            r.GetInt32(10) != 0, r.GetInt32(11) != 0,
-            r.IsDBNull(12) ? null : r.GetString(12)));
-    return result;
-}
-
-static int? ReadNI(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetInt32(i);
-
-static void NormalizeEdges(List<EdgeRecord> edges)
-{
-    var field = typeof(EdgeRecord).GetField("<SnapshotId>k__BackingField",
-        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-    foreach (var e in edges)
-        field?.SetValue(e, string.Empty);
-
-    edges.Sort((a, b) =>
-    {
-        int c = StringComparer.Ordinal.Compare(a.SourceSymbolId, b.SourceSymbolId);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.TargetSymbolId, b.TargetSymbolId);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.Kind, b.Kind);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.Provenance, b.Provenance);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.ExtractorVersion, b.ExtractorVersion);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.SourceDocumentPath ?? "", b.SourceDocumentPath ?? "");
-        if (c != 0) return c;
-        c = (a.SourceStartLine ?? 0).CompareTo(b.SourceStartLine ?? 0);
-        if (c != 0) return c;
-        c = (a.SourceStartColumn ?? 0).CompareTo(b.SourceStartColumn ?? 0);
-        if (c != 0) return c;
-        c = (a.SourceEndLine ?? 0).CompareTo(b.SourceEndLine ?? 0);
-        if (c != 0) return c;
-        c = (a.SourceEndColumn ?? 0).CompareTo(b.SourceEndColumn ?? 0);
-        if (c != 0) return c;
-        c = a.IsCrossGenerated.CompareTo(b.IsCrossGenerated);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.TypeArgumentsJson ?? "", b.TypeArgumentsJson ?? "");
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.ReceiverTypeConstraintsJson ?? "", b.ReceiverTypeConstraintsJson ?? "");
-        if (c != 0) return c;
-        c = a.SourceIsBoundary.CompareTo(b.SourceIsBoundary);
-        if (c != 0) return c;
-        return a.TargetIsBoundary.CompareTo(b.TargetIsBoundary);
-    });
-}
-
-static string? EdgeDiff(EdgeRecord a, EdgeRecord b)
-{
-    if (a.SourceSymbolId != b.SourceSymbolId) return $"SourceSymbolId: {a.SourceSymbolId} != {b.SourceSymbolId}";
-    if (a.TargetSymbolId != b.TargetSymbolId) return $"TargetSymbolId: {a.TargetSymbolId} != {b.TargetSymbolId}";
-    if (a.Kind != b.Kind) return $"Kind: {a.Kind} != {b.Kind}";
-    if (a.Provenance != b.Provenance) return $"Provenance: {a.Provenance} != {b.Provenance}";
-    if (a.ExtractorVersion != b.ExtractorVersion) return $"ExtractorVersion: {a.ExtractorVersion} != {b.ExtractorVersion}";
-    if (a.SourceDocumentPath != b.SourceDocumentPath) return $"SourceDocumentPath: {a.SourceDocumentPath} != {b.SourceDocumentPath}";
-    if (a.SourceStartLine != b.SourceStartLine) return $"SourceStartLine: {a.SourceStartLine} != {b.SourceStartLine}";
-    if (a.SourceEndLine != b.SourceEndLine) return $"SourceEndLine: {a.SourceEndLine} != {b.SourceEndLine}";
-    if (a.SourceStartColumn != b.SourceStartColumn) return $"SourceStartColumn: {a.SourceStartColumn} != {b.SourceStartColumn}";
-    if (a.SourceEndColumn != b.SourceEndColumn) return $"SourceEndColumn: {a.SourceEndColumn} != {b.SourceEndColumn}";
-    if (a.ReceiverTypeConstraintsJson != b.ReceiverTypeConstraintsJson) return "ReceiverTypeConstraintsJson";
-    if (a.IsCrossGenerated != b.IsCrossGenerated) return "IsCrossGenerated";
-    if (a.TypeArgumentsJson != b.TypeArgumentsJson) return "TypeArgumentsJson";
-    if (a.SourceIsBoundary != b.SourceIsBoundary) return "SourceIsBoundary";
-    if (a.TargetIsBoundary != b.TargetIsBoundary) return "TargetIsBoundary";
-    return null;
-}
-
-static void NormalizeDiagnostics(List<DiagnosticRecord> diags)
-{
-    diags.Sort((a, b) =>
-    {
-        int c = StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.Id, b.Id);
-        if (c != 0) return c;
-        c = (a.StartLine ?? 0).CompareTo(b.StartLine ?? 0);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.Message, b.Message);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.ProjectName, b.ProjectName);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.Severity, b.Severity);
-        if (c != 0) return c;
-        c = (a.StartColumn ?? 0).CompareTo(b.StartColumn ?? 0);
-        if (c != 0) return c;
-        c = (a.EndLine ?? 0).CompareTo(b.EndLine ?? 0);
-        if (c != 0) return c;
-        return (a.EndColumn ?? 0).CompareTo(b.EndColumn ?? 0);
-    });
-}
-
-static bool DiagEqual(DiagnosticRecord a, DiagnosticRecord b) =>
-    a.ProjectName == b.ProjectName && a.DocumentPath == b.DocumentPath &&
-    a.Severity == b.Severity && a.Id == b.Id && a.Message == b.Message &&
-    a.StartLine == b.StartLine && a.StartColumn == b.StartColumn &&
-    a.EndLine == b.EndLine && a.EndColumn == b.EndColumn;
-
-static bool AnnotationEqual(AnnotationRecord a, AnnotationRecord b) =>
-    a.SymbolId == b.SymbolId && a.Kind == b.Kind &&
-    a.Value == b.Value && a.DocumentPath == b.DocumentPath;
-
-static void NormalizeAnnotations(List<AnnotationRecord> anns)
-{
-    anns.Sort((a, b) =>
-    {
-        int c = StringComparer.Ordinal.Compare(a.SymbolId, b.SymbolId);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.Kind, b.Kind);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.Value, b.Value);
-        if (c != 0) return c;
-        return StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
-    });
-}
-
-static List<BindingIncompletenessRecord> NormalizeBindingIncompleteness(List<BindingIncompletenessRecord> records)
-{
-    records.Sort((a, b) =>
-    {
-        int c = StringComparer.Ordinal.Compare(a.ProjectName, b.ProjectName);
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
-        if (c != 0) return c;
-        c = StringComparer.Ordinal.Compare(a.Reason, b.Reason);
-        if (c != 0) return c;
-        return a.Count.CompareTo(b.Count);
-    });
-    return records;
-}
-
-static List<(string DocPath, string Content)> ReadSourceFts(string dbPath, string snapshotId)
-{
-    using var conn = new SqliteConnection($"Data Source={dbPath}");
-    conn.Open();
-    using var cmd = conn.CreateCommand();
-    cmd.CommandText = "SELECT document_path, content FROM source_fts WHERE snapshot_id = @id ORDER BY document_path, content;";
-    cmd.Parameters.AddWithValue("@id", snapshotId);
-    var r = new List<(string, string)>();
-    using var reader = cmd.ExecuteReader();
-    while (reader.Read()) r.Add((reader.GetString(0), reader.GetString(1)));
-    return r;
-}
-
-static List<(string SymbolId, string Fqn, string DocCommentId, string Kind)> ReadSymbolFts(string dbPath, string snapshotId)
-{
-    using var conn = new SqliteConnection($"Data Source={dbPath}");
-    conn.Open();
-    using var cmd = conn.CreateCommand();
-    cmd.CommandText = "SELECT symbol_id, fqn, doc_comment_id, kind FROM symbol_fts WHERE snapshot_id = @id ORDER BY symbol_id, fqn, doc_comment_id, kind;";
-    cmd.Parameters.AddWithValue("@id", snapshotId);
-    var r = new List<(string, string, string, string)>();
-    using var reader = cmd.ExecuteReader();
-    while (reader.Read()) r.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
-    return r;
+    Console.Error.WriteLine(message);
+    return 2;
 }

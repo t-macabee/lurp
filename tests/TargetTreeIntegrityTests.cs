@@ -32,8 +32,10 @@ public sealed class TargetTreeIntegrityTests
 
         (int ExitCode, string Stdout, string Stderr) Cli(TimeSpan timeout, params string[] args)
         {
+            var result = RunCli(timeout, args);
+            Assert.True(result.ExitCode == 0, $"lurp exited {result.ExitCode}:\n{result.Stderr}\n{result.Stdout}");
             cliModesRun.Add(DocExamples.ModeOf(args)!);
-            return RunCli(timeout, args);
+            return result;
         }
 
         try
@@ -61,35 +63,33 @@ public sealed class TargetTreeIntegrityTests
             using var findDoc = JsonDocument.Parse(find.Stdout);
             var symbolId = findDoc.RootElement.GetProperty("symbol_id").GetString()!;
 
-            AssertCliOk(Cli(CliTimeout, "--mode=get-source", "--document=App/ShapeCallers.cs", $"--solution={solutionPath}", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=outline", "--document=App/ShapeCallers.cs", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=get-symbol", $"--symbol={symbolId}", "--view=signature", $"--solution={solutionPath}"));
-            AssertCliOk(Cli(CliTimeout, "--mode=search", "--query=FromQueryLambda", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=grep", "--query=FromQueryLambda", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=navigate", "--file=App/ShapeCallers.cs", "--line=21", $"--solution={solutionPath}", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=impact", $"--symbol={symbolId}", "--direction=upstream", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=context", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=summary", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=timings", "--json", $"--solution={solutionPath}"));
-            AssertCliOk(Cli(CliTimeout, "--mode=diagnostics", "--limit=5", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=dead-candidates", "--limit=5", $"--solution={solutionPath}", "--output=json", "--quiet"));
+            Cli(CliTimeout, "--mode=get-source", "--document=App/ShapeCallers.cs", $"--solution={solutionPath}", "--quiet");
+            Cli(CliTimeout, "--mode=outline", "--document=App/ShapeCallers.cs", $"--solution={solutionPath}", "--output=json", "--quiet");
+            Cli(CliTimeout, "--mode=get-symbol", $"--symbol={symbolId}", "--view=signature", $"--solution={solutionPath}");
+            Cli(CliTimeout, "--mode=search", "--query=FromQueryLambda", $"--solution={solutionPath}", "--output=json", "--quiet");
+            Cli(CliTimeout, "--mode=grep", "--query=FromQueryLambda", $"--solution={solutionPath}", "--output=json", "--quiet");
+            Cli(CliTimeout, "--mode=navigate", "--file=App/ShapeCallers.cs", "--line=21", $"--solution={solutionPath}", "--quiet");
+            Cli(CliTimeout, "--mode=impact", $"--symbol={symbolId}", "--direction=upstream", $"--solution={solutionPath}", "--output=json", "--quiet");
+            Cli(CliTimeout, "--mode=context", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=summary", "--quiet");
+            Cli(CliTimeout, "--mode=timings", "--json", $"--solution={solutionPath}");
+            Cli(CliTimeout, "--mode=diagnostics", "--limit=5", $"--solution={solutionPath}", "--output=json", "--quiet");
+            Cli(CliTimeout, "--mode=dead-candidates", "--limit=5", $"--solution={solutionPath}", "--output=json", "--quiet");
 
             var annotate = Cli(CliTimeout, "--mode=annotate", $"--symbol={symbolId}", "--annotation-kind=note",
                 "--value=tree integrity", $"--solution={solutionPath}");
-            AssertCliOk(annotate);
             using var annotateDoc = JsonDocument.Parse(annotate.Stdout);
             var annotationId = annotateDoc.RootElement.GetProperty("annotation_id").GetInt64();
             // CLI annotate creates the row that MCP lurp_retract_annotation retracts.
             var secondAnnotate = Cli(CliTimeout, "--mode=annotate", $"--symbol={symbolId}", "--annotation-kind=note",
                 "--value=tree integrity mcp", $"--solution={solutionPath}");
-            AssertCliOk(secondAnnotate);
             using var secondAnnotateDoc = JsonDocument.Parse(secondAnnotate.Stdout);
             var mcpAnnotationId = secondAnnotateDoc.RootElement.GetProperty("annotation_id").GetInt64();
 
-            AssertCliOk(Cli(CliTimeout, "--mode=get-annotations", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(Cli(CliTimeout, "--mode=retract-annotation", $"--annotation-id={annotationId}", $"--solution={solutionPath}"));
-            AssertCliOk(Cli(CliTimeout, "--mode=diff", $"--from-snapshot={snapshotId}", $"--to-snapshot={snapshotId}", $"--solution={solutionPath}"));
-            AssertCliOk(Cli(CliTimeout, "--mode=pin-snapshot", $"--snapshot={snapshotId}", $"--solution={solutionPath}"));
-            AssertCliOk(Cli(CliTimeout, "--mode=pin-snapshot", "--clear", $"--solution={solutionPath}"));
+            Cli(CliTimeout, "--mode=get-annotations", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=json", "--quiet");
+            Cli(CliTimeout, "--mode=retract-annotation", $"--annotation-id={annotationId}", $"--solution={solutionPath}");
+            Cli(CliTimeout, "--mode=diff", $"--from-snapshot={snapshotId}", $"--to-snapshot={snapshotId}", $"--solution={solutionPath}");
+            Cli(CliTimeout, "--mode=pin-snapshot", $"--snapshot={snapshotId}", $"--solution={solutionPath}");
+            Cli(CliTimeout, "--mode=pin-snapshot", "--clear", $"--solution={solutionPath}");
 
             // The default location must have received the database and the redirected
             // MSBuild intermediates; otherwise "no writes in the tree" could pass
@@ -100,9 +100,9 @@ public sealed class TargetTreeIntegrityTests
 
             // ── MCP: --mode=serve, all 18 tools (read plus gated write tools) ──
             server = McpServeProcess.Start(LurpTool.Argv(["--mode=serve", "--enable-write-tools", $"--solution={solutionPath}"]));
-            cliModesRun.Add("serve");
             var client = server.Client;
             await client.InitializeAsync("target-tree-integrity");
+            cliModesRun.Add("serve");
 
             var tools = await client.SendAsync("tools/list", new { });
             var toolNames = tools.GetProperty("result").GetProperty("tools").EnumerateArray()
@@ -180,11 +180,6 @@ public sealed class TargetTreeIntegrityTests
         throw new TimeoutException("lurp_index did not complete within 3 minutes");
     }
 
-    private static void AssertCliOk((int ExitCode, string Stdout, string Stderr) result)
-    {
-        Assert.True(result.ExitCode == 0, $"lurp exited {result.ExitCode}:\n{result.Stderr}\n{result.Stdout}");
-    }
-
     private static void AssertTreeUnchanged(SortedDictionary<string, string> before, SortedDictionary<string, string> after)
     {
         var diff = TreeSnapshot.Diff(before, after);
@@ -201,7 +196,7 @@ public sealed class TargetTreeIntegrityTests
             $"CHANGED ({diff.Changed.Count}):\n  {Sample(diff.Changed.Select(c => c.Path).ToList())}");
     }
 
-    private static void CopyTree(string sourceRoot, string destinationRoot)
+    internal static void CopyTree(string sourceRoot, string destinationRoot)
     {
         Directory.CreateDirectory(destinationRoot);
         foreach (var dir in Directory.EnumerateDirectories(sourceRoot, "*", SearchOption.AllDirectories))

@@ -25,6 +25,7 @@ dotnet test Lurp.slnx --settings tests/full.runsettings
 
 The first `dotnet test` skips tests tagged `[Trait("Category", "Slow")]`
 (`tests/Lurp.Tests.runsettings`). The second runs the full suite, as CI does.
+A test run whose filter matches no test fails.
 
 The tests in `tests/Docs/` check the prose of the docs. `DocReferenceTests` checks
 that each link and anchor resolves, and that each path, name and flag that a doc
@@ -103,7 +104,7 @@ $env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter "Fully
    install line. Regenerate the docs (see "CLI/MCP contract versioning" above).
    `ReleaseNotesTests` fails until the notes, the table, the README link and the
    install line agree with the constants.
-2. Push to `main`. `ci.yml` builds, tests and packs the tool, and keeps the nupkg for 90 days.
+2. Push to `main`. `ci.yml` builds, tests and packs the tool, and keeps the nupkg for 90 days. The parity gate and the release use the nupkg of the `push` run of `ci.yml` for that SHA. A pull-request run is never used.
 3. Run the parity gate on that SHA:
 
 ```bash
@@ -118,7 +119,7 @@ A pass needs both legs (Windows and Linux) and writes the `real-parity` status a
 gh workflow run release.yml -f ref=<sha or tag> -f dry_run=true
 ```
 
-5. Tag `vX.Y.Z` on that SHA and push the tag. The `nuget` environment asks for approval before the push.
+5. Tag `vX.Y.Z` on that SHA and push the tag. A pushed tag of another form fails the release before any check. The `nuget` environment asks for approval before the push.
 6. Override. Use this only when the parity gate cannot pass. It skips only the parity status and the attestation, and the reason goes into the release body:
 
 ```bash

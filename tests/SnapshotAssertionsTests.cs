@@ -11,6 +11,8 @@ public sealed class SnapshotAssertionsTests : IntegrationTestBase
     [InlineData("project_column")]
     [InlineData("project_reference")]
     [InlineData("annotation_path")]
+    [InlineData("edge_site")]
+    [InlineData("document_version")]
     public async Task CompareSnapshotsAreEquivalent_FailsOnEachStoredDifference(string differenceKind)
     {
         var (snapshotId, copyPath) = await CreateAndCopyFixtureAsync();
@@ -44,6 +46,16 @@ public sealed class SnapshotAssertionsTests : IntegrationTestBase
                         "UPDATE annotations SET document_path = 'src/App/Other.cs' WHERE snapshot_id = @snapshotId;";
                     command.Parameters.AddWithValue("@snapshotId", snapshotId);
                     break;
+                case "edge_site":
+                    command.CommandText = R1CompareTests.ChangeEdgeSiteSql;
+                    break;
+                case "document_version":
+                    command.CommandText = """
+                        DELETE FROM snapshot_documents
+                        WHERE rowid = (SELECT MIN(rowid) FROM snapshot_documents WHERE snapshot_id = @snapshotId);
+                        """;
+                    command.Parameters.AddWithValue("@snapshotId", snapshotId);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(differenceKind), differenceKind, null);
             }
@@ -66,26 +78,7 @@ public sealed class SnapshotAssertionsTests : IntegrationTestBase
 
     private async Task<(string SnapshotId, string CopyPath)> CreateAndCopyFixtureAsync()
     {
-        CreateProject("Lib", new Dictionary<string, string>
-        {
-            ["Lib.cs"] = """
-                         namespace Lib;
-
-                         public enum Color { Red }
-                         """
-        });
-        CreateProject("App", new Dictionary<string, string>
-        {
-            ["App.cs"] = """
-                         namespace App;
-
-                         public class Use
-                         {
-                             public Lib.Color C() => Lib.Color.Red;
-                         }
-                         """
-        }, projectReferences: ["Lib"]);
-
+        CreateFixture(this);
         var snapshotId = await RunFullIndexAsync(DbPath);
         var symbolId = ResolveSymbolId(snapshotId, "global::App.Use.C");
 
@@ -108,5 +101,28 @@ public sealed class SnapshotAssertionsTests : IntegrationTestBase
         var copyPath = Path.Combine(TestDir, "copy.db");
         File.Copy(DbPath, copyPath, overwrite: true);
         return (snapshotId, copyPath);
+    }
+
+    internal static void CreateFixture(IntegrationTestBase test)
+    {
+        test.CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Lib.cs"] = """
+                         namespace Lib;
+
+                         public enum Color { Red }
+                         """
+        });
+        test.CreateProject("App", new Dictionary<string, string>
+        {
+            ["App.cs"] = """
+                         namespace App;
+
+                         public class Use
+                         {
+                             public Lib.Color C() => Lib.Color.Red;
+                         }
+                         """
+        }, projectReferences: ["Lib"]);
     }
 }

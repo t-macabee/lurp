@@ -22,20 +22,6 @@ Import-Module (Join-Path $PSScriptRoot 'LurpSmoke.psm1') -Force -ArgumentList $L
 $FixturesDir = Join-Path $RepoRoot 'tests' 'Fixtures' 'Smoke'
 $SolutionName = 'Smoke.slnx'
 
-function Assert-True([bool]$Condition, [string]$Message) {
-    if (-not $Condition) { throw "ASSERT FAILED: $Message" }
-}
-
-function Get-JsonText([string]$Text) {
-    $start = $Text.IndexOf('{')
-    if ($start -lt 0) { throw "no JSON object in output:`n$Text" }
-    return $Text.Substring($start)
-}
-
-function ConvertFrom-LurpJson([string]$Text) {
-    return (Get-JsonText $Text) | ConvertFrom-Json
-}
-
 function Start-Serve {
     param([string]$Solution, [string]$OutDir, [switch]$WriteTools)
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
@@ -94,6 +80,10 @@ function Get-McpToolJson {
     $resp = Read-McpResponse $Proc $Id
     if ($resp.PSObject.Properties.Name -contains 'error') {
         throw "tool ${Name} returned error: $($resp.error | ConvertTo-Json -Compress)"
+    }
+    if (($resp.result.PSObject.Properties.Name -contains 'isError') -and ($resp.result.isError -eq $true)) {
+        $errText = if ($resp.result.content -and @($resp.result.content).Count -gt 0) { $resp.result.content[0].text } else { '' }
+        throw "tool ${Name} returned isError: $errText"
     }
     $sc = $resp.result.structuredContent
     if ($null -ne $sc -and ($sc.PSObject.Properties.Name -contains 'result')) {
@@ -188,6 +178,10 @@ Assert-True ($annotationId -gt 0) 'annotate did not return an annotation id'
 $annotations = ConvertFrom-LurpJson (Invoke-Lurp @('--mode=get-annotations', "--symbol=$symbolId", "--output-dir=$DbDir", '--output=json', '--quiet')).Text
 Assert-True (@($annotations.annotations | Where-Object { $_.annotation_id -eq $annotationId }).Count -eq 1) 'get-annotations did not return the created annotation'
 
+$null = Invoke-Lurp @('--mode=retract-annotation', "--annotation-id=$annotationId", "--output-dir=$DbDir")
+$annotationsAfterRetract = ConvertFrom-LurpJson (Invoke-Lurp @('--mode=get-annotations', "--symbol=$symbolId", "--output-dir=$DbDir", '--output=json', '--quiet')).Text
+Assert-True (@($annotationsAfterRetract.annotations | Where-Object { $_.annotation_id -eq $annotationId }).Count -eq 0) 'retract-annotation did not remove the annotation'
+
 $null = Invoke-Lurp @('--mode=pin-snapshot', "--snapshot=$snapshot1", "--output-dir=$DbDir")
 $null = Invoke-Lurp @('--mode=pin-snapshot', '--clear', "--output-dir=$DbDir")
 
@@ -265,6 +259,12 @@ try {
     try { if (-not $serve.WaitForExit(60000)) { $serve.Kill($true) } } catch { }
     $serve.Dispose()
 }
+
+$runModes = @((Get-LurpModesRun) + 'serve' | Sort-Object -Unique)
+$helpModes = @(Get-LurpHelpModes | Sort-Object -Unique)
+$missingModes = @($helpModes | Where-Object { $runModes -notcontains $_ })
+$extraModes = @($runModes | Where-Object { $helpModes -notcontains $_ })
+Assert-True ($missingModes.Count -eq 0 -and $extraModes.Count -eq 0) "CLI modes covered mismatch: missing=[$($missingModes -join ', ')] extra=[$($extraModes -join ', ')]"
 
 if ($SkipKillTest) {
     Write-Host '== kill-stdin-mid-lurp_index: skipped =='

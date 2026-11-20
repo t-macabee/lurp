@@ -946,9 +946,12 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
         foreach (var element in collection.Elements)
         {
-            var argument = element is ISpreadOperation spread
-                ? SpeculativePatterns.ItemOf(spread.ElementType)
-                : element.Syntax as ExpressionSyntax;
+            var argument = element switch
+            {
+                ISpreadOperation { ElementType: { } elementType } => SpeculativePatterns.ItemOf(elementType),
+                ISpreadOperation => null,
+                _ => element.Syntax as ExpressionSyntax
+            };
             if (argument != null)
                 AddCall(ownerId, SpeculativePatterns.AddMethod(model, collection.Syntax.SpanStart, collectionType, argument),
                     collection.Syntax, edges);

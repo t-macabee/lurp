@@ -459,6 +459,30 @@ Test-Case 'Resolve-ReleaseTarget rejects a tag with a non-ASCII digit' {
   Assert-Throws { Resolve-ReleaseTarget -EventName 'workflow_dispatch' -RefName '' -RefInput ("v$([char]0x0663).0.0") -DryRunInput 'false' } 'vX.Y.Z or a full commit SHA'
 }
 
+Test-Case 'Resolve-ReleaseTarget rejects a pre-release tag from a push' {
+  Assert-Throws { Resolve-ReleaseTarget -EventName 'push' -RefName 'v1.2.3-rc.1' -RefInput '' -DryRunInput '' } "ref must be vX.Y.Z or a full commit SHA, got 'v1.2.3-rc.1'"
+}
+
+Test-Case 'Resolve-ReleaseTarget rejects a two-part tag from a push' {
+  Assert-Throws { Resolve-ReleaseTarget -EventName 'push' -RefName 'v1.2' -RefInput '' -DryRunInput '' } "ref must be vX.Y.Z or a full commit SHA, got 'v1.2'"
+}
+
+Test-Case 'Resolve-ReleaseTarget rejects an upper-case V tag from a push' {
+  Assert-Throws { Resolve-ReleaseTarget -EventName 'push' -RefName 'V1.2.3' -RefInput '' -DryRunInput '' } "ref must be vX.Y.Z or a full commit SHA, got 'V1.2.3'"
+}
+
+Test-Case 'Assert-ReleaseTag accepts the tag of the csproj version' {
+  Assert-ReleaseTag -Tag 'v3.0.0' -Version '3.0.0'
+}
+
+Test-Case 'Assert-ReleaseTag rejects another version' {
+  Assert-Throws { Assert-ReleaseTag -Tag 'v3.0.1' -Version '3.0.0' } 'Tag v3.0.1 does not match <Version>3.0.0</Version> in src/Lurp.csproj.'
+}
+
+Test-Case 'Assert-ReleaseTag rejects a tag outside the rule' {
+  Assert-Throws { Assert-ReleaseTag -Tag 'v3.0.0-rc.1' -Version '3.0.0-rc.1' } "ref must be vX.Y.Z or a full commit SHA, got 'v3.0.0-rc.1'"
+}
+
 $script:Queue = @()
 $script:CallIndex = 0
 $script:CallUrls = New-Object System.Collections.ArrayList
@@ -592,13 +616,23 @@ Test-Case 'Invoke-NuGetRequest throws on a malformed URL' {
 }
 
 Test-Case 'Select-SuccessfulRunId returns the first successful run id' {
-  $json = '[{"databaseId":1,"conclusion":"success","status":"completed"},{"databaseId":2,"conclusion":"success","status":"completed"}]'
+  $json = '[{"databaseId":1,"conclusion":"success","status":"completed","event":"push"},{"databaseId":2,"conclusion":"success","status":"completed","event":"push"}]'
   Assert-Equal ([long]1) (Select-SuccessfulRunId $json $script:RealCommit) 'first success'
 }
 
 Test-Case 'Select-SuccessfulRunId skips failed and in-progress runs' {
-  $json = '[{"databaseId":1,"conclusion":"failure","status":"completed"},{"databaseId":2,"conclusion":"","status":"in_progress"},{"databaseId":3,"conclusion":"success","status":"completed"}]'
+  $json = '[{"databaseId":1,"conclusion":"failure","status":"completed","event":"push"},{"databaseId":2,"conclusion":"","status":"in_progress","event":"push"},{"databaseId":3,"conclusion":"success","status":"completed","event":"push"}]'
   Assert-Equal ([long]3) (Select-SuccessfulRunId $json $script:RealCommit) 'success id'
+}
+
+Test-Case 'Select-SuccessfulRunId takes the push run over a newer pull_request run' {
+  $json = '[{"databaseId":202,"conclusion":"success","event":"pull_request"},{"databaseId":101,"conclusion":"success","event":"push"}]'
+  Assert-Equal ([long]101) (Select-SuccessfulRunId $json $script:RealCommit) 'push run id'
+}
+
+Test-Case 'Select-SuccessfulRunId throws when only a pull_request run succeeded' {
+  $json = '[{"databaseId":202,"conclusion":"success","event":"pull_request"}]'
+  Assert-Throws { Select-SuccessfulRunId $json $script:RealCommit } "No successful push-event ci.yml run for commit $($script:RealCommit); a pull_request run builds a merge commit, not the commit."
 }
 
 Test-Case 'Select-SuccessfulRunId throws when no run succeeded' {
@@ -612,6 +646,55 @@ Test-Case 'Select-SuccessfulRunId throws for an empty list' {
 
 Test-Case 'Select-SuccessfulRunId throws for a whitespace-only string' {
   Assert-Throws { Select-SuccessfulRunId '   ' $script:RealCommit } "No ci.yml run found for commit $($script:RealCommit)."
+}
+
+Test-Case 'Assert-NupkgIdentity accepts a matching commit and digest' {
+  $dir = New-TempDirectory
+  try {
+    $zipPath = New-FakeNupkgWithEntry $dir 'lurp.nuspec' "<?xml version=`"1.0`" encoding=`"utf-8`"?><package xmlns=`"http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd`"><metadata><id>lurp</id><version>1.0.0</version><repository type=`"git`" url=`"https://github.com/example/lurp`" commit=`"$($script:RealCommit)`" /></metadata></package>"
+    $digest = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $pkg = [pscustomobject]@{ Path = $zipPath; Name = 'lurp.1.0.0.nupkg'; Digest = $digest }
+    Assert-NupkgIdentity -Package $pkg -Sha $script:RealCommit -ExpectedDigest $digest
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Assert-NupkgIdentity rejects another commit' {
+  $dir = New-TempDirectory
+  try {
+    $zipPath = New-FakeNupkgWithEntry $dir 'lurp.nuspec' "<?xml version=`"1.0`" encoding=`"utf-8`"?><package xmlns=`"http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd`"><metadata><id>lurp</id><version>1.0.0</version><repository type=`"git`" url=`"https://github.com/example/lurp`" commit=`"$($script:TagCommit)`" /></metadata></package>"
+    $digest = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $pkg = [pscustomobject]@{ Path = $zipPath; Name = 'lurp.1.0.0.nupkg'; Digest = $digest }
+    Assert-Throws { Assert-NupkgIdentity -Package $pkg -Sha $script:RealCommit -ExpectedDigest $digest } "nupkg repository.commit '$($script:TagCommit)' does not match SHA '$($script:RealCommit)'."
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Assert-NupkgIdentity rejects another digest' {
+  $dir = New-TempDirectory
+  try {
+    $zipPath = New-FakeNupkgWithEntry $dir 'lurp.nuspec' "<?xml version=`"1.0`" encoding=`"utf-8`"?><package xmlns=`"http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd`"><metadata><id>lurp</id><version>1.0.0</version><repository type=`"git`" url=`"https://github.com/example/lurp`" commit=`"$($script:RealCommit)`" /></metadata></package>"
+    $digest = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $otherDigest = 'b' * 64
+    $pkg = [pscustomobject]@{ Path = $zipPath; Name = 'lurp.1.0.0.nupkg'; Digest = $digest }
+    Assert-Throws { Assert-NupkgIdentity -Package $pkg -Sha $script:RealCommit -ExpectedDigest $otherDigest } "nupkg digest $digest differs from the resolved digest $otherDigest."
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Assert-NupkgIdentity skips the digest check when none is given' {
+  $dir = New-TempDirectory
+  try {
+    $zipPath = New-FakeNupkgWithEntry $dir 'lurp.nuspec' "<?xml version=`"1.0`" encoding=`"utf-8`"?><package xmlns=`"http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd`"><metadata><id>lurp</id><version>1.0.0</version><repository type=`"git`" url=`"https://github.com/example/lurp`" commit=`"$($script:RealCommit)`" /></metadata></package>"
+    $digest = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $pkg = [pscustomobject]@{ Path = $zipPath; Name = 'lurp.1.0.0.nupkg'; Digest = $digest }
+    Assert-NupkgIdentity -Package $pkg -Sha $script:RealCommit
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
 }
 
 Test-Case 'Test-NuGetVersionListed returns false on a 404' {

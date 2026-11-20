@@ -411,7 +411,12 @@ public sealed class SymbolFinderOracleTests
         // recorded as binds_other (still checked, so it stays a miss).
         Assert.DoesNotContain(result.Summary.SetAsideCallers,
             entry => entry.Reason == SymbolFinderOracle.BindsExternalReason);
-        Assert.Contains(result.Targets, target => target.TargetId == cm);
+        var entry = Assert.Single(result.Summary.SetAsideCallers);
+        Assert.Equal(SymbolFinderOracle.BindsOtherReason, entry.Reason);
+        Assert.Equal(["M:A.CallI(I)"], entry.CallerIds);
+        var target = Assert.Single(result.Targets);
+        Assert.Equal(cm, target.TargetId);
+        Assert.Contains(target.MissingCallers, missing => missing.CallerIds.Contains("M:A.CallI(I)"));
     }
 
     [Fact]
@@ -486,6 +491,200 @@ public sealed class SymbolFinderOracleTests
         var result = await RunAsync(solution, [], target);
 
         Assert.DoesNotContain(result.Summary.SetAsideCallers, entry => entry.CallerIds.Contains(runTarget));
+    }
+
+    [Fact]
+    public async Task TargetExplicitImplementation_CallerThroughInterfaceMatchesThroughDispatchFamily()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public interface I { void M(); }
+            public class Ex : I { void I.M() { } }
+            public static class K { public static void Call(I i) { i.M(); } }
+            """);
+        const string target = "M:Ex.I#M";
+        Assert.Empty(await MissingCallerIdsAsync(solution,
+            [("M:K.Call(I)", "Calls", "M:I.M"), ("M:I.M", "MayDispatchTo", target)], target));
+        Assert.Equal(["M:K.Call(I)"], await MissingCallerIdsAsync(solution,
+            [("M:K.Call(I)", "Calls", "M:I.M")], target));
+    }
+
+    [Theory]
+    [InlineData("add_E", "M:K.Sub(F)", "M:K.Nested(F)")]
+    [InlineData("remove_E", "M:K.Unsub(F,System.Action)", null)]
+    public async Task TargetFieldLikeEventAccessor_MatchesThroughWritesOnTheEvent(
+        string accessor, string firstCaller, string? secondCaller)
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public class F { public event System.Action? E; }
+            public static class K
+            {
+                public static void Sub(F f) { f.E += () => { }; }
+                public static void Unsub(F f, System.Action h) { f.E -= h; }
+                public static void Nested(F f) { System.Action a = () => { f.E += () => { }; }; a(); }
+            }
+            """);
+        string[] callers = secondCaller is null ? [firstCaller] : [firstCaller, secondCaller];
+        var target = $"M:F.{accessor}(System.Action)";
+        Assert.Empty(await MissingCallerIdsAsync(solution,
+            callers.Select(caller => (caller, "Writes", "E:F.E")).ToArray(), target));
+        Assert.Equal(callers.Order(StringComparer.Ordinal),
+            (await MissingCallerIdsAsync(solution, [], target)).Order(StringComparer.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("class")]
+    [InlineData("struct")]
+    public async Task TargetStaticAbstractImplementation_CallerThroughTypeParameterMatchesThroughDispatchFamily(string typeKind)
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, $$"""
+            public interface IP<T> where T : IP<T> { static abstract T Parse(string s); }
+            public {{typeKind}} C : IP<C>
+            {
+                public static C Parse(string s) => new();
+                public static C Parse(string s, int i) => new();
+            }
+            public static class K
+            {
+                public static T G<T>() where T : IP<T> => T.Parse("x");
+                public static void P() { C.Parse("x", 1); }
+            }
+            """);
+        const string target = "M:C.Parse(System.String)";
+        const string member = "M:IP`1.Parse(System.String)";
+        Assert.Empty(await MissingCallerIdsAsync(solution,
+            [("M:K.G``1", "Calls", member), (member, "MayDispatchTo", target)], target));
+        Assert.Equal(["M:K.G``1"], await MissingCallerIdsAsync(solution, [], target));
+        Assert.Equal(["M:K.P"], await MissingCallerIdsAsync(solution, [], "M:C.Parse(System.String,System.Int32)"));
+    }
+
+    [Fact]
+    public async Task TargetDispose_UsingThroughInterfaceTypedLocal_IsSetAsideAsBindsExternal()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public sealed class X : System.IDisposable { public void Dispose() { } }
+            public static class K { public static void U1() { using System.IDisposable r = new X(); } }
+            """);
+        var result = await RunAsync(solution, [], "M:X.Dispose");
+        Assert.Empty(Assert.Single(result.Targets).MissingCallers);
+        var entry = Assert.Single(result.Summary.SetAsideCallers);
+        Assert.Equal("binds_external", entry.Reason);
+        Assert.Equal(["M:K.U1"], entry.CallerIds);
+    }
+
+    [Fact]
+    public async Task TargetConstructor_DynamicArgument_IsSetAsideAsDynamicBinding()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public sealed class Y { public Y(int a) { } public Y(string s) { } }
+            public static class K { public static void D(dynamic d) { var y = new Y(d); } }
+            """);
+        string[] ids = ["M:Y.#ctor(System.Int32)", "M:Y.#ctor(System.String)"];
+        var result = await SymbolFinderOracle.CompareAsync(solution, [], SymbolDocIds.Normalized, ids.ToHashSet());
+        Assert.Equal(ids, result.Targets.Select(target => target.TargetId).Order(StringComparer.Ordinal));
+        Assert.All(result.Targets, target => Assert.Empty(target.MissingCallers));
+        Assert.Equal(ids, result.Summary.SetAsideCallers.Select(entry => entry.TargetId).Order(StringComparer.Ordinal));
+        Assert.All(result.Summary.SetAsideCallers, entry =>
+        {
+            Assert.Equal("dynamic_binding", entry.Reason);
+            Assert.Equal(["M:K.D(System.Object)"], entry.CallerIds);
+        });
+    }
+
+    [Fact]
+    public async Task TargetCalledInsideDynamicArguments_IsNotSetAsideAsDynamicBinding()
+    {
+        // The call T() binds statically; only the outer call d.Foo(...) is dynamic.
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public static class K
+            {
+                public static int T() => 1;
+                public static void D(dynamic d) { d.Foo(T()); }
+            }
+            """);
+        var result = await SymbolFinderOracle.CompareAsync(
+            solution, [], SymbolDocIds.Normalized, new HashSet<string> { "M:K.T" });
+        Assert.Empty(result.Summary.SetAsideCallers);
+        var miss = Assert.Single(Assert.Single(result.Targets).MissingCallers);
+        Assert.Equal(["M:K.D(System.Object)"], miss.CallerIds);
+    }
+
+    [Fact]
+    public async Task MissReport_ListsExactlyTheAcceptedRelations()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public sealed class Y { public Y(int a) { } }
+            public static class K { public static Y Make() => new Y(1); }
+            public class G { public event System.Action E { add { } remove { } } }
+            public static class K2 { public static void Sub(G g) { g.E += () => { }; } }
+            """);
+        var constructor = await RunAsync(solution, [], "M:Y.#ctor(System.Int32)");
+        Assert.Equal(["Calls", "MethodGroupRef"],
+            Assert.Single(Assert.Single(constructor.Targets).MissingCallers).MissingEdgeKinds);
+        var add = await RunAsync(solution, [], "M:G.add_E(System.Action)");
+        Assert.Equal(["Calls", "MethodGroupRef", "Writes"],
+            Assert.Single(Assert.Single(add.Targets).MissingCallers).MissingEdgeKinds);
+    }
+
+    [Fact]
+    public async Task TargetPropertyGet_AcceptsReadsNotWrites()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public class P { public int V { get; set; } }
+            public static class K { public static int Read(P p) => p.V; }
+            """);
+        Assert.Empty(await MissingCallerIdsAsync(solution, [("M:K.Read(P)", "Reads", "P:P.V")], "M:P.get_V"));
+        Assert.Equal(["M:K.Read(P)"], await MissingCallerIdsAsync(solution,
+            [("M:K.Read(P)", "Writes", "P:P.V")], "M:P.get_V"));
+    }
+
+    [Fact]
+    public async Task TargetPropertySet_AcceptsWrites()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public class P { public int V { get; set; } }
+            public static class K { public static void Write(P p) { p.V = 1; } }
+            """);
+        const string target = "M:P.set_V(System.Int32)";
+        Assert.Empty(await MissingCallerIdsAsync(solution, [("M:K.Write(P)", "Writes", "P:P.V")], target));
+        Assert.Equal(["M:K.Write(P)"], await MissingCallerIdsAsync(solution, [], target));
+    }
+
+    [Fact]
+    public async Task CallerInAutoPropertyInitializer_NormalizesToTheProperty()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public class Q { public int W { get; } = Helper(); public static int Helper() => 1; }
+            """);
+        Assert.Empty(await MissingCallerIdsAsync(solution, [("P:Q.W", "Calls", "M:Q.Helper")], "M:Q.Helper"));
+        Assert.Contains("P:Q.W", await MissingCallerIdsAsync(solution, [], "M:Q.Helper"));
+    }
+
+    [Fact]
+    public async Task CallerInLocalFunction_NormalizesToTheContainingMethod()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public static class L { public static void Outer() { Inner(); void Inner() => Target(); } public static void Target() { } }
+            """);
+        Assert.Empty(await MissingCallerIdsAsync(solution, [("M:L.Outer", "Calls", "M:L.Target")], "M:L.Target"));
+    }
+
+    [Fact]
+    public async Task TargetIdsFilter_EvaluatesOnlyTheListedTargets()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, InterfaceImplementationSource);
+        Assert.Equal("M:C.M", Assert.Single((await RunAsync(solution, [], "M:C.M")).Targets).TargetId);
     }
 
     private static async Task<SymbolFinderOracleResult> RunAsync(

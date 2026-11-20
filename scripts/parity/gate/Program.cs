@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Parity.Shared;
@@ -74,79 +76,83 @@ internal static class Program
         {
             return RunIntegrityAsync(solution, solutionDirectory, values["--lurp-cmd"]).GetAwaiter().GetResult();
         }
-        catch (Exception ex) when (ex is HarnessError or InvalidOperationException or TimeoutException or IOException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (IsSurfaceException(ex))
         {
             return Fail(ex.Message);
         }
     }
 
     /// <summary>
-    ///     Audit B2 read-only guarantee on a real solution. Restore, snapshot,
-    ///     run every CLI mode and every MCP tool, snapshot again, and fail on any
-    ///     added, removed, or changed path. Exit 1 on a tree difference, 2 on a
-    ///     data error (a mode/tool missing from the run, an unusable tool).
+    ///     Restore the solution and record its tree. Run every CLI mode and MCP tool.
+    ///     Return 2 when a mode or tool fails. After a successful run, compare the
+    ///     tree and return 1 when a path was added, removed, or changed.
     /// </summary>
     private static async Task<int> RunIntegrityAsync(string solution, string solutionDirectory, string lurpCmd)
     {
-        // Restore runs before the measured window: its obj/ assets are part of
-        // the baseline the later index must not disturb.
         var restore = ProcessRunner.Run(["dotnet", "restore", solution, "--nologo"], RestoreTimeoutMs);
         if (restore.TimedOut || restore.ExitCode != 0)
             return Fail($"dotnet restore failed (exit {restore.ExitCode}): {LastLine(restore.Stderr)}");
 
         var before = TreeSnapshot.Record(solutionDirectory);
-
-        // The tool's own --help is the mode list; a count change is a data error.
         var modes = DeriveCliModes(lurpCmd);
         if (modes.Count != ExpectedCliModes)
             return Fail($"the tool listed {modes.Count} CLI mode(s); expected {ExpectedCliModes}.");
 
+        var outcomes = new List<SurfaceOutcome>();
         var ranModes = new HashSet<string>(StringComparer.Ordinal);
         var context = new RunContext(solution, solutionDirectory);
 
-        var index = LurpCommand.Run(lurpCmd, ["--mode=index", "--strategy=full", "--solution=" + solution], IndexTimeoutMs);
-        if (index.TimedOut || index.ExitCode != 0)
-            return Fail($"index failed (exit {index.ExitCode}): {LastLine(index.Stderr)}");
-        ranModes.Add("index");
+        RecordCli(RunCli(lurpCmd, "index", ["--strategy=full", "--solution=" + solution], IndexTimeoutMs, out _));
+        RecordCli(ReadStatus(lurpCmd, context));
+        RecordCli(DiscoverDeclaration(lurpCmd, context));
 
-        var snapshot = ReadStatus(lurpCmd, solution, ranModes);
-        if (snapshot is null)
-            return Fail("could not resolve latest_snapshot_id from --mode=status --json.");
-        context.Snapshot = snapshot;
-
-        if (!DiscoverDeclaration(lurpCmd, solution, context, ranModes))
-            return Fail("no indexed source declaration was found to drive the read modes.");
-
-        // Every remaining mode, in the tool's own order so dependent modes
-        // (annotate before retract-annotation) run in a sensible sequence.
+        // The help order puts annotate before retract-annotation.
         foreach (var mode in modes)
         {
-            if (mode == "serve" || ranModes.Contains(mode))
+            if (mode is "index" or "status" or "outline" or "serve")
                 continue;
 
             switch (mode)
             {
                 case "pin-snapshot":
-                    RunCli(lurpCmd, "pin-snapshot", ["--snapshot=" + context.Snapshot, "--solution=" + solution], CliTimeoutMs, ranModes);
-                    RunCli(lurpCmd, "pin-snapshot", ["--clear", "--solution=" + solution], CliTimeoutMs, ranModes);
+                    var pin = RunCli(lurpCmd, mode, ["--snapshot=" + context.Snapshot, "--solution=" + solution], CliTimeoutMs, out _);
+                    var clear = RunCli(lurpCmd, mode, ["--clear", "--solution=" + solution], CliTimeoutMs, out _);
+                    RecordCli(pin);
+                    RecordCli(clear);
                     break;
                 case "annotate":
-                    context.CliAnnotationId = CreateAnnotation(lurpCmd, context, "tree integrity cli");
-                    context.McpAnnotationId = CreateAnnotation(lurpCmd, context, "tree integrity mcp");
-                    ranModes.Add("annotate");
+                    var first = CreateAnnotation(lurpCmd, context, "tree integrity cli", out var cliId);
+                    var second = CreateAnnotation(lurpCmd, context, "tree integrity mcp", out var mcpId);
+                    if (first.Succeeded && second.Succeeded)
+                    {
+                        context.CliAnnotationId = cliId;
+                        context.McpAnnotationId = mcpId;
+                    }
+                    RecordCli(first);
+                    RecordCli(second);
                     break;
                 case "retract-annotation":
-                    RunCli(lurpCmd, "retract-annotation", ["--annotation-id=" + context.CliAnnotationId.ToString(CultureInfo.InvariantCulture), "--solution=" + solution], CliTimeoutMs, ranModes);
+                    RecordCli(context.CliAnnotationId is { } id
+                        ? RunCli(lurpCmd, mode, ["--annotation-id=" + id.ToString(CultureInfo.InvariantCulture), "--solution=" + solution],
+                            CliTimeoutMs, out _)
+                        : SurfaceOutcome.Failed(mode, "annotate failed"));
                     break;
                 default:
-                    RunCli(lurpCmd, mode, ModeArgs(mode, context), CliTimeoutMs, ranModes);
+                    RecordCli(RunCli(lurpCmd, mode, ModeArgs(mode, context), CliTimeoutMs, out _));
                     break;
             }
         }
 
         var ranTools = new HashSet<string>(StringComparer.Ordinal);
-        var toolNames = await RunMcpSurfaceAsync(lurpCmd, solution, context, ranTools);
-        ranModes.Add("serve");
+        var toolNames = await RunMcpSurfaceAsync(lurpCmd, context, outcomes, ranTools);
+        if (outcomes.Any(static outcome => outcome is { Name: "serve", Succeeded: true }))
+            ranModes.Add("serve");
+        if (outcomes.Any(static outcome => !outcome.Succeeded))
+        {
+            foreach (var outcome in outcomes.Where(static outcome => !outcome.Succeeded))
+                Console.Error.WriteLine($"FAILED {outcome.Name}: {outcome.Reason}");
+            return ExitUsageOrData;
+        }
 
         foreach (var mode in modes)
             if (!ranModes.Contains(mode))
@@ -167,6 +173,20 @@ internal static class Program
         foreach (var (path, oldValue, newValue) in diff.Changed)
             Console.WriteLine($"CHANGED {path} {oldValue} -> {newValue}");
         return ExitGateFailed;
+
+        void RecordCli(SurfaceOutcome outcome)
+        {
+            outcomes.Add(outcome);
+            if (outcome.Succeeded)
+                ranModes.Add(outcome.Name);
+        }
+    }
+
+    private sealed record SurfaceOutcome(string Name, bool Succeeded, string? Reason)
+    {
+        public static SurfaceOutcome Success(string name) => new(name, true, null);
+
+        public static SurfaceOutcome Failed(string name, string reason) => new(name, false, reason);
     }
 
     private static List<string> DeriveCliModes(string lurpCmd)
@@ -203,57 +223,80 @@ internal static class Program
         return modes;
     }
 
-    private static void RunCli(string lurpCmd, string mode, IReadOnlyList<string> extra, int timeoutMs, HashSet<string> ran)
+    private static SurfaceOutcome RunCli(
+        string lurpCmd, string mode, IReadOnlyList<string> extra, int timeoutMs, out string stdout)
     {
-        var args = new List<string> { "--mode=" + mode };
-        args.AddRange(extra);
-        LurpCommand.Run(lurpCmd, args, timeoutMs);
-        ran.Add(mode);
+        stdout = "";
+        try
+        {
+            var result = LurpCommand.Run(lurpCmd, ["--mode=" + mode, .. extra], timeoutMs);
+            stdout = result.Stdout;
+            if (result.TimedOut)
+                return SurfaceOutcome.Failed(mode, "timed out");
+            if (result.ExitCode == 0)
+                return SurfaceOutcome.Success(mode);
+
+            var detail = LastLine(result.Stderr);
+            return SurfaceOutcome.Failed(mode, detail.Length == 0
+                ? $"exit {result.ExitCode}"
+                : $"exit {result.ExitCode}: {detail}");
+        }
+        catch (Exception ex) when (IsSurfaceException(ex))
+        {
+            return SurfaceOutcome.Failed(mode, ex.Message);
+        }
     }
 
-    private static string? ReadStatus(string lurpCmd, string solution, HashSet<string> ran)
+    private static SurfaceOutcome ReadStatus(string lurpCmd, RunContext context)
     {
-        var outcome = LurpCommand.Run(lurpCmd, ["--mode=status", "--json", "--solution=" + solution], CliTimeoutMs);
-        ran.Add("status");
-        if (outcome.TimedOut || outcome.ExitCode != 0 || !TryParseJson(outcome.Stdout, out var json))
-            return null;
-        return TryGetString(json, "latest_snapshot_id", out var snapshot) ? snapshot : null;
+        var outcome = RunCli(lurpCmd, "status", ["--json", "--solution=" + context.Solution], CliTimeoutMs, out var stdout);
+        if (!outcome.Succeeded)
+            return outcome;
+        if (!TryParseJson(stdout, out var json) ||
+            !TryGetString(json, "latest_snapshot_id", out var snapshot) || string.IsNullOrWhiteSpace(snapshot))
+            return SurfaceOutcome.Failed("status", "missing latest_snapshot_id");
+
+        context.Snapshot = snapshot;
+        return outcome;
     }
 
-    /// <summary>
-    ///     Walks the solution directory for the first source document that carries
-    ///     an indexed declaration, and records the symbol/doc/line the read modes
-    ///     reuse. No fixture-specific names are assumed.
-    /// </summary>
-    private static bool DiscoverDeclaration(string lurpCmd, string solution, RunContext context, HashSet<string> ran)
+    private static SurfaceOutcome DiscoverDeclaration(string lurpCmd, RunContext context)
     {
+        var failure = SurfaceOutcome.Failed("outline", "no indexed source declaration was found");
         foreach (var document in EnumerateSourceDocuments(context.SolutionDirectory))
         {
-            var outcome = LurpCommand.Run(lurpCmd, ["--mode=outline", "--document=" + document, "--output=json", "--quiet", "--solution=" + solution], CliTimeoutMs);
-            ran.Add("outline");
-            if (outcome.TimedOut || outcome.ExitCode != 0 || !TryParseJson(outcome.Stdout, out var json))
+            var outcome = RunCli(lurpCmd, "outline",
+                ["--document=" + document, "--output=json", "--quiet", "--solution=" + context.Solution],
+                CliTimeoutMs, out var stdout);
+            if (!outcome.Succeeded)
+            {
+                failure = outcome;
                 continue;
-            if (!json.TryGetProperty("declarations", out var declarations)
-                || declarations.ValueKind != JsonValueKind.Array
-                || declarations.GetArrayLength() == 0)
+            }
+
+            if (!TryParseJson(stdout, out var json) || json.ValueKind != JsonValueKind.Object ||
+                !json.TryGetProperty("declarations", out var declarations) ||
+                declarations.ValueKind != JsonValueKind.Array ||
+                declarations.GetArrayLength() == 0)
                 continue;
 
             var first = declarations[0];
-            if (!TryGetString(first, "symbol_id", out var symbolId)
-                || !TryGetString(first, "fully_qualified_name", out var fqn)
-                || !first.TryGetProperty("start_line", out var startLine)
-                || startLine.ValueKind != JsonValueKind.Number)
+            if (!TryGetString(first, "symbol_id", out var symbolId) ||
+                !TryGetString(first, "fully_qualified_name", out var fqn) ||
+                !first.TryGetProperty("start_line", out var startLine) ||
+                startLine.ValueKind != JsonValueKind.Number ||
+                !startLine.TryGetInt32(out var line))
                 continue;
 
             context.Document = document;
             context.SymbolId = symbolId;
             context.Fqn = fqn;
-            context.Line = startLine.GetInt32();
+            context.Line = line;
             context.Query = SimpleName(fqn);
-            return true;
+            return outcome;
         }
 
-        return false;
+        return failure;
     }
 
     private static IEnumerable<string> EnumerateSourceDocuments(string root)
@@ -269,7 +312,7 @@ internal static class Program
     }
 
     private static bool IsBuildPath(string relativePath) =>
-        relativePath.Split('/').Any(segment =>
+        relativePath.Split('/', '\\').Any(segment =>
             segment.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
             segment.Equals("bin", StringComparison.OrdinalIgnoreCase));
 
@@ -281,16 +324,21 @@ internal static class Program
         return cut >= 0 ? name[..cut] : name;
     }
 
-    private static long CreateAnnotation(string lurpCmd, RunContext context, string value)
+    private static SurfaceOutcome CreateAnnotation(string lurpCmd, RunContext context, string value, out long annotationId)
     {
-        var outcome = LurpCommand.Run(
-            lurpCmd,
-            ["--mode=annotate", "--symbol=" + context.SymbolId, "--annotation-kind=note", "--value=" + value, "--solution=" + context.Solution],
-            CliTimeoutMs);
-        if (outcome.TimedOut || outcome.ExitCode != 0 || !TryParseJson(outcome.Stdout, out var json)
-            || !json.TryGetProperty("annotation_id", out var id) || id.ValueKind != JsonValueKind.Number)
-            return 0;
-        return id.GetInt64();
+        var outcome = RunCli(lurpCmd, "annotate",
+            ["--symbol=" + context.SymbolId, "--annotation-kind=note", "--value=" + value, "--solution=" + context.Solution],
+            CliTimeoutMs, out var stdout);
+        annotationId = 0;
+        if (!outcome.Succeeded)
+            return outcome;
+
+        if (!TryParseJson(stdout, out var json) || json.ValueKind != JsonValueKind.Object ||
+            !json.TryGetProperty("annotation_id", out var id) ||
+            id.ValueKind != JsonValueKind.Number || !id.TryGetInt64(out annotationId) || annotationId < 1)
+            return SurfaceOutcome.Failed("annotate", "missing or invalid annotation_id");
+
+        return outcome;
     }
 
     private static IReadOnlyList<string> ModeArgs(string mode, RunContext context) => mode switch
@@ -311,62 +359,95 @@ internal static class Program
         _ => ["--solution=" + context.Solution]
     };
 
-    private static async Task<List<string>> RunMcpSurfaceAsync(string lurpCmd, string solution, RunContext context, HashSet<string> ranTools)
+    private static async Task<List<string>> RunMcpSurfaceAsync(
+        string lurpCmd, RunContext context, List<SurfaceOutcome> outcomes, HashSet<string> ranTools)
     {
-        using var server = McpServeProcess.Start([.. ProcessRunner.SplitCommandLine(lurpCmd), "--mode=serve", "--enable-write-tools", "--solution=" + solution]);
-        var client = server.Client;
+        List<string> toolNames = [];
         try
         {
-            await client.InitializeAsync("lurp-parity-integrity");
-
-            var listed = await client.SendAsync("tools/list", new { });
-            var toolNames = listed.GetProperty("result").GetProperty("tools").EnumerateArray()
-                .Select(t => t.GetProperty("name").GetString()!)
-                .ToList();
-            if (toolNames.Count != ExpectedMcpTools)
-                throw new HarnessError($"the MCP server listed {toolNames.Count} tool(s); expected {ExpectedMcpTools}.");
-
-            foreach (var tool in toolNames)
+            using var server = McpServeProcess.Start(
+                [.. ProcessRunner.SplitCommandLine(lurpCmd), "--mode=serve", "--enable-write-tools", "--solution=" + context.Solution]);
+            try
             {
-                try
-                {
-                    if (tool == "lurp_index")
-                        await RunMcpIndexAsync(client);
-                    else
-                        await client.CallToolAsync(tool, McpArgs(tool, context));
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
-                {
-                    Console.Error.WriteLine("WARNING: MCP tool '" + tool + "' failed: " + ex.Message);
-                }
+                var client = server.Client;
+                await client.InitializeAsync("lurp-parity-integrity");
 
-                ranTools.Add(tool);
+                var listed = await client.SendAsync("tools/list", new { });
+                toolNames = listed.GetProperty("result").GetProperty("tools").EnumerateArray()
+                    .Select(static tool => tool.GetProperty("name").GetString()!).ToList();
+                if (toolNames.Count != ExpectedMcpTools)
+                    outcomes.Add(SurfaceOutcome.Failed("serve", $"listed {toolNames.Count} MCP tools, expected {ExpectedMcpTools}"));
+
+                foreach (var tool in toolNames)
+                {
+                    if (tool == "lurp_retract_annotation" && context.McpAnnotationId is null)
+                    {
+                        outcomes.Add(SurfaceOutcome.Failed(tool, "annotate failed"));
+                        continue;
+                    }
+
+                    try
+                    {
+                        if (tool == "lurp_index")
+                            await RunMcpIndexAsync(client);
+                        else
+                            await client.CallToolAsync(tool, McpArgs(tool, context));
+                        outcomes.Add(SurfaceOutcome.Success(tool));
+                        ranTools.Add(tool);
+                    }
+                    catch (Exception ex) when (IsSurfaceException(ex))
+                    {
+                        outcomes.Add(SurfaceOutcome.Failed(tool, ex.Message));
+                    }
+                }
+            }
+            finally
+            {
+                var exit = server.Close(ServeShutdownTimeoutMs);
+                if (exit != 0)
+                    outcomes.Add(SurfaceOutcome.Failed("serve", $"exit {exit}: {LastLine(server.Stderr)}"));
             }
 
-            return toolNames;
+            if (!outcomes.Any(static outcome => outcome is { Name: "serve", Succeeded: false }))
+                outcomes.Add(SurfaceOutcome.Success("serve"));
         }
-        finally
+        catch (Exception ex) when (IsSurfaceException(ex))
         {
-            server.Close(ServeShutdownTimeoutMs);
+            outcomes.Add(SurfaceOutcome.Failed("serve", ex.Message));
         }
+
+        return toolNames;
     }
+
+    private static bool IsSurfaceException(Exception ex) =>
+        ex is HarnessError or InvalidOperationException or TimeoutException or IOException or Win32Exception
+            or KeyNotFoundException or JsonException;
 
     private static async Task RunMcpIndexAsync(McpStdioClient client)
     {
+        var timer = Stopwatch.StartNew();
+        var timeout = TimeSpan.FromMilliseconds(IndexPollTimeoutMs);
         var started = await client.CallToolAsync("lurp_index", new { strategy = "incremental" });
         var operationId = ReadJsonField(started, "operation_id");
-        if (operationId is null)
-            return;
+        if (string.IsNullOrWhiteSpace(operationId))
+            throw new InvalidOperationException("missing operation_id");
 
-        var deadline = DateTime.UtcNow.AddMilliseconds(IndexPollTimeoutMs);
-        while (DateTime.UtcNow < deadline)
+        while (timeout - timer.Elapsed > TimeSpan.FromMilliseconds(500))
         {
             await Task.Delay(500);
-            var poll = await client.CallToolAsync("lurp_index", new { operation_id = operationId });
+            var remaining = timeout - timer.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+                break;
+
+            var poll = await client.CallToolAsync("lurp_index", new { operation_id = operationId }, remaining);
             var status = ReadJsonField(poll, "status");
-            if (status is "completed" or "failed" or "cancelled")
+            if (status == "completed" && timer.Elapsed <= timeout)
                 return;
+            if (status is "failed" or "cancelled")
+                throw new InvalidOperationException($"index operation {operationId} {status}: {poll}");
         }
+
+        throw new TimeoutException($"index operation {operationId} did not complete within {timeout.TotalMinutes} minutes");
     }
 
     private static object McpArgs(string tool, RunContext context) => tool switch
@@ -457,9 +538,9 @@ internal static class Program
 
         public string Snapshot { get; set; } = "";
 
-        public long CliAnnotationId { get; set; }
+        public long? CliAnnotationId { get; set; }
 
-        public long McpAnnotationId { get; set; }
+        public long? McpAnnotationId { get; set; }
     }
 
     private static int RunRecall(string[] args)
@@ -482,7 +563,7 @@ internal static class Program
         {
             return RunRecallAsync(solution, values["--lurp-cmd"], seed, sampleSize).GetAwaiter().GetResult();
         }
-        catch (Exception ex) when (ex is HarnessError or InvalidOperationException or TimeoutException or IOException or System.ComponentModel.Win32Exception or NotSupportedException or AggregateException)
+        catch (Exception ex) when (IsSurfaceException(ex) || ex is NotSupportedException or AggregateException)
         {
             return Fail(ex.Message);
         }
@@ -491,10 +572,9 @@ internal static class Program
     /// <summary>
     ///     Audit B1 Fixture 3 recall on a real solution. Index with the packed
     ///     tool, open the same solution with MSBuildWorkspace, draw a seeded
-    ///     sample of the declared source methods the index holds, and let Oracle B
-    ///     compare Roslyn's own callers for each sampled method with the persisted
-    ///     edge set. Exit 1 on any miss, 2 on a data error (index or workspace
-    ///     failure, an empty candidate set or sample).
+    ///     sample of the source methods Roslyn declares in the snapshot scope, and
+    ///     check each sampled declaration and its callers against the index.
+    ///     Return 1 for a miss and 2 for a data error.
     /// </summary>
     private static async Task<int> RunRecallAsync(string solution, string lurpCmd, int seed, int sampleSize)
     {
@@ -535,56 +615,93 @@ internal static class Program
                 .Select(static edge => (Source: DocIdPart(edge.SourceSymbolId), edge.Kind, Target: DocIdPart(edge.TargetSymbolId)))
                 .ToList();
 
-            var candidates = new HashSet<string>(StringComparer.Ordinal);
+            var candidates = new Dictionary<string, IMethodSymbol>(StringComparer.Ordinal);
             foreach (var project in msbuildSolution.Projects)
             {
                 var compilation = await project.GetCompilationAsync().ConfigureAwait(false);
-                if (compilation is null)
+                var projectDirectory = Path.GetDirectoryName(project.FilePath);
+                if (compilation is null || projectDirectory is null)
                     continue;
+
+                var inScopeTrees = new HashSet<SyntaxTree>();
+                foreach (var document in project.Documents)
+                {
+                    if (document.FilePath is not { } path || IsBuildPath(Path.GetRelativePath(projectDirectory, path)))
+                        continue;
+
+                    if (await document.GetSyntaxTreeAsync().ConfigureAwait(false) is { } tree && !GeneratedCode.IsGenerated(tree))
+                        inScopeTrees.Add(tree);
+                }
 
                 foreach (var symbol in compilation.GetSymbolsWithName(static _ => true, SymbolFilter.Member))
                 {
-                    if (symbol is not IMethodSymbol method || method.IsImplicitlyDeclared)
-                        continue;
-                    if (!SymbolFinderOracle.TargetKinds.Contains(method.MethodKind))
-                        continue;
+                    if (symbol is IMethodSymbol method)
+                        AddCandidate(method);
+                    else if (symbol is IEventSymbol @event)
+                    {
+                        AddCandidate(@event.AddMethod);
+                        AddCandidate(@event.RemoveMethod);
+                    }
+                }
 
-                    var id = RecalledDocId(method);
-                    if (string.IsNullOrEmpty(id))
-                        continue;
+                void AddCandidate(IMethodSymbol? method)
+                {
+                    if (method is null || !SymbolFinderOracle.IsTarget(method))
+                        return;
 
-                    // The index resolves and classifies the declaration (source-only,
-                    // generated excluded); a method it does not hold cannot be sampled.
-                    if (store.FindSymbols(SymbolKey.DocCommentId, id, snapshotId, includeGenerated: false).Count == 0)
-                        continue;
-
-                    candidates.Add(id);
+                    var declaration = method.IsImplicitlyDeclared && method.AssociatedSymbol is IEventSymbol @event
+                        ? (ISymbol)@event
+                        : method;
+                    if (declaration.DeclaringSyntaxReferences.Any(reference => inScopeTrees.Contains(reference.SyntaxTree)) &&
+                        RecalledDocId(method) is { Length: > 0 } id)
+                        candidates.TryAdd(id, method);
                 }
             }
 
-            var orderedCandidates = candidates.OrderBy(static id => id, StringComparer.Ordinal).ToList();
+            var orderedCandidates = candidates.Keys.OrderBy(static id => id, StringComparer.Ordinal).ToList();
             if (orderedCandidates.Count == 0)
-                return Fail("no declared source method candidate was found in the index.");
+                return Fail("Roslyn found no source method candidate in scope.");
 
             var sampled = MethodSampler.Sample(orderedCandidates, seed, sampleSize);
             if (sampled.Count == 0)
                 return Fail("the seeded sample is empty.");
 
-            var result = await SymbolFinderOracle.CompareAsync(
-                msbuildSolution,
-                edges,
-                RecalledDocId,
-                new HashSet<string>(sampled, StringComparer.Ordinal)).ConfigureAwait(false);
+            var declared = new HashSet<string>(StringComparer.Ordinal);
+            var missingDeclarations = 0;
+            var differentIds = 0;
+            foreach (var id in sampled)
+            {
+                var method = candidates[id];
+                if (!method.ContainingType.IsExtension && id != method.GetDocumentationCommentId())
+                    differentIds++;
+
+                var owner = method.AssociatedSymbol ?? method;
+                var ownerId = RecalledDocId(owner);
+                if (ownerId is not null &&
+                    store.FindSymbols(SymbolKey.DocCommentId, ownerId, snapshotId, includeGenerated: false).Count != 0)
+                {
+                    declared.Add(id);
+                    continue;
+                }
+
+                missingDeclarations++;
+                Console.WriteLine($"MISSING DECLARATION {id} (owner {ownerId ?? "<no id>"})");
+            }
+
+            var result = await SymbolFinderOracle.CompareAsync(msbuildSolution, edges, RecalledDocId, declared)
+                .ConfigureAwait(false);
 
             var misses = result.Targets.SelectMany(static target => target.MissingCallers).ToList();
             Console.WriteLine(
                 $"recall: seed={seed}, sample={sampleSize}, candidates={orderedCandidates.Count}, " +
                 $"targets={result.Targets.Count}, checked={result.Summary.CheckedPairs}, " +
-                $"matched={result.Summary.MatchedPairs}, misses={misses.Count}");
+                $"matched={result.Summary.MatchedPairs}, misses={misses.Count}, missing_declarations={missingDeclarations}");
+            Console.WriteLine($"recall ids: differ_from_doc_comment_id={differentIds}");
             Console.WriteLine(
                 $"recall set aside: " +
                 $"{SymbolFinderOracle.BindsExternalReason}={result.Summary.SetAsideCallers.Count(static entry => entry.Reason == SymbolFinderOracle.BindsExternalReason)}, " +
-                $"{SymbolFinderOracle.BindsOtherReason}={result.Summary.SetAsideCallers.Count(static entry => entry.Reason == SymbolFinderOracle.BindsOtherReason)}");
+                $"{SymbolFinderOracle.BindsOtherReason}={result.Summary.SetAsideCallers.Count(static entry => entry.Reason == SymbolFinderOracle.BindsOtherReason)}, " +
+                $"{SymbolFinderOracle.DynamicBindingReason}={result.Summary.SetAsideCallers.Count(static entry => entry.Reason == SymbolFinderOracle.DynamicBindingReason)}");
             foreach (var setAside in result.Summary.SetAsideCallers
                          .OrderBy(static entry => entry.TargetId, StringComparer.Ordinal)
                          .ThenBy(static entry => entry.Reason, StringComparer.Ordinal)
@@ -597,7 +714,7 @@ internal static class Program
                     $"MISS {miss.TargetId} expected caller {string.Join(" OR ", miss.CallerIds)} " +
                     $"missing edge kind {string.Join("|", miss.MissingEdgeKinds)}");
 
-            return misses.Count == 0 ? ExitPass : ExitGateFailed;
+            return misses.Count + missingDeclarations == 0 ? ExitPass : ExitGateFailed;
         }
         finally
         {

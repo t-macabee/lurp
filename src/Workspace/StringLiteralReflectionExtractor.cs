@@ -470,7 +470,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         ///     given. The framework APIs bind inherited members (EF Core, xUnit MemberData,
         ///     PropertyChanged).
         /// </summary>
-        internal static LiteralBinding InTypeHierarchy(NameTargetKind kind, params IReadOnlyList<INamedTypeSymbol> types) =>
-            new(kind, types.Count == 0 ? NameScope.Global : NameScope.Hierarchy, types, ControllersOnly: false, IgnoreCase: false);
+        internal static LiteralBinding InTypeHierarchy(NameTargetKind kind, params INamedTypeSymbol[] types) =>
+            new(kind, types.Length == 0 ? NameScope.Global : NameScope.Hierarchy, types, ControllersOnly: false, IgnoreCase: false);
     }
 }

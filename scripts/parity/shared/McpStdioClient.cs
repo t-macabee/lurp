@@ -118,9 +118,9 @@ public sealed class McpStdioClient
         return response;
     }
 
-    public async Task<JsonElement> CallToolAsync(string name, object? arguments)
+    public async Task<JsonElement> CallToolAsync(string name, object? arguments, TimeSpan? timeout = null)
     {
-        var response = await SendAsync("tools/call", new { name, arguments = arguments ?? new { } }).ConfigureAwait(false);
+        var response = await SendAsync("tools/call", new { name, arguments = arguments ?? new { } }, timeout).ConfigureAwait(false);
         if (response.TryGetProperty("error", out var error))
             throw new InvalidOperationException($"MCP tool {name} returned an error: {error}");
 

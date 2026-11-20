@@ -151,7 +151,7 @@ jobs:
         shell: pwsh
         env:
           LURP_TOOL_PATH: ${{ github.workspace }}/t/lurp${{ runner.os == 'Windows' && '.exe' || '' }}
-        run: dotnet test tests/Lurp.Tests.csproj --configuration Release --filter "FullyQualifiedName~TargetTreeIntegrity"
+        run: dotnet test tests/Lurp.Tests.csproj --configuration Release --settings tests/full.runsettings --filter "FullyQualifiedName~Lurp.Tests.TargetTreeIntegrityTests"
 
       - name: Install .NET runtime only
         shell: pwsh

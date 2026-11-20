@@ -203,7 +203,7 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 | 08-07 | `impact` default `--max-depth` 10→3 | `ImpactHandler.Run` | finding 9 |
 | 08-07 | `context`/`impact` accept bare FQN/doc-comment ID | `HandlerBootstrap.ResolveSymbolArg` | finding 1, `d63d251` |
 | 08-10 | Snapshot identity covers compilation inputs | `MetadataReferenceIdentities` (SHA-256 of assembly bytes) + `CompilationOptionsFingerprints`; migration 27 nullable | R2 (`AssemblyIdentityGranularityTests.cs`) |
-| 08-11 | R1: 5-cycle incremental↔full convergence | Verified B≡C on eNoteV2 (post R6 fix); scripts `r1-verify-*.sh` + `r1-compare/` | historical |
+| 08-11 | R1: eleven-cycle incremental↔full convergence, compared after every cycle (D94, D197) | Verified B≡C on eNoteV2 (post R6 fix); scripts `r1-verify-*.sh` + `r1-compare/` | historical |
 | 08-11 | R6: binding-incompleteness carry-forward parity | Scope save to deletion-set; null-path EXCLUDE-AND-CARRY-FORWARD | `BindingIncompletenessScopingTests`, `ScenarioR6_*`; post-fix R1 PASS |
 | 08-11 | R3 / D43: declaration-level widening | D43: a declaration-level edit (Roslyn top-level equivalence) or an added or deleted document widens to its project and every dependent project | `ScenarioR3_NewOverloadInNewFile_RebindsUneditedCaller`, `ScenarioD43_*` |
 | 08-12 | R4: cross-compiler symbol-identity stability | Characterized; full-rebuild gate on `CompilerChanged` is the mitigation | historical |

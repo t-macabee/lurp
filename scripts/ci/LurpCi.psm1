@@ -71,24 +71,45 @@ function Select-SuccessfulRunId([string]$RunsJson, [string]$Sha) {
   if ($runs.Count -eq 0) { throw "No ci.yml run found for commit $Sha." }
   $successes = @($runs | Where-Object { $_.conclusion -eq 'success' })
   if ($successes.Count -eq 0) { throw "No successful ci.yml run for commit $Sha; the lurp-nupkg artifact does not exist." }
-  return $successes[0].databaseId
+  $pushSuccesses = @($successes | Where-Object { $_.PSObject.Properties['event'] -and $_.event -eq 'push' })
+  if ($pushSuccesses.Count -eq 0) {
+    throw "No successful push-event ci.yml run for commit $Sha; a pull_request run builds a merge commit, not the commit."
+  }
+  return $pushSuccesses[0].databaseId
 }
 
 function Resolve-CiRun([string]$Sha) {
   if (-not (Test-CommitSha $Sha)) { throw "Input 'sha' must be a full 40-character commit SHA." }
-  $runsJson = gh run list --workflow=ci.yml --commit $Sha --limit 5 --json databaseId,conclusion,status
+  $runsJson = gh run list --workflow=ci.yml --commit $Sha --event push --limit 20 --json databaseId,conclusion,event
   if ($LASTEXITCODE -ne 0) { throw "gh run list failed with exit code $LASTEXITCODE." }
   $runId = Select-SuccessfulRunId -RunsJson (@($runsJson) -join "`n") -Sha $Sha
   Write-Host "Using ci.yml run $runId for $Sha"
   return $runId
 }
 
-function Get-CiNupkg([string]$Sha, [string]$Destination, [string]$RunId) {
+function Assert-NupkgIdentity($Package, [string]$Sha, [string]$ExpectedDigest = '') {
+  $commit = Get-NuspecCommit $Package.Path
+  if ($commit.ToLowerInvariant() -cne $Sha.ToLowerInvariant()) {
+    throw "nupkg repository.commit '$commit' does not match SHA '$Sha'."
+  }
+  if (-not [string]::IsNullOrWhiteSpace($ExpectedDigest)) {
+    $actual = ([string]$Package.Digest).ToLowerInvariant()
+    $expected = $ExpectedDigest.ToLowerInvariant()
+    if ($actual -cne $expected) {
+      throw "nupkg digest $actual differs from the resolved digest $expected."
+    }
+  }
+}
+
+function Get-CiNupkg([string]$Sha, [string]$Destination, [string]$RunId, [string]$ExpectedDigest = '') {
   if (-not $RunId) { $RunId = Resolve-CiRun $Sha }
   New-Item -ItemType Directory -Force -Path $Destination | Out-Null
   gh run download $RunId -n lurp-nupkg -D $Destination | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "lurp-nupkg artifact missing or expired for run $RunId" }
   $pkg = Assert-NupkgDigest $Destination
+  if (-not [string]::IsNullOrWhiteSpace($Sha)) {
+    Assert-NupkgIdentity -Package $pkg -Sha $Sha -ExpectedDigest $ExpectedDigest
+  }
   $pkg | Add-Member -NotePropertyName RunId -NotePropertyValue $RunId
   return $pkg
 }
@@ -221,13 +242,29 @@ function Get-NuspecCommit([string]$NupkgPath) {
   return [string]$repository.GetAttribute('commit')
 }
 
+function Test-ReleaseTag([string]$Tag) {
+  return $Tag -cmatch '\Av[0-9]+\.[0-9]+\.[0-9]+\z'
+}
+
+function Assert-ReleaseTag([string]$Tag, [string]$Version) {
+  if (-not (Test-ReleaseTag $Tag)) {
+    throw "ref must be vX.Y.Z or a full commit SHA, got '$Tag'"
+  }
+  if ($Tag -cne "v$Version") {
+    throw "Tag $Tag does not match <Version>$Version</Version> in src/Lurp.csproj."
+  }
+}
+
 function Resolve-ReleaseTarget([string]$EventName, [string]$RefName, [string]$RefInput, [string]$DryRunInput) {
   if ($EventName -eq 'push') {
+    if (-not (Test-ReleaseTag $RefName)) {
+      throw "ref must be vX.Y.Z or a full commit SHA, got '$RefName'"
+    }
     return [pscustomobject]@{ Ref = $RefName; Tag = $RefName; DryRun = $false }
   }
   if ($EventName -ne 'workflow_dispatch') { throw "unsupported event '$EventName'." }
   $dryRun = $DryRunInput -eq 'true'
-  if ($RefInput -match '\Av[0-9]+\.[0-9]+\.[0-9]+\z') {
+  if (Test-ReleaseTag $RefInput) {
     return [pscustomobject]@{ Ref = $RefInput; Tag = $RefInput; DryRun = $dryRun }
   }
   if (-not (Test-CommitSha $RefInput)) {
@@ -253,4 +290,4 @@ function Get-LurpVersion([string]$ProjectPath = 'src/Lurp.csproj') {
   return $version
 }
 
-Export-ModuleMember -Function Test-CommitSha, Get-VulnerablePackageHits, Assert-NoVulnerablePackages, Assert-NupkgDigest, Resolve-CiRun, Select-SuccessfulRunId, Get-CiNupkg, Write-ParityStatus, Get-CatalogRepositoryCommit, Get-CatalogCommitDecision, Get-HttpRetryDecision, Invoke-NuGetRequest, Wait-CatalogCommit, Test-ParityPass, Select-ParityStatus, Get-ParityStatus, Test-VersionListed, Test-NuGetVersionListed, Get-NuspecCommit, Resolve-ReleaseTarget, Get-LurpVersion
+Export-ModuleMember -Function Test-CommitSha, Get-VulnerablePackageHits, Assert-NoVulnerablePackages, Assert-NupkgDigest, Assert-NupkgIdentity, Resolve-CiRun, Select-SuccessfulRunId, Get-CiNupkg, Write-ParityStatus, Get-CatalogRepositoryCommit, Get-CatalogCommitDecision, Get-HttpRetryDecision, Invoke-NuGetRequest, Wait-CatalogCommit, Test-ParityPass, Select-ParityStatus, Get-ParityStatus, Test-VersionListed, Test-NuGetVersionListed, Get-NuspecCommit, Assert-ReleaseTag, Resolve-ReleaseTarget, Get-LurpVersion

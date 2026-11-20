@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Storage\Lurp.Storage.csproj" />
+    <ProjectReference Include="..\parity\shared\Lurp.Parity.Shared.csproj" />
   </ItemGroup>
 </Project>

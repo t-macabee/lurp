@@ -7,4 +7,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Storage\Lurp.Storage.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
 </Project>

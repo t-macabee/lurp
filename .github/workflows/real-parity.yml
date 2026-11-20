@@ -2,17 +2,20 @@ name: Real Parity
 
 # Real-solution parity gate on GitHub-hosted Windows and Linux runners.
 #
-# Runs R1 (five-cycle incremental↔full convergence) on eNoteV2 at the commit
-# pinned in parity/targets.json, using the lurp-nupkg artifact that the ci.yml
-# run for the dispatched SHA uploaded. eNoteV2 is public, so it is cloned
-# with no credentials. The nupkg is installed with
-# `dotnet tool install --tool-path` and the R1 script runs it via LURP_CMD;
-# scripts/r1-compare is the only project built from source (Release), because
-# it is not part of the nupkg.
+# Runs R1 (eleven-cycle incremental↔full convergence) on eNoteV2 at the commit
+# pinned in parity/targets.json, using the lurp-nupkg artifact that the push
+# ci.yml run for the dispatched SHA uploaded. R1 restores its own copy of the
+# solution and compares the incremental index with a fresh full index after
+# every cycle. eNoteV2 is public, so it is cloned with no credentials. The nupkg
+# is installed with `dotnet tool install --tool-path` and the R1 script runs it
+# via LURP_CMD; scripts/r1-compare is the only project built from source
+# (Release), because it is not part of the nupkg.
 #
-# Fails closed: no successful ci.yml run for the SHA, a missing or expired
-# artifact, a SHA-256 mismatch against the recorded SHA256SUMS.txt, or a failed
-# R1 run all fail the job.
+# Fails closed: the `resolve` job resolves the push ci.yml run and nupkg digest
+# once; every leg of `real-parity` and `record` checks that exact run id and
+# digest (and the nuspec repository.commit). No successful push ci.yml run for
+# the SHA, a missing or expired artifact, a SHA-256 mismatch against the
+# recorded SHA256SUMS.txt, or a failed R1 run all fail the job.
 #
 # The status covers both legs: a release needs the `real-parity` status to be
 # `success`, which requires the matrix job to pass on Windows and on Linux.
@@ -36,7 +39,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  resolve:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run_id: ${{ steps.nupkg.outputs.run_id }}
+      digest: ${{ steps.nupkg.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Resolve and verify the CI nupkg
+        id: nupkg
+        shell: pwsh
+        env:
+          SHA: ${{ inputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $pkg = Get-CiNupkg -Sha $env:SHA -Destination ./artifacts
+          "run_id=$($pkg.RunId)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "digest=$($pkg.Digest)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          Write-Host "Resolved ci.yml push run $($pkg.RunId) for $env:SHA (sha256=$($pkg.Digest))"
+
   real-parity:
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
@@ -75,17 +105,19 @@ jobs:
           @{ anchors = $s.anchors } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM "$env:RUNNER_TEMP/enotev2-anchors.json"
           Write-Host "Pinned eNoteV2 at $($s.sha) ($($s.repository))"
 
-      # Fail closed unless a successful ci.yml run exists for the dispatched SHA,
-      # the lurp-nupkg artifact is present, and its SHA-256 matches the recorded
-      # SHA256SUMS.txt.
+      # Fail closed unless the resolved push-event ci.yml run has the
+      # lurp-nupkg artifact, its SHA-256 matches SHA256SUMS.txt and the
+      # resolved digest, and its nuspec repository.commit matches the SHA.
       - name: Download and verify the CI nupkg
         shell: pwsh
         env:
           SHA: ${{ inputs.sha }}
+          RUN_ID: ${{ needs.resolve.outputs.run_id }}
+          EXPECTED_DIGEST: ${{ needs.resolve.outputs.digest }}
           GH_TOKEN: ${{ github.token }}
         run: |
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
-          $pkg = Get-CiNupkg -Sha $env:SHA -Destination ./artifacts
+          $pkg = Get-CiNupkg -Sha $env:SHA -Destination ./artifacts -RunId $env:RUN_ID -ExpectedDigest $env:EXPECTED_DIGEST
           "run_id=$($pkg.RunId)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "nupkg_sha256=$($pkg.Digest)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "nupkg_path=$($pkg.Path)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
@@ -159,12 +191,12 @@ jobs:
           $added = @(Select-String -Path $log -Pattern '^ADDED ' -ErrorAction SilentlyContinue).Count
           $removed = @(Select-String -Path $log -Pattern '^REMOVED ' -ErrorAction SilentlyContinue).Count
           $changed = @(Select-String -Path $log -Pattern '^CHANGED ' -ErrorAction SilentlyContinue).Count
-          $verdict = if ($code -eq 0) { 'pass' } else { 'fail' }
+          $verdict = if ($code -eq 0) { 'pass' } elseif ($code -eq 1) { 'fail' } else { 'data error' }
           "integrity: $verdict (added=$added, removed=$removed, changed=$changed, exit=$code)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           exit $code
 
       # Audit B1 Fixture 3: Oracle B (SymbolFinder) caller recall over a seeded
-      # sample of indexed methods, on the same fresh clone and CI nupkg.
+      # sample of source methods Roslyn declares, on the same fresh clone and CI nupkg.
       - name: Parity recall on eNoteV2 (fresh clone, CI nupkg)
         if: ${{ !cancelled() }}
         shell: pwsh
@@ -176,7 +208,7 @@ jobs:
           & $env:GATE_CMD recall "--solution=$solution" "--lurp-cmd=$env:LURP_CMD" "--seed=$env:enotev2_seed" "--sample=$env:enotev2_sample" 2>&1 | Tee-Object -FilePath $log
           $code = $LASTEXITCODE
           $counts = (Select-String -Path $log -Pattern '^recall: ' -ErrorAction SilentlyContinue | Select-Object -Last 1).Line
-          $verdict = if ($code -eq 0) { 'pass' } else { 'fail' }
+          $verdict = if ($code -eq 0) { 'pass' } elseif ($code -eq 1) { 'fail' } else { 'data error' }
           if ($counts) {
             "recall: $verdict $(($counts -replace '^recall: ', '')), exit=$code" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           } else {
@@ -231,7 +263,7 @@ jobs:
 
   record:
     runs-on: windows-latest
-    needs: real-parity
+    needs: [resolve, real-parity]
     if: ${{ !cancelled() }}
     timeout-minutes: 30
     permissions:
@@ -254,10 +286,12 @@ jobs:
         shell: pwsh
         env:
           SHA: ${{ inputs.sha }}
+          RUN_ID: ${{ needs.resolve.outputs.run_id }}
+          EXPECTED_DIGEST: ${{ needs.resolve.outputs.digest }}
           GH_TOKEN: ${{ github.token }}
         run: |
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
-          $pkg = Get-CiNupkg -Sha $env:SHA -Destination ./artifacts
+          $pkg = Get-CiNupkg -Sha $env:SHA -Destination ./artifacts -RunId $env:RUN_ID -ExpectedDigest $env:EXPECTED_DIGEST
           "run_id=$($pkg.RunId)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "nupkg_sha256=$($pkg.Digest)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "nupkg_path=$($pkg.Path)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
