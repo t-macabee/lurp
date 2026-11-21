@@ -151,40 +151,49 @@ function Invoke-NuGetRequest([string]$Url) {
   }
 }
 
-function Wait-CatalogCommit([string]$Version, [string]$ExpectedCommit, [int]$TimeoutMinutes = 30, [int]$IntervalSeconds = 20, [scriptblock]$Request = { param($Url) Invoke-NuGetRequest $Url }, [scriptblock]$Now = { Get-Date }, [scriptblock]$Sleep = { param($Seconds) Start-Sleep -Seconds $Seconds }) {
-  if ($Version -notmatch '\A[0-9]+\.[0-9]+\.[0-9]+\z') { throw "Version must be X.Y.Z, got '$Version'." }
-  if (-not (Test-CommitSha $ExpectedCommit)) { throw "ExpectedCommit must be a full 40-character commit SHA, got '$ExpectedCommit'." }
+function Read-CatalogEntry([string]$Version, [scriptblock]$Request) {
   $leafUrl = "https://api.nuget.org/v3/registration5-semver1/lurp/$Version.json"
-  $deadline = (& $Now).AddMinutes($TimeoutMinutes)
-  while ($true) {
-    $leaf = & $Request $leafUrl
-    $decision = Get-HttpRetryDecision $leaf.Status
-    $detail = "$leafUrl HTTP $($leaf.Status)"
-    if ($decision -eq 'ok') {
-      $catalogUrl = ''
-      try {
-        $leafEntry = ConvertFrom-Json $leaf.Content
-        if ($leafEntry.PSObject.Properties['catalogEntry']) { $catalogUrl = [string]$leafEntry.catalogEntry }
-      } catch {
-        throw "nuget.org registration leaf $leafUrl has no catalogEntry."
-      }
-      if ([string]::IsNullOrWhiteSpace($catalogUrl)) { throw "nuget.org registration leaf $leafUrl has no catalogEntry." }
-      $catalog = & $Request $catalogUrl
-      $decision = Get-HttpRetryDecision $catalog.Status
-      $detail = "$catalogUrl HTTP $($catalog.Status)"
+  $leaf = & $Request $leafUrl
+  $decision = Get-HttpRetryDecision $leaf.Status
+  $detail = "$leafUrl HTTP $($leaf.Status)"
+  $catalogJson = ''
+  if ($decision -eq 'ok') {
+    $catalogUrl = ''
+    try {
+      $leafEntry = ConvertFrom-Json $leaf.Content
+      if ($leafEntry.PSObject.Properties['catalogEntry']) { $catalogUrl = [string]$leafEntry.catalogEntry }
+    } catch {
+      throw "nuget.org registration leaf $leafUrl has no catalogEntry."
     }
-    if ($decision -eq 'error') { throw "nuget.org request failed: $detail." }
+    if ([string]::IsNullOrWhiteSpace($catalogUrl)) { throw "nuget.org registration leaf $leafUrl has no catalogEntry." }
+    $catalog = & $Request $catalogUrl
+    $decision = Get-HttpRetryDecision $catalog.Status
+    $detail = "$catalogUrl HTTP $($catalog.Status)"
     if ($decision -eq 'ok') {
       try { [void](ConvertFrom-Json $catalog.Content) } catch { throw "nuget.org catalog entry $catalogUrl is not valid JSON." }
-      $commit = Get-CatalogRepositoryCommit $catalog.Content
-      if ((Get-CatalogCommitDecision -CatalogJson $catalog.Content -ExpectedCommit $ExpectedCommit) -eq 'match') {
+      $catalogJson = $catalog.Content
+    }
+  }
+  return [pscustomobject]@{ Decision = $decision; CatalogJson = $catalogJson; Detail = $detail }
+}
+
+function Wait-CatalogCommit([string]$Version, [string]$ExpectedCommit, [int]$TimeoutMinutes = 60, [int]$IntervalSeconds = 20, [scriptblock]$Request = { param($Url) Invoke-NuGetRequest $Url }, [scriptblock]$Now = { Get-Date }, [scriptblock]$Sleep = { param($Seconds) Start-Sleep -Seconds $Seconds }) {
+  if (-not (Test-ReleaseVersion $Version)) { throw "Version must be X.Y.Z, got '$Version'." }
+  if (-not (Test-CommitSha $ExpectedCommit)) { throw "ExpectedCommit must be a full 40-character commit SHA, got '$ExpectedCommit'." }
+  $deadline = (& $Now).AddMinutes($TimeoutMinutes)
+  while ($true) {
+    $entry = Read-CatalogEntry -Version $Version -Request $Request
+    if ($entry.Decision -eq 'error') { throw "nuget.org request failed: $($entry.Detail)." }
+    if ($entry.Decision -eq 'ok') {
+      $commit = Get-CatalogRepositoryCommit $entry.CatalogJson
+      if ((Get-CatalogCommitDecision -CatalogJson $entry.CatalogJson -ExpectedCommit $ExpectedCommit) -eq 'match') {
         Write-Host "nuget.org catalog repository.commit $commit matches $ExpectedCommit."
         return
       }
       throw "nuget.org catalog repository.commit '$commit' does not match '$ExpectedCommit'."
     }
     if ((& $Now) -ge $deadline) { throw "catalog entry not available after $TimeoutMinutes minutes" }
-    Write-Host "Catalog entry not ready ($detail); retrying in $IntervalSeconds seconds."
+    Write-Host "Catalog entry not ready ($($entry.Detail)); retrying in $IntervalSeconds seconds."
     & $Sleep $IntervalSeconds
   }
 }
@@ -222,6 +231,25 @@ function Test-NuGetVersionListed([string]$Version, [scriptblock]$Request = { par
   return Test-VersionListed -IndexJson $response.Content -Version $Version
 }
 
+function Get-PublishedState([string]$Version, [string]$ExpectedCommit, [scriptblock]$Request = { param($Url) Invoke-NuGetRequest $Url }) {
+  if (-not (Test-ReleaseVersion $Version)) { throw "Version must be X.Y.Z, got '$Version'." }
+  if (-not (Test-CommitSha $ExpectedCommit)) { throw "ExpectedCommit must be a full 40-character commit SHA, got '$ExpectedCommit'." }
+  if (-not (Test-NuGetVersionListed -Version $Version -Request $Request)) {
+    return [pscustomobject]@{ State = 'unlisted'; Commit = ''; Detail = '' }
+  }
+
+  $entry = Read-CatalogEntry -Version $Version -Request $Request
+  if ($entry.Decision -eq 'error') { throw "nuget.org request failed: $($entry.Detail)." }
+  if ($entry.Decision -eq 'retry') {
+    return [pscustomobject]@{ State = 'unknown-commit'; Commit = ''; Detail = $entry.Detail }
+  }
+
+  $commit = Get-CatalogRepositoryCommit $entry.CatalogJson
+  $decision = Get-CatalogCommitDecision -CatalogJson $entry.CatalogJson -ExpectedCommit $ExpectedCommit
+  $state = if ($decision -eq 'match') { 'same-commit' } else { 'other-commit' }
+  return [pscustomobject]@{ State = $state; Commit = $commit; Detail = $entry.Detail }
+}
+
 function Get-NuspecCommit([string]$NupkgPath) {
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $zip = [System.IO.Compression.ZipFile]::OpenRead($NupkgPath)
@@ -242,8 +270,18 @@ function Get-NuspecCommit([string]$NupkgPath) {
   return [string]$repository.GetAttribute('commit')
 }
 
+function Test-ReleaseVersion([string]$Version) {
+  return $Version -cmatch '\A[0-9]+\.[0-9]+\.[0-9]+\z'
+}
+
 function Test-ReleaseTag([string]$Tag) {
-  return $Tag -cmatch '\Av[0-9]+\.[0-9]+\.[0-9]+\z'
+  return $Tag.StartsWith('v', [StringComparison]::Ordinal) -and (Test-ReleaseVersion ($Tag.Substring(1)))
+}
+
+function Assert-ReleaseVersion([string]$Version) {
+  if (-not (Test-ReleaseVersion $Version)) {
+    throw "<Version>$Version</Version> in src/Lurp.csproj is not X.Y.Z."
+  }
 }
 
 function Assert-ReleaseTag([string]$Tag, [string]$Version) {
@@ -290,4 +328,4 @@ function Get-LurpVersion([string]$ProjectPath = 'src/Lurp.csproj') {
   return $version
 }
 
-Export-ModuleMember -Function Test-CommitSha, Get-VulnerablePackageHits, Assert-NoVulnerablePackages, Assert-NupkgDigest, Assert-NupkgIdentity, Resolve-CiRun, Select-SuccessfulRunId, Get-CiNupkg, Write-ParityStatus, Get-CatalogRepositoryCommit, Get-CatalogCommitDecision, Get-HttpRetryDecision, Invoke-NuGetRequest, Wait-CatalogCommit, Test-ParityPass, Select-ParityStatus, Get-ParityStatus, Test-VersionListed, Test-NuGetVersionListed, Get-NuspecCommit, Assert-ReleaseTag, Resolve-ReleaseTarget, Get-LurpVersion
+Export-ModuleMember -Function Test-CommitSha, Get-VulnerablePackageHits, Assert-NoVulnerablePackages, Assert-NupkgDigest, Assert-NupkgIdentity, Resolve-CiRun, Select-SuccessfulRunId, Get-CiNupkg, Write-ParityStatus, Get-CatalogRepositoryCommit, Get-CatalogCommitDecision, Get-HttpRetryDecision, Invoke-NuGetRequest, Wait-CatalogCommit, Test-ParityPass, Select-ParityStatus, Get-ParityStatus, Test-VersionListed, Test-NuGetVersionListed, Get-PublishedState, Get-NuspecCommit, Assert-ReleaseVersion, Assert-ReleaseTag, Resolve-ReleaseTarget, Get-LurpVersion

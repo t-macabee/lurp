@@ -120,6 +120,7 @@ gh workflow run release.yml -f ref=<sha or tag> -f dry_run=true
 ```
 
 5. Tag `vX.Y.Z` on that SHA and push the tag. A pushed tag of another form fails the release before any check. The `nuget` environment asks for approval before the push.
+   After approval, the publish job pushes the package and waits up to 60 minutes for the nuget.org catalog entry. The publish job has a 90-minute limit.
 6. Override. Use this only when the parity gate cannot pass. It skips only the parity status and the attestation, and the reason goes into the release body:
 
 ```bash
@@ -127,6 +128,11 @@ gh workflow run release.yml -f ref=vX.Y.Z -f dry_run=false -f override_reason="<
 ```
 
 7. The release body is `docs/RELEASE_NOTES_<Version>.md` at the tagged commit.
+8. To finish a release that failed after the push, re-run the failed jobs or start `release.yml` with `ref=vX.Y.Z` and `dry_run=false`.
+   If the first run used an `override_reason`, use the same reason.
+   The publish job skips the duplicate push and waits for the catalog entry.
+   The run creates the GitHub release after the entry confirms the tagged commit.
+   A package from a different commit fails the release.
 
 ## Reporting issues
 

@@ -483,6 +483,22 @@ Test-Case 'Assert-ReleaseTag rejects a tag outside the rule' {
   Assert-Throws { Assert-ReleaseTag -Tag 'v3.0.0-rc.1' -Version '3.0.0-rc.1' } "ref must be vX.Y.Z or a full commit SHA, got 'v3.0.0-rc.1'"
 }
 
+Test-Case 'Assert-ReleaseVersion accepts X.Y.Z' {
+  Assert-ReleaseVersion '3.7.0'
+}
+
+Test-Case 'Assert-ReleaseVersion rejects a pre-release version' {
+  Assert-Throws { Assert-ReleaseVersion '3.7.0-rc.1' } '<Version>3.7.0-rc.1</Version> in src/Lurp.csproj is not X.Y.Z.'
+}
+
+Test-Case 'Assert-ReleaseVersion rejects a four-part version' {
+  Assert-Throws { Assert-ReleaseVersion '3.7.0.1' } '<Version>3.7.0.1</Version> in src/Lurp.csproj is not X.Y.Z.'
+}
+
+Test-Case 'Assert-ReleaseVersion rejects a leading v' {
+  Assert-Throws { Assert-ReleaseVersion 'v3.7.0' } '<Version>v3.7.0</Version> in src/Lurp.csproj is not X.Y.Z.'
+}
+
 $script:Queue = @()
 $script:CallIndex = 0
 $script:CallUrls = New-Object System.Collections.ArrayList
@@ -542,9 +558,10 @@ Test-Case 'Wait-CatalogCommit retries a 404 and then matches' {
 
 Test-Case 'Wait-CatalogCommit gives up after the timeout when the entry never appears' {
   Set-FakeResponses @((New-FakeResponse 404))
-  Assert-Throws { Wait-CatalogCommit -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest -Now $script:FakeNow -Sleep $script:FakeSleep } 'catalog entry not available after 30 minutes'
-  Assert-Equal 91 $script:CallUrls.Count 'calls'
-  Assert-Equal 90 $script:Sleeps.Count 'sleeps'
+  Assert-Throws { Wait-CatalogCommit -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest -Now $script:FakeNow -Sleep $script:FakeSleep } 'catalog entry not available after 60 minutes'
+  # Check at t = 0 and every 20 seconds through t = 3600.
+  Assert-Equal 181 $script:CallUrls.Count 'calls'
+  Assert-Equal 180 $script:Sleeps.Count 'sleeps'
   Assert-Equal 'https://api.nuget.org/v3/registration5-semver1/lurp/2.0.0.json' $script:CallUrls[0] 'url'
 }
 
@@ -730,6 +747,75 @@ Test-Case 'Test-NuGetVersionListed throws on a network failure (status 0)' {
   Assert-Throws { Test-NuGetVersionListed -Version '2.0.0' -Request $script:FakeRequest } 'nuget.org flat container returned HTTP 0'
   Assert-Equal 1 $script:CallUrls.Count 'calls'
   Assert-Equal 'https://api.nuget.org/v3-flatcontainer/lurp/index.json' $script:CallUrls[0] 'url'
+}
+
+Test-Case 'Get-PublishedState reports an unlisted version on a 404' {
+  Set-FakeResponses @((New-FakeResponse 404))
+  $published = Get-PublishedState -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest
+  Assert-Equal 'unlisted' $published.State 'state'
+  Assert-Equal '' $published.Commit 'commit'
+  Assert-Equal '' $published.Detail 'detail'
+  Assert-Equal 1 $script:CallUrls.Count 'calls'
+  Assert-Equal 'https://api.nuget.org/v3-flatcontainer/lurp/index.json' $script:CallUrls[0] 'url'
+}
+
+Test-Case 'Get-PublishedState reports an unlisted version that the index does not hold' {
+  Set-FakeResponses @((New-FakeResponse 200 '{"versions":["1.0.0"]}'))
+  $published = Get-PublishedState -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest
+  Assert-Equal 'unlisted' $published.State 'state'
+  Assert-Equal 1 $script:CallUrls.Count 'calls'
+}
+
+$script:ListedIndexJson = '{"versions":["2.0.0"]}'
+
+Test-Case 'Get-PublishedState reports the same commit' {
+  Set-FakeResponses @((New-FakeResponse 200 $script:ListedIndexJson), (New-FakeResponse 200 $script:LeafJson), (New-FakeResponse 200 $script:RealCatalogJson))
+  $published = Get-PublishedState -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest
+  Assert-Equal 'same-commit' $published.State 'state'
+  Assert-Equal $script:RealCommit $published.Commit 'commit'
+  Assert-Equal 3 $script:CallUrls.Count 'calls'
+  Assert-Equal 'https://api.nuget.org/v3-flatcontainer/lurp/index.json|https://api.nuget.org/v3/registration5-semver1/lurp/2.0.0.json|https://example.test/catalog.json' ($script:CallUrls -join '|') 'urls'
+}
+
+Test-Case 'Get-PublishedState reports another commit' {
+  Set-FakeResponses @((New-FakeResponse 200 $script:ListedIndexJson), (New-FakeResponse 200 $script:LeafJson), (New-FakeResponse 200 $script:RealCatalogJson))
+  $published = Get-PublishedState -Version '2.0.0' -ExpectedCommit $script:TagCommit -Request $script:FakeRequest
+  Assert-Equal 'other-commit' $published.State 'state'
+  Assert-Equal $script:RealCommit $published.Commit 'commit'
+}
+
+Test-Case 'Get-PublishedState reports a catalog entry without a commit as another commit' {
+  Set-FakeResponses @((New-FakeResponse 200 $script:ListedIndexJson), (New-FakeResponse 200 $script:LeafJson), (New-FakeResponse 200 '{"id":"lurp","version":"2.0.0"}'))
+  $published = Get-PublishedState -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest
+  Assert-Equal 'other-commit' $published.State 'state'
+  Assert-Equal '' $published.Commit 'commit'
+}
+
+Test-Case 'Get-PublishedState reports an unknown commit when the leaf is not indexed' {
+  Set-FakeResponses @((New-FakeResponse 200 $script:ListedIndexJson), (New-FakeResponse 404))
+  $published = Get-PublishedState -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest
+  Assert-Equal 'unknown-commit' $published.State 'state'
+  Assert-Equal 'https://api.nuget.org/v3/registration5-semver1/lurp/2.0.0.json HTTP 404' $published.Detail 'detail'
+  Assert-Equal 2 $script:CallUrls.Count 'calls'
+  Assert-Equal 0 $script:Sleeps.Count 'sleeps'
+}
+
+Test-Case 'Get-PublishedState reports an unknown commit on a catalog 503' {
+  Set-FakeResponses @((New-FakeResponse 200 $script:ListedIndexJson), (New-FakeResponse 200 $script:LeafJson), (New-FakeResponse 503))
+  $published = Get-PublishedState -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest
+  Assert-Equal 'unknown-commit' $published.State 'state'
+  Assert-Equal 'https://example.test/catalog.json HTTP 503' $published.Detail 'detail'
+}
+
+Test-Case 'Get-PublishedState fails on a leaf 403' {
+  Set-FakeResponses @((New-FakeResponse 200 $script:ListedIndexJson), (New-FakeResponse 403))
+  Assert-Throws { Get-PublishedState -Version '2.0.0' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest } 'nuget.org request failed: https://api.nuget.org/v3/registration5-semver1/lurp/2.0.0.json HTTP 403.'
+}
+
+Test-Case 'Get-PublishedState rejects a Version that is not X.Y.Z' {
+  Set-FakeResponses @()
+  Assert-Throws { Get-PublishedState -Version '2.0.0-rc.1' -ExpectedCommit $script:RealCommit -Request $script:FakeRequest } "Version must be X.Y.Z, got '2.0.0-rc.1'."
+  Assert-Equal 0 $script:CallUrls.Count 'calls'
 }
 
 # A loopback port that was free a moment ago.

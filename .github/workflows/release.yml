@@ -7,13 +7,16 @@
 #     dry_run (default true), override_reason (publishes without a recorded
 #     real-parity pass; the reason goes into the release body).
 #
-# Decision 10: the override skips only the parity status and the attestation.
-# Every other check fails hard.
-# Decision 12: a version that nuget.org already lists fails a real publish. A
-# dry run only warns.
+# The override skips only the real-parity status and the attestation.
+# All other checks still apply.
+# A version from a different commit on nuget.org stops a real release.
+# A dry run warns about the different commit.
+# NuGet skips a duplicate push. The publish job waits up to 60 minutes for
+# the catalog entry. The github-release job runs only after the catalog entry
+# names the tagged commit.
 #
 # Jobs: verify (every check, no push), publish (the nuget environment asks for
-# approval), github-release (only after the push and the catalog check).
+# approval), github-release (creates the GitHub release).
 name: Release
 
 on:
@@ -37,8 +40,9 @@ on:
 permissions: {}
 
 # One publish per ref. Never cancel a publish half way.
+# A pushed tag and a dispatched tag share one group.
 concurrency:
-  group: release-${{ inputs.ref || github.ref }}
+  group: release-${{ inputs.ref || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -97,6 +101,7 @@ jobs:
           git -C target merge-base --is-ancestor $sha origin/main
           if ($LASTEXITCODE -ne 0) { throw "$sha is not on main" }
           $version = Get-LurpVersion -ProjectPath target/src/Lurp.csproj
+          Assert-ReleaseVersion $version
           if ($t.Tag) {
             Assert-ReleaseTag -Tag $t.Tag -Version $version
             Write-Host "Tag $($t.Tag) matches <Version>$version</Version>."
@@ -114,25 +119,33 @@ jobs:
             "dry_run=$dry"
           ) | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
-      - name: Check that nuget.org does not have the version
+      - name: Check the nuget.org state of the version
         id: nuget
         shell: pwsh
         env:
           VERSION: ${{ steps.target.outputs.version }}
+          SHA: ${{ steps.target.outputs.sha }}
           DRY_RUN: ${{ steps.target.outputs.dry_run }}
         run: |
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
-          $listed = Test-NuGetVersionListed -Version $env:VERSION
-          if ($listed) {
-            if ($env:DRY_RUN -eq 'true') {
-              Write-Host "::warning::lurp $env:VERSION is already on nuget.org; a real publish of this version would stop here."
-            } else {
-              throw "lurp $env:VERSION is already on nuget.org"
+          $published = Get-PublishedState -Version $env:VERSION -ExpectedCommit $env:SHA
+          switch ($published.State) {
+            'unlisted' {
+              Write-Host "lurp $env:VERSION is not on nuget.org."
             }
-          } else {
-            Write-Host "lurp $env:VERSION is not on nuget.org."
+            'same-commit' {
+              Write-Host "::notice::nuget.org has lurp $env:VERSION from $env:SHA. The publish job skips the duplicate push and finishes the release."
+            }
+            'unknown-commit' {
+              Write-Host "::notice::nuget.org lists lurp $env:VERSION. Its catalog entry is not ready ($($published.Detail)). The publish job waits for the entry and checks the commit."
+            }
+            'other-commit' {
+              $message = "lurp $env:VERSION is already on nuget.org from commit '$($published.Commit)', not $env:SHA."
+              if ($env:DRY_RUN -ne 'true') { throw $message }
+              Write-Host "::warning::$message A real publish would stop here."
+            }
           }
-          "listed=$($listed.ToString().ToLowerInvariant())" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "state=$($published.State)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
       - name: Check for vulnerable packages
         shell: pwsh
@@ -154,9 +167,7 @@ jobs:
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
           $pkg = Get-CiNupkg -Sha $env:SHA -Destination ./artifacts
           if ($pkg.Name -ne "lurp.${env:VERSION}.nupkg") { throw "nupkg name $($pkg.Name) is not lurp.${env:VERSION}.nupkg" }
-          $commit = Get-NuspecCommit $pkg.Path
-          if ($commit -ne $env:SHA) { throw "nupkg repository.commit '$commit' does not match SHA '$env:SHA'." }
-          Write-Host "nupkg repository.commit $commit matches the SHA."
+          Write-Host "nupkg repository.commit matches $env:SHA."
           @(
             "digest=$($pkg.Digest)",
             "run_id=$($pkg.RunId)"
@@ -199,7 +210,7 @@ jobs:
           SHA: ${{ steps.target.outputs.sha }}
           TAG: ${{ steps.target.outputs.tag }}
           VERSION: ${{ steps.target.outputs.version }}
-          NUGET_LISTED: ${{ steps.nuget.outputs.listed }}
+          NUGET_STATE: ${{ steps.nuget.outputs.state }}
           DIGEST: ${{ steps.nupkg.outputs.digest }}
           RUN_ID: ${{ steps.nupkg.outputs.run_id }}
           DRY_RUN: ${{ steps.target.outputs.dry_run }}
@@ -207,9 +218,15 @@ jobs:
         run: |
           $tagText = if ($env:TAG) { $env:TAG } else { 'no tag' }
           $parity = if ($env:OVERRIDE_USED -eq 'true') { 'overridden (see the release body)' } else { 'passed, attestation verified' }
+          $nuget = switch ($env:NUGET_STATE) {
+            'unlisted' { 'Version is not on nuget.org.' }
+            'same-commit' { 'Version is from the target commit. A real publish skips the duplicate push and finishes the release.' }
+            'unknown-commit' { 'Version is listed. A real publish waits for the catalog entry and checks the commit.' }
+            'other-commit' { 'Warning. The catalog commit differs from the target or is missing. A real publish would stop here.' }
+          }
           $lines = @(
             "- Target: $env:SHA ($tagText), version $env:VERSION",
-            "- nuget.org version check: $(if ($env:NUGET_LISTED -eq 'true') { 'version is already listed (warning; a real publish would stop)' } else { 'version is not listed' })",
+            "- nuget.org version check: $nuget",
             '- Vulnerable packages: none',
             "- Release notes: docs/RELEASE_NOTES_$env:VERSION.md present",
             "- CI nupkg: ci.yml run $env:RUN_ID, sha256 $env:DIGEST, repository.commit matches",
@@ -222,7 +239,8 @@ jobs:
     needs: verify
     if: needs.verify.outputs.dry_run == 'false'
     runs-on: windows-latest
-    timeout-minutes: 45
+    # Allow time for the catalog wait, login and push.
+    timeout-minutes: 90
     environment: nuget
     permissions:
       contents: read
@@ -241,12 +259,12 @@ jobs:
         shell: pwsh
         env:
           RUN_ID: ${{ needs.verify.outputs.run_id }}
+          SHA: ${{ needs.verify.outputs.sha }}
           DIGEST: ${{ needs.verify.outputs.digest }}
           GH_TOKEN: ${{ github.token }}
         run: |
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
-          $pkg = Get-CiNupkg -RunId $env:RUN_ID -Destination ./artifacts
-          if ($pkg.Digest -ne $env:DIGEST) { throw "nupkg digest $($pkg.Digest) does not match the verified digest $env:DIGEST." }
+          $null = Get-CiNupkg -RunId $env:RUN_ID -Sha $env:SHA -ExpectedDigest $env:DIGEST -Destination ./artifacts
 
       - name: NuGet login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
@@ -254,14 +272,15 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
 
-      # No --skip-duplicate: a version that is already listed fails here.
+      # Skip a duplicate so a run can resume after a push.
+      # The next step checks that the listed package is from this commit.
       - name: Push to NuGet
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
-          dotnet nuget push $pkg.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+          dotnet nuget push $pkg.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
           if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed with exit code $LASTEXITCODE." }
 
       - name: Verify the published catalog entry
@@ -271,7 +290,7 @@ jobs:
           SHA: ${{ needs.verify.outputs.sha }}
         run: |
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
-          Wait-CatalogCommit $env:VERSION $env:SHA
+          Wait-CatalogCommit -Version $env:VERSION -ExpectedCommit $env:SHA -TimeoutMinutes 60
 
   github-release:
     needs: [verify, publish]
@@ -293,12 +312,12 @@ jobs:
         shell: pwsh
         env:
           RUN_ID: ${{ needs.verify.outputs.run_id }}
+          SHA: ${{ needs.verify.outputs.sha }}
           DIGEST: ${{ needs.verify.outputs.digest }}
           GH_TOKEN: ${{ github.token }}
         run: |
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
-          $pkg = Get-CiNupkg -RunId $env:RUN_ID -Destination ./artifacts
-          if ($pkg.Digest -ne $env:DIGEST) { throw "nupkg digest $($pkg.Digest) does not match the verified digest $env:DIGEST." }
+          $null = Get-CiNupkg -RunId $env:RUN_ID -Sha $env:SHA -ExpectedDigest $env:DIGEST -Destination ./artifacts
 
       - name: Write the release body
         shell: pwsh
