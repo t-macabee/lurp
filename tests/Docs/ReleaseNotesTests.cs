@@ -45,6 +45,23 @@ public sealed partial class ReleaseNotesTests
     }
 
     [Fact]
+    public void EveryNotesTitle_SaysDraftOnlyAboveTheToolVersion()
+    {
+        var toolVersion = Version.Parse(VersionConstants.ToolVersion);
+        var failures = new List<string>();
+        foreach (var file in Notes())
+        {
+            var suffix = file.Version > toolVersion ? " (draft)" : "";
+            var expected = $"# Lurp {file.Version.ToString(3)}{suffix}";
+            var actual = file.Text.Split('\n', 2)[0].TrimEnd('\r');
+            if (actual != expected)
+                failures.Add($"{file.Name}: expected '{expected}', found '{actual}'");
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    [Fact]
     public void EveryNotesFile_HasAVersionsTable_ThatContinuesTheFileBefore()
     {
         var failures = new List<string>();

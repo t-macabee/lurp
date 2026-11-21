@@ -95,7 +95,7 @@ function Get-McpToolJson {
 function Get-Python {
     $py = Get-Command python3 -ErrorAction SilentlyContinue
     if (-not $py) { $py = Get-Command python -ErrorAction SilentlyContinue }
-    if (-not $py) { throw 'Python 3 is required by this smoke script (snapshot-state.py).' }
+    if (-not $py) { throw 'Python 3 is required by this smoke script.' }
     return $py.Source
 }
 
@@ -139,6 +139,52 @@ Assert-True (Test-Path $dbPath) "index.db not created at $dbPath"
 $status1 = ConvertFrom-LurpJson (Invoke-Lurp @('--mode=status', "--output-dir=$DbDir", '--output=json')).Text
 $snapshot1 = $status1.latest_snapshot_id
 Assert-True (-not [string]::IsNullOrEmpty($snapshot1)) 'status did not report a latest snapshot id'
+
+Write-Host '== model-view smoke =='
+$python = Get-Python
+$generator = Join-Path $RepoRoot 'scripts' 'model-view' 'generate.py'
+$modelViewInput = Join-Path $PSScriptRoot 'model-view-input.py'
+$indexLog = Join-Path $WorkDir 'index-run.log'
+$modelView = Join-Path $WorkDir 'model-view.html'
+Set-Content -LiteralPath $indexLog -Value $index1.Text -Encoding utf8NoBOM
+& $python $generator --db $dbPath --index-log $indexLog --out $modelView
+Assert-True ($LASTEXITCODE -eq 0) "model-view render expected exit 0, got $LASTEXITCODE"
+$page = Get-Content -LiteralPath $modelView -Raw -Encoding utf8
+$edgeCount = & $python $modelViewInput edge-count $dbPath $snapshot1
+Assert-True ($LASTEXITCODE -eq 0) "edge-count expected exit 0, got $LASTEXITCODE"
+$edgeTotalPattern = '<tr class="total-row"><td>Total typed edges</td><td class="num">([\d,]+)</td>'
+$pageEdgeCount = [regex]::Match($page, $edgeTotalPattern).Groups[1].Value.Replace(',', '')
+Assert-True ($pageEdgeCount -ceq $edgeCount) "model-view edge total expected '$edgeCount', got '$pageEdgeCount'"
+$pageSnapshot = [regex]::Match($page, 'Snapshot <code>([^<]+)</code>').Groups[1].Value
+Assert-True ($pageSnapshot -ceq $snapshot1) "model-view snapshot expected '$snapshot1', got '$pageSnapshot'"
+$projectHeader = [regex]::Match($page, '<th class="num">Edges extracted</th>').Value
+Assert-True ($projectHeader -ne '') "model-view expected a per-project table, got no 'Edges extracted' column"
+
+$noEdgesDb = Join-Path $WorkDir 'no-edges.db'
+$noEdgesView = Join-Path $WorkDir 'model-view-no-edges.html'
+& $python $modelViewInput no-edges $dbPath $noEdgesDb $snapshot1
+Assert-True ($LASTEXITCODE -eq 0) "no-edges copy expected exit 0, got $LASTEXITCODE"
+& $python $generator --db $noEdgesDb --out $noEdgesView
+Assert-True ($LASTEXITCODE -eq 0) "no-edges render expected exit 0, got $LASTEXITCODE"
+$emptyPage = Get-Content -LiteralPath $noEdgesView -Raw -Encoding utf8
+$emptyTotal = [regex]::Match($emptyPage, $edgeTotalPattern).Groups[1].Value
+Assert-True ($emptyTotal -ceq '0') "no-edges model-view total expected '0', got '$emptyTotal'"
+$evidenceBody = [regex]::Match($emptyPage, '<th>Evidence tier</th>.*?<tbody>(.*?)</tbody>', 'Singleline').Groups[1].Value
+$shares = @([regex]::Matches($evidenceBody, '<tr>.*?<td class="num">([^<]*)</td></tr>') | ForEach-Object { $_.Groups[1].Value })
+$tierCount = [regex]::Matches($page, '<div class="ladder-tier ').Count
+Assert-True ($tierCount -gt 0 -and $shares.Count -eq $tierCount) "no-edges model-view expected $tierCount share cells (one per tier), got $($shares.Count)"
+foreach ($share in $shares) {
+    Assert-True ($share -ceq '0.0%') "no-edges model-view share expected '0.0%', got '$share'"
+}
+
+$provenanceHelp = [regex]::Match($help.Text, '(?m)^ {4}--provenance=[^\r\n]*(?:\r?\n {5,}[^\r\n]*)*').Value
+$expectedLevels = [regex]::Match($provenanceHelp, 'Values:\s+([^.]+)\.').Groups[1].Value -replace '\s+', ''
+$pageLevels = [regex]::Matches($page, '<div class="ladder-tier tier-([a-z_]+)[ "]') |
+    ForEach-Object { $_.Groups[1].Value }
+$actualLevels = $pageLevels -join ','
+Assert-True ($expectedLevels -ne '' -and $actualLevels -ceq $expectedLevels) "model-view ladder expected '$expectedLevels' from --help, got '$actualLevels'"
+$capsuleGrade = [regex]::Match($page, '<p class="capsule-grade">\s*<code>([^<]+)</code> is a capsule grade, never an edge').Groups[1].Value
+Assert-True ($capsuleGrade -ceq 'global_implementation_relation') "model-view capsule grade expected 'global_implementation_relation', got '$capsuleGrade'"
 
 $source = Invoke-Lurp @('--mode=get-source', '--document=App/Lib.cs', "--output-dir=$DbDir", '--quiet')
 Assert-True ($source.Text -match 'Greet') 'get-source output does not contain Greet'

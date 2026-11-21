@@ -104,6 +104,10 @@ $env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter "Fully
    install line. Regenerate the docs (see "CLI/MCP contract versioning" above).
    `ReleaseNotesTests` fails until the notes, the table, the README link and the
    install line agree with the constants.
+   If `ExtractorVersion` changed since the last release, regenerate
+   `docs/MODEL_VIEW.html` from the eNoteV2 commit in `parity/targets.json`. Use the
+   command in `scripts/README.md`. Update the README sentence about the page.
+   `ModelViewStampTests` fails until the sentence and the page agree.
 2. Push to `main`. `ci.yml` builds, tests and packs the tool, and keeps the nupkg for 90 days. The parity gate and the release use the nupkg of the `push` run of `ci.yml` for that SHA. A pull-request run is never used.
 3. Run the parity gate on that SHA:
 

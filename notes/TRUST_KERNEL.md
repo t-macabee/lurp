@@ -186,7 +186,7 @@ Narrow D3/D4: capture compiler-resolved overloaded operators and user-defined ca
 
 ## Source-generator support: reassessed 2026-07-28
 
-Observed: (1) no source-generator packages in any `.csproj`; (2) all `.g.cs` under `obj/` (compiler implicit-usings, not SG output); (3) `IsBuildOutputPath` filters `obj/`+`bin/`; (4) `GeneratedTreesIncluded` hardcoded `false`; (5) plumbing proven correct via injected-`.g.cs` test `GeneratedCodeProvenanceTests.GeneratedFile_MarksDeclarationsAndCrossGeneratedEdges`. Decision: `GeneratedTreesIncluded=false` is accurate, not a gap. `GeneratorDriver` execution correctly postponed. Revisit if a NuGet SG package is added or a generated file appears outside `obj/` with meaningful symbols.
+Observed: (1) no source-generator packages in any `.csproj`; (2) all `.g.cs` under `obj/` (compiler implicit-usings, not SG output); (3) `IsBuildOutputPath` filters `obj/`+`bin/`; (4) `GeneratedTreesIncluded` hardcoded `false`; (5) plumbing proven correct via injected-`.g.cs` test `GeneratedCodeProvenanceTests.GeneratedFile_MarksDeclarationsAndCrossGeneratedEdges`. Decision: `GeneratedTreesIncluded=false` is accurate, not a gap. This is the declared `source_generators` boundary of 4.0.0. Phase 3 plans to run source generators. `GeneratorDriver` execution correctly postponed. Revisit if a NuGet SG package is added or a generated file appears outside `obj/` with meaningful symbols.
 
 Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and reflection lineages (`MayDispatchTo`, `StaticallyCalls`, all four reflection kinds), parity with member-edge/adapter lineages. The generated *set* is authoritative by path (`DocumentId.ToString()` = git-relative path, same form `EdgeLocationResolver.IsGenerated` normalizes).
 

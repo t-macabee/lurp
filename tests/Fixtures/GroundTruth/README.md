@@ -9,10 +9,11 @@ the same two corpora. It checks ordinary methods, constructors, operators,
 conversions, explicit interface implementations, property accessors, and the
 add and remove accessors of every source event. It sets aside dynamic calls and
 callers whose bound target is outside the solution. For a `using` site, this
-check uses the disposal target from D10. The recall gate samples the source
-methods Roslyn declares in scope. A sampled method with no declaration in the
-index is a miss. `CrossProjectBoundaryTests` runs the VB boundary
-test against `NonCSharp`. `ExtractorVersionGateTests` extracts `CallShapes`,
+check uses the member that implements `IDisposable.Dispose` on the static type
+of the resource. The recall gate samples the source methods Roslyn declares
+in scope. A sampled method with no declaration in the index is a miss.
+`CrossProjectBoundaryTests` runs the VB boundary test against `NonCSharp`.
+`ExtractorVersionGateTests` extracts `CallShapes`,
 `CrossProject` and `ExtractorGate`. The doc examples run against them.
 
 Restore a solution before an MSBuildWorkspace consumer loads it; no `obj/` assets
@@ -50,7 +51,7 @@ are committed. Index output belongs outside the fixture tree.
   skips the VB project and prints the `non_csharp_projects` boundary warning
   (audit B6/Q12b). `CrossProjectBoundaryTests` runs this through the CLI.
 - `ExtractorGate/` — Fixture 3: the corpus of the extractor version gate
-  (`ExtractorVersionGateTests`, D103). `ExtractorGate.App` holds one shape for
+  (`ExtractorVersionGateTests`). `ExtractorGate.App` holds one shape for
   each framework adapter (controller, DI registration and Scrutor scan, MediatR
   handler, EF Core `DbContext` with a query filter, `[JsonPropertyName]`) and for
   the `Hides` and `Reflection` extractors; `ExtractorGate.Tests` is an xUnit

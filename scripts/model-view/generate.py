@@ -15,8 +15,8 @@ Render again from an index you already have (no reindex):
 
 The page styles (fonts, colors, layout) come from the first <style> block of
 --template, which defaults to the current docs/MODEL_VIEW.html. Everything else
-is read from index.db and from the index run's output. Python standard library
-only. On Windows, the executable is Lurp.exe.
+comes from index.db, the index run's output and the evidence ladder in
+docs/ARCHITECTURE.md. Python standard library only. On Windows, the executable is Lurp.exe.
 """
 
 import argparse
@@ -36,20 +36,8 @@ LURP_BUILD = "src/bin/Release/net10.0/" + ("Lurp.exe" if os.name == "nt" else "L
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAGE = REPO_ROOT / "docs" / "MODEL_VIEW.html"
 
-# Provenance vocabulary, strongest first (docs/ARCHITECTURE.md, section 4.2 "Evidence ladder").
-TIERS = [
-    ("compiler_proved", "The compiler resolved it. Calls, inheritance, field reads: verified, not guessed."),
-    ("framework_derived", "An adapter read a framework convention (DI registration, EF Core mapping, ASP.NET routing, test discovery, MediatR Handles, serialization contexts) and emitted a typed fact."),
-    ("global_implementation_relation", "Capsule-only grade: an implementation of a called interface or virtual member, projected to a call site. The relation is real; that the call reaches it is not established. Not stored on edges."),
-    ("possible", "An interface member implemented through an inherited member: the type gets the implementation from a base class, so the dispatch target is valid but not declared on the type (MayDispatchTo)."),
-    ("convention", "Inferred from a convention such as an assembly scan, not from a direct reference."),
-    ("name_candidate", "The name argument of a runtime name-binding API (reflection lookup, PropertyChanged / [CallerMemberName], EF Core string API, binding attribute, MVC action name), resolved semantically. Not compiler-checked."),
-    ("runtime_unknown", "The target exists only at run time. Lurp records the blind spot instead of guessing a target."),
-]
-
 EDGE_CLASS = {
     "compiler_proved": "edge-cp",
-    "global_implementation_relation": "edge-cp",
     "framework_derived": "edge-fw",
     "convention": "edge-cv",
 }
@@ -57,7 +45,7 @@ EDGE_CLASS = {
 ASSEMBLY_NODE_CLASSES = ["node-services", "node-common", "node-webapi", "node-db"]
 
 EXTRA_CSS = """
-.tier-global_implementation_relation .tier-line, .tier-swatch.tier-global_implementation_relation { border-color: var(--brass-soft); background: var(--brass-soft); }
+.capsule-grade { margin: 0.9rem 0 0; padding-left: 0.8rem; border-left: 2px solid var(--brass-soft); color: var(--ink-dim); }
 .tier-convention .tier-line { border-top-style: dashed; border-color: var(--verdigris-soft); }
 .tier-runtime_unknown .tier-line { border-top-style: dotted; border-color: var(--ink-dim); }
 .tier-swatch.tier-name_candidate { background: var(--ink-dim); }
@@ -80,8 +68,53 @@ def esc(text):
     return html.escape(str(text), quote=True)
 
 
+def inline_code(text):
+    parts = re.split(r"`([^`]+)`", text)
+    return "".join(f"<code>{esc(part)}</code>" if i % 2 else esc(part) for i, part in enumerate(parts))
+
+
+def read_evidence_ladder():
+    doc = REPO_ROOT / "docs" / "ARCHITECTURE.md"
+    heading = "### 4.2 Evidence ladder"
+    lines = doc.read_text(encoding="utf-8").splitlines()
+    if heading not in lines:
+        sys.exit(f"ERROR: {doc} has no {heading} section.")
+
+    section = []
+    for line in lines[lines.index(heading) + 1:]:
+        if line.startswith("#"):
+            break
+        section.append(line)
+
+    rows = []
+    paragraph = []
+    in_table = False
+    for line in section:
+        if line.startswith("|"):
+            in_table = True
+            match = re.fullmatch(r"\|\s*`([a-z_]+)`\s*\|\s*(.+?)\s*\|", line)
+            if match:
+                rows.append(match.groups())
+        elif in_table:
+            if line.strip():
+                paragraph.append(line.strip())
+            elif paragraph:
+                break
+
+    if not rows:
+        sys.exit(f"ERROR: {doc} has no level rows in the evidence ladder table.")
+    grade = " ".join(paragraph)
+    if not re.search(r"`[a-z_]+`", grade):
+        sys.exit(f"ERROR: {doc} has no capsule-grade paragraph after the evidence ladder table.")
+    return rows, grade
+
+
 def num(value):
     return f"{value:,}"
+
+
+def share(count, total):
+    return f"{count / total:.1%}" if total else "0.0%"
 
 
 def breakable(name):
@@ -257,7 +290,7 @@ def source_info(index):
     except ValueError:
         solution = Path(index.solution_path).name
     dirty = bool(git(top, "status", "--porcelain", "--", "*.cs", "*.csproj", "*.props", "*.targets", "*.sln", "*.slnx"))
-    return {"repo": repo, "commit": git(top, "rev-parse", "--short", "HEAD"), "dirty": dirty, "solution": solution}
+    return {"repo": repo, "commit": git(top, "rev-parse", "--short=7", "HEAD"), "dirty": dirty, "solution": solution}
 
 
 # ---------------------------------------------------------------- survey SVG
@@ -575,7 +608,11 @@ def render(index, log, info, style, out_path, contract):
     sid = index.snapshot_id
     total_edges = len(index.edges)
     prov_counts = Counter(p for _, _, _, p in index.edges)
-    tiers = TIERS + [(p, "Not described in this page's vocabulary list.") for p in sorted(prov_counts) if p not in dict(TIERS)]
+    tiers, capsule_grade = read_evidence_ladder()
+    unknown = prov_counts.keys() - dict(tiers).keys()
+    if unknown:
+        values = ", ".join(repr(value) for value in sorted(unknown))
+        sys.exit(f"ERROR: the evidence ladder in docs/ARCHITECTURE.md does not list snapshot provenance values: {values}.")
     used = sum(1 for p, _ in tiers if prov_counts.get(p))
     total_symbols = sum(index.symbol_kinds.values())
     solution_name = Path(index.solution_path).stem or "solution"
@@ -587,15 +624,15 @@ def render(index, log, info, style, out_path, contract):
         f'      <div class="ladder-tier tier-{esc(p)}{"" if prov_counts.get(p) else " tier-empty"}">\n'
         f'        <span class="tier-name"><span class="tier-line"></span><span>{breakable(p)}</span></span>\n'
         f'        <span class="tier-count">{num(prov_counts.get(p, 0))}</span>\n'
-        f'        <span class="tier-desc">{esc(desc)}</span>\n      </div>' for p, desc in tiers)
+        f'        <span class="tier-desc">{inline_code(desc)}</span>\n      </div>' for p, desc in tiers)
 
-    kind_rows = [[td(esc(k)), td(num(n), "num"), td(f"{n / total_symbols:.1%}", "num")]
+    kind_rows = [[td(esc(k)), td(num(n), "num"), td(share(n, total_symbols), "num")]
                  for k, n in sorted(index.symbol_kinds.items(), key=lambda kv: (-kv[1], kv[0]))]
     kinds_table = table(["Symbol kind", "#Count", "#Share"], kind_rows,
                         f'<tr class="total-row"><td>Total declared symbols</td><td class="num">{num(total_symbols)}</td><td class="num">100%</td></tr>')
 
     tier_rows = [[td(f'<span class="tier-swatch tier-{esc(p)}"></span>{breakable(p)}'), td(num(prov_counts.get(p, 0)), "num"),
-                  td(f"{prov_counts.get(p, 0) / total_edges:.1%}", "num")] for p, _ in tiers]
+                  td(share(prov_counts.get(p, 0), total_edges), "num")] for p, _ in tiers]
     tiers_table = table(["Evidence tier", "#Edges", "#Share"], tier_rows,
                         f'<tr class="total-row"><td>Total typed edges</td><td class="num">{num(total_edges)}</td><td class="num">100%</td></tr>')
 
@@ -674,10 +711,11 @@ def render(index, log, info, style, out_path, contract):
 
   <section>
     <h2 class="section-title">The evidence ladder</h2>
-    <p class="section-lede">Lurp never states a relationship without saying how sure it is. The vocabulary has {len(tiers)} levels; this snapshot uses {used} of them across all {num(total_edges)} typed edges. Dimmed levels have no edges here.</p>
+    <p class="section-lede">Lurp never states a relationship without saying how sure it is. The ladder has {len(tiers)} edge levels. This snapshot uses {used} across all {num(total_edges)} typed edges. Dimmed levels have no edges here.</p>
     <div class="ladder-grid">
 {ladder}
     </div>
+    <p class="capsule-grade">{inline_code(capsule_grade)}</p>
   </section>
 
   <section>
@@ -728,7 +766,7 @@ def render(index, log, info, style, out_path, contract):
     <p>Built by running Lurp {esc(index.tool)} from source against <code>{esc(where)}</code>{commit}:</p>
     <p><code>dotnet build src/Lurp.csproj -c Release</code><br>
     <code>python scripts/model-view/generate.py --lurp {LURP_BUILD} --solution &lt;path&gt;/{esc(info['solution'])} --work-dir &lt;empty folder&gt; --out docs/MODEL_VIEW.html</code></p>
-    <p>{timing}Snapshot <code>{esc(sid)}</code>, schema v{esc(index.schema)}. Everything on this page comes from that one <code>index.db</code> and the index run's per-project counts: no re-parsing, no re-grepping. <code>scripts/model-view/</code> regenerates it.</p>
+    <p>{timing}Snapshot <code>{esc(sid)}</code>, schema v{esc(index.schema)}. The graph and counts come from that <code>index.db</code> and its index log. The evidence ladder comes from <code>docs/ARCHITECTURE.md</code>. <code>scripts/model-view/</code> regenerates it.</p>
     <p class="credit">Lurp &middot; MIT &middot; github.com/t-macabee/lurp</p>
   </footer>
 

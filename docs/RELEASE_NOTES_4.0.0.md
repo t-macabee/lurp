@@ -1,7 +1,6 @@
-# Lurp 4.0.0 (draft)
+# Lurp 4.0.0
 
-This file is the draft of the 4.0.0 changes. 4.0.0 is not released. Each change
-of the fix plan adds its line here in the commit that makes it.
+Lurp 4.0.0 includes all Phase 2 fixes and requires one full index after the upgrade (see [Upgrade from 3.6.1](#upgrade-from-361)).
 
 ## Upgrade from 3.6.1
 
@@ -368,7 +367,6 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   `ERROR:` prefix. Unknown tools and malformed requests return JSON-RPC errors.
   An unreadable `lurp_index` workspace reports `reason_code`, `message` and
   `remediation` in `error_data`.
-
 - `status` and `pin-snapshot` JSON: the key `built_at_latest_snapshot_id` is
   renamed `selected_latest_snapshot_id`. Read the new key.
 - Reads that default to the latest snapshot use the snapshot that the last
@@ -385,9 +383,7 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 - Symbol declaration metadata (`get-symbol --view=metadata`): the key
   `implements_external_interface` is renamed `implements_external_member`. Read
   `implements_external_member`.
-
 - Recompute incoming topology before comparing capsules across versions. Incoming paths now use the default upstream impact filter.
-
 - Read callers at depth two or more from `second_degree_context`. Restart tier paging after upgrade.
 - Check `omitted_tiers` for `unresolved` before acting on an empty list. Each tier has a binding scope.
 - Read proved interface members implemented by the anchor from `contracts`.
@@ -455,8 +451,7 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   `lurp_diff` can use the same alias.
 - `tools/list` declares required parameters for the ten tools with mandatory
   inputs. Omitting one returns a tool error that names the missing parameter.
-
-- MCP `lurp_context` rejects a half `file`+`line` pair, as the CLI does (D86, additive). MCP and CLI error texts for impact and context use one wording.
+- MCP `lurp_context` rejects a half `file`+`line` pair, as the CLI does. MCP and CLI error texts for impact and context use one wording.
 
 ## Versions
 

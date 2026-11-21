@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v48, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 4.0.0, schema v48, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -133,12 +133,12 @@ Stored edges carry one of six provenance levels, ranked in this order:
 
 | Level | Meaning |
 |---|---|
-| `compiler_proved` | Directly verified by the compiler |
-| `framework_derived` | Derived from framework conventions |
-| `possible` | Possible target (e.g. `MayDispatchTo` inherited-only) |
-| `convention` | Convention-based inference |
-| `name_candidate` | Name argument of a runtime name-binding API (reflection lookup, `PropertyChanged`/`[CallerMemberName]`, EF Core string APIs, binding attributes, MVC action names), resolved semantically |
-| `runtime_unknown` | Runtime target not observable statically |
+| `compiler_proved` | The compiler resolves the relationship. Examples include calls, inheritance and field reads. |
+| `framework_derived` | A framework adapter records a relationship. The adapters record DI `Registers`, ASP.NET Core `RoutesTo`, MediatR `Handles`, EF Core `MapsTo` and navigation `References`, test `TestedBy`, and serialization context `References`. |
+| `possible` | `MayDispatchTo` marks a possible dispatch target when a type implements an interface member through a member of its base class. The base class declares the implementation. |
+| `convention` | Lurp infers the relationship from a convention such as an assembly scan. |
+| `name_candidate` | Lurp uses the semantics of a runtime name-binding API to resolve a name argument. Examples include reflection lookup, `PropertyChanged` with `[CallerMemberName]`, EF Core string APIs, binding attributes and MVC action names. |
+| `runtime_unknown` | The target is only known at run time. Lurp records that it cannot resolve the target. |
 
 `global_implementation_relation` is a capsule grade, never an edge: context assembly assigns it to an implementation of a called interface or virtual member projected through `MayDispatchTo` into `direct_callees`. The global relation is real; that the call reaches it at run time is not established.
 
@@ -184,7 +184,7 @@ is the executable form of these rules for the kinds that the golden compares.
 | `Registers` | A dependency-injection registration binds a service to an implementation. A registration without an implementation registers the service type itself. | registering member or service type → implementation type; interface → class for a Scrutor scan; or the runtime-unknown node or an assembly-scan placeholder | `framework_derived`; `convention` for a Scrutor scan; `runtime_unknown` for a registration that Lurp cannot read |
 | `Handles` | A MediatR handler handles a request or a notification; target = the method that implements the interface's `Handle` (explicit, inherited and overloaded implementations included). | request type → handler method | `framework_derived` |
 | `MapsTo` | EF Core maps an entity type (a `DbSet`, a configuration, a model builder call). | context, property or configuration → entity type | `framework_derived` |
-| `TestedBy` | A test method covers a production type; the test reaches the type through its body, the helpers of the test assembly, its class constructor, initializers and setup methods (D31). | production type → test method | `framework_derived` |
+| `TestedBy` | A test method covers a production type; the test reaches the type through its body, the helpers of the test assembly, its class constructor, initializers and setup methods. | production type → test method | `framework_derived` |
 | `ReflectionTypeRef` | A `typeof(T)` names a type. | owner → type | `compiler_proved` |
 | `ReflectionMemberRef` | A `nameof` names a member, and each member of its receiver chain. | owner → member | `compiler_proved` |
 | `ReflectionNameCandidate` | A string literal is the name argument of a runtime or framework name-binding API, and it equals a declared name of the member kind of that API in its scope: the known type and its base types (see [TRUST_KERNEL.md](../notes/TRUST_KERNEL.md)). | owner → candidate member or type | `name_candidate` |
