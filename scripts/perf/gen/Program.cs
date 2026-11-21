@@ -1,13 +1,8 @@
 using System.Globalization;
 using System.Text;
+using Lurp.PerfHarness;
 
-// lurp-perf-gen: deterministic generator for the synthetic C# solutions the Lurp
-// performance harness measures (audit B3, Phase 8 step 2). Every size writes
-// exactly 50 .cs files per project and the same per-document shape, so time and
-// memory growth between sizes reflects Lurp, not the fixture. The same
-// (size, seed) pair always writes byte-identical files. Output must live outside
-// the Lurp repository; the generator never deletes anything.
-
+// Generate deterministic fixtures for the performance harness. See scripts/perf/README.md.
 const int FilesPerProject = 50;
 const int UnitFileCount = FilesPerProject - 1;
 const int NamespaceCount = 4;
@@ -73,13 +68,10 @@ catch (Exception ex) when (ex is ArgumentException or NotSupportedException or P
     return Fail($"--out is not a valid path: '{outRaw}'.");
 }
 
-var repoRoot = FindRepoRoot(AppContext.BaseDirectory) ?? FindRepoRoot(Directory.GetCurrentDirectory());
-if (repoRoot is not null && IsInside(outDir, repoRoot))
-    return Fail($"--out '{outDir}' is inside the Lurp repo at '{repoRoot}'. Generated output must stay outside the repo tree.");
-
-var outRepoRoot = FindRepoRoot(outDir);
-if (outRepoRoot is not null)
-    return Fail($"--out '{outDir}' is inside the Lurp repo at '{outRepoRoot}'. Generated output must stay outside the repo tree.");
+var binaryRepo = PathTools.FindRepoRoot(AppContext.BaseDirectory);
+var workingRepo = PathTools.FindRepoRoot(Directory.GetCurrentDirectory());
+if (PathTools.CheckOutsideRepo("--out", outDir, isFile: false, binaryRepo, workingRepo) is { } pathError)
+    return Fail(pathError);
 
 var markerPath = Path.Combine(outDir, MarkerFileName);
 if (Directory.Exists(outDir))
@@ -93,6 +85,23 @@ if (Directory.Exists(outDir))
         var markerText = File.ReadAllText(markerPath);
         if (!markerText.StartsWith(GeneratorName, StringComparison.Ordinal))
             return Fail($"{markerPath} was not written by {GeneratorName}. Remove the directory yourself; the generator never deletes.");
+
+        var manifestPath = Path.Combine(outDir, "perf-manifest.json");
+        var requested = $"size={sizeRaw}, seed={seed}";
+        try
+        {
+            var manifest = JsonTools.TryParseObject(File.ReadAllText(manifestPath));
+            var foundSize = manifest == null ? null : JsonTools.GetInt(manifest, "size");
+            var foundSeed = manifest == null ? null : JsonTools.GetInt(manifest, "seed");
+            if (foundSize == null || foundSeed == null)
+                return Fail($"'{manifestPath}' has no readable size and seed. Requested {requested}. Remove the directory before generating.");
+            if (foundSize.Value.ToString(CultureInfo.InvariantCulture) != sizeRaw || foundSeed != seed)
+                return Fail($"'{manifestPath}' has size={foundSize}, seed={foundSeed}. Requested {requested}. Remove the directory before generating.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return Fail($"Could not read '{manifestPath}': {ex.Message} Requested {requested}. Remove the directory before generating.");
+        }
     }
 }
 
@@ -123,31 +132,6 @@ static int Fail(string message)
 {
     Console.Error.WriteLine("ERROR: " + message);
     return 1;
-}
-
-static string? FindRepoRoot(string startDir)
-{
-    var dir = new DirectoryInfo(startDir);
-    while (dir is not null)
-    {
-        if (File.Exists(Path.Combine(dir.FullName, "Lurp.slnx")))
-            return dir.FullName;
-
-        dir = dir.Parent;
-    }
-
-    return null;
-}
-
-static bool IsInside(string candidate, string root)
-{
-    var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate));
-    var rootNormalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-
-    if (string.Equals(normalized, rootNormalized, StringComparison.OrdinalIgnoreCase))
-        return true;
-
-    return normalized.StartsWith(rootNormalized + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 }
 
 static string BuildSolutionFile(int projectCount)

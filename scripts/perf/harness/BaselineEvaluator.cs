@@ -1,6 +1,5 @@
 using System.Globalization;
-using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace Lurp.PerfHarness;
 
@@ -13,8 +12,9 @@ internal static class BaselineEvaluator
     // Candidate peak above this factor of the baseline peak fails, for every operation.
     private const double MemoryFactor = 1.25;
 
-    // Candidate wall above this factor of the baseline wall warns, for every operation.
+    // Warn on a time ratio only when the baseline reaches the noise floor.
     private const double TimeFactor = 1.25;
+    private const double TimeNoiseFloorMs = 25;
 
     // Peak working set above this fails for an interactive read (impact, context, search, grep, find_symbol only).
     private const double InteractiveReadPeakCapMb = 300;
@@ -36,7 +36,6 @@ internal static class BaselineEvaluator
         "search",
         "grep",
         "find_symbol",
-        "diff",
         "dead_candidates"
     ];
 
@@ -47,225 +46,112 @@ internal static class BaselineEvaluator
         SkipReasons.NeverTouches
     ];
 
+    private static readonly Regex ToolVersionPattern = new(@"^lurp ([0-9]+)\.([0-9]+)\.", RegexOptions.CultureInvariant);
+
     public static int Evaluate(HarnessOptions options)
     {
-        var baselinePath = options.Baseline!;
-        var candidatePath = options.Candidate!;
+        var baseline = GateResult.Read(options.Baseline!, "baseline");
+        var candidate = GateResult.Read(options.Candidate!, "candidate");
+        var comparison = new ResultComparison(baseline, candidate, RequiredOperations, AllowedSkipReasons.Contains);
 
-        var rootBaseline = ResultFile.ReadResult(baselinePath);
-        var rootCandidate = ResultFile.ReadResult(candidatePath);
+        foreach (var result in new[] { baseline, candidate })
+        {
+            if (JsonTools.GetString(result.Root, "solution") == null)
+                comparison.FileFailures.Add($"{result.Label} result: solution is missing or invalid");
+        }
 
-        var fileFailures = new List<string>();
-        var gateFailures = 0;
-        var warnings = 0;
+        var baselineCommit = JsonTools.GetString(baseline.Root, "solution_commit");
+        var candidateCommit = JsonTools.GetString(candidate.Root, "solution_commit");
+        if (string.IsNullOrEmpty(baselineCommit) || string.IsNullOrEmpty(candidateCommit))
+            comparison.FileFailures.Add($"solution_commit is missing: baseline '{baselineCommit ?? "null"}', candidate '{candidateCommit ?? "null"}'");
+        else if (!string.Equals(baselineCommit, candidateCommit, StringComparison.Ordinal))
+            comparison.FileFailures.Add($"solution_commit differs: baseline '{baselineCommit}', candidate '{candidateCommit}'");
 
-        var protocolBaseline = JsonTools.GetString(rootBaseline, "protocol");
-        var protocolCandidate = JsonTools.GetString(rootCandidate, "protocol");
-        if (protocolBaseline != "gate")
-            fileFailures.Add($"baseline: protocol is '{protocolBaseline ?? "null"}', expected 'gate'");
-        if (protocolCandidate != "gate")
-            fileFailures.Add($"candidate: protocol is '{protocolCandidate ?? "null"}', expected 'gate'");
+        var baselineOs = JsonTools.GetString(baseline.Root, "runner_os");
+        var candidateOs = JsonTools.GetString(candidate.Root, "runner_os");
+        if (!string.Equals(baselineOs, candidateOs, StringComparison.Ordinal))
+            comparison.FileFailures.Add($"runner_os differs: baseline '{baselineOs ?? "null"}', candidate '{candidateOs ?? "null"}'");
 
-        var runsBaseline = ResultFile.ReadInt(rootBaseline, "runs");
-        var runsCandidate = ResultFile.ReadInt(rootCandidate, "runs");
-        if (runsBaseline == null || runsCandidate == null)
-            fileFailures.Add("runs is missing in one of the result files");
-        else if (runsBaseline != runsCandidate)
-            fileFailures.Add($"runs differ: baseline has {runsBaseline}, candidate has {runsCandidate}");
+        var baselineVersion = JsonTools.GetString(baseline.Root, "tool_version") ?? "null";
+        var candidateVersion = JsonTools.GetString(candidate.Root, "tool_version") ?? "null";
+        var details = new List<string> { $"tool versions: baseline {baselineVersion}, candidate {candidateVersion}" };
+        AddVersionWarnings(details, baselineVersion, candidateVersion);
 
-        var warmupBaseline = ResultFile.ReadInt(rootBaseline, "warmup");
-        var warmupCandidate = ResultFile.ReadInt(rootCandidate, "warmup");
-        if (warmupBaseline == null || warmupCandidate == null)
-            fileFailures.Add("warmup is missing in one of the result files");
-        else if (warmupBaseline != warmupCandidate)
-            fileFailures.Add($"warmup differs: baseline has {warmupBaseline}, candidate has {warmupCandidate}");
+        var baselineImage = JsonTools.GetString(baseline.Root, "runner_image");
+        var candidateImage = JsonTools.GetString(candidate.Root, "runner_image");
+        if (!string.Equals(baselineImage, candidateImage, StringComparison.Ordinal))
+            details.Add($"warning: runner image differs: baseline {baselineImage ?? "null"}, candidate {candidateImage ?? "null"}");
 
-        var commitBaseline = JsonTools.GetString(rootBaseline, "solution_commit");
-        var commitCandidate = JsonTools.GetString(rootCandidate, "solution_commit");
-        if (string.IsNullOrEmpty(commitBaseline) || string.IsNullOrEmpty(commitCandidate))
-            fileFailures.Add($"solution_commit is missing: baseline '{commitBaseline ?? "null"}', candidate '{commitCandidate ?? "null"}'");
-        else if (!string.Equals(commitBaseline, commitCandidate, StringComparison.Ordinal))
-            fileFailures.Add($"solution_commit differs: baseline '{commitBaseline}', candidate '{commitCandidate}'");
-
-        var runnerImageBaseline = JsonTools.GetString(rootBaseline, "runner_image");
-        var runnerImageCandidate = JsonTools.GetString(rootCandidate, "runner_image");
-        var runnerImageDiffers = !string.Equals(runnerImageBaseline, runnerImageCandidate, StringComparison.Ordinal);
-        if (runnerImageDiffers)
-            warnings++;
-
-        var opsBaseline = ResultFile.ReadOperations(baselinePath, rootBaseline);
-        var opsCandidate = ResultFile.ReadOperations(candidatePath, rootCandidate);
-
-        var rows = new List<string>();
-        var excluded = new List<string>();
         var hasMeasuredImpact = false;
         var hasMeasuredContext = false;
-
-        foreach (var name in opsBaseline.Keys.Union(opsCandidate.Keys).Union(RequiredOperations).OrderBy(static name => name, StringComparer.Ordinal))
+        foreach (var operation in comparison.Operations)
         {
-            if (!opsBaseline.TryGetValue(name, out var opBaseline))
+            if (operation.Excluded || operation.Failure != null)
             {
-                rows.Add(opsCandidate.ContainsKey(name)
-                    ? $"| {name} | - | - | - | - | - | - | FAIL (missing in baseline result) |"
-                    : $"| {name} | - | - | - | - | - | - | FAIL (missing in both results) |");
-                gateFailures++;
+                comparison.AddRow(operation, [], []);
                 continue;
             }
 
-            if (!opsCandidate.TryGetValue(name, out var opCandidate))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (missing in candidate result) |");
-                gateFailures++;
-                continue;
-            }
+            var name = operation.Name;
+            hasMeasuredImpact |= name.StartsWith("impact.", StringComparison.Ordinal);
+            hasMeasuredContext |= IsContext(name);
 
-            if (ResultFile.ReadFailed(opBaseline))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (failed in baseline result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (ResultFile.ReadFailed(opCandidate))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (failed in candidate result) |");
-                gateFailures++;
-                continue;
-            }
-
-            var skipBaseline = ResultFile.ReadSkipped(opBaseline, out var reasonBaseline);
-            var skipCandidate = ResultFile.ReadSkipped(opCandidate, out var reasonCandidate);
-            if (skipBaseline && skipCandidate)
-            {
-                if (!IsAllowedSkip(reasonBaseline))
-                {
-                    rows.Add($"| {name} | - | - | - | - | - | - | FAIL (skipped in baseline result: {reasonBaseline}) |");
-                    gateFailures++;
-                    continue;
-                }
-
-                if (!IsAllowedSkip(reasonCandidate))
-                {
-                    rows.Add($"| {name} | - | - | - | - | - | - | FAIL (skipped in candidate result: {reasonCandidate}) |");
-                    gateFailures++;
-                    continue;
-                }
-
-                excluded.Add(name);
-                continue;
-            }
-
-            if (skipBaseline || skipCandidate)
-            {
-                var which = skipBaseline ? "baseline" : "candidate";
-                var reason = skipBaseline ? reasonBaseline : reasonCandidate;
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (skipped in {which} result only: {reason}) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (name.StartsWith("impact.", StringComparison.Ordinal))
-                hasMeasuredImpact = true;
-            if (name.StartsWith("context.", StringComparison.Ordinal))
-                hasMeasuredContext = true;
-
-            if (!ResultFile.TryReadMedian(opBaseline, out var wallBaseline, out var peakBaseline))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (median missing or null in baseline result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (!ResultFile.TryReadMedian(opCandidate, out var wallCandidate, out var peakCandidate))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (median missing or null in candidate result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (wallBaseline <= 0 || peakBaseline <= 0)
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (median is 0 in baseline result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (wallCandidate <= 0 || peakCandidate <= 0)
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (median is 0 in candidate result) |");
-                gateFailures++;
-                continue;
-            }
-
-            var timeRatio = wallCandidate / wallBaseline;
-            var memoryRatio = peakCandidate / peakBaseline;
-            var failReasons = new List<string>();
-            var warnReasons = new List<string>();
-            if (memoryRatio > MemoryFactor)
-                failReasons.Add($"memory ratio {ResultFile.FormatRatio(memoryRatio)} > {ResultFile.FormatRatio(MemoryFactor)}");
-            if (IsInteractiveRead(name) && peakCandidate > InteractiveReadPeakCapMb)
-                failReasons.Add($"interactive read peak {ResultFile.Format(peakCandidate)} MB > {ResultFile.Format(InteractiveReadPeakCapMb)} MB");
-            if (timeRatio > TimeFactor)
-                warnReasons.Add($"time ratio {ResultFile.FormatRatio(timeRatio)} > {ResultFile.FormatRatio(TimeFactor)}");
-            if (IsImpactDepth6(name) && wallCandidate > ImpactDepth6CapMs)
-                warnReasons.Add($"impact depth 6 {ResultFile.Format(wallCandidate)} ms > {ResultFile.Format(ImpactDepth6CapMs)} ms");
-            if (IsContext(name) && wallCandidate > ContextCapMs)
-                warnReasons.Add($"context {ResultFile.Format(wallCandidate)} ms > {ResultFile.Format(ContextCapMs)} ms");
-            if (IsSearch(name) && wallCandidate > SearchCapMs)
-                warnReasons.Add($"search {ResultFile.Format(wallCandidate)} ms > {ResultFile.Format(SearchCapMs)} ms");
-
-            if (warnReasons.Count > 0)
-                warnings++;
-            if (failReasons.Count > 0)
-                gateFailures++;
-            string verdict;
-            if (failReasons.Count > 0)
-                verdict = $"FAIL ({string.Join("; ", failReasons.Concat(warnReasons))})";
-            else if (warnReasons.Count > 0)
-                verdict = $"WARN ({string.Join("; ", warnReasons)})";
-            else
-                verdict = "PASS";
-            rows.Add($"| {name} | {ResultFile.Format(wallBaseline)} | {ResultFile.Format(wallCandidate)} | {ResultFile.FormatRatio(timeRatio)} | {ResultFile.Format(peakBaseline)} | {ResultFile.Format(peakCandidate)} | {ResultFile.FormatRatio(memoryRatio)} | {verdict} |");
+            var failures = new List<string>();
+            var warnings = new List<string>();
+            var wall = operation.Second.Wall;
+            var peak = operation.Second.Peak;
+            if (operation.MemoryRatio > MemoryFactor)
+                failures.Add(ResultFile.FormatRatioReason("memory", operation.MemoryRatio, MemoryFactor));
+            if (IsInteractiveRead(name) && peak > InteractiveReadPeakCapMb)
+                failures.Add(FormatCap("interactive read peak", peak, InteractiveReadPeakCapMb, "MB"));
+            if (operation.First.Wall >= TimeNoiseFloorMs && operation.TimeRatio > TimeFactor)
+                warnings.Add(ResultFile.FormatRatioReason("time", operation.TimeRatio, TimeFactor));
+            if (IsImpactDepth6(name) && wall > ImpactDepth6CapMs)
+                warnings.Add(FormatCap("impact depth 6", wall, ImpactDepth6CapMs, "ms"));
+            if (IsContext(name) && wall > ContextCapMs)
+                warnings.Add(FormatCap("context", wall, ContextCapMs, "ms"));
+            if (name == "search" && wall > SearchCapMs)
+                warnings.Add(FormatCap("search", wall, SearchCapMs, "ms"));
+            comparison.AddRow(operation, failures, warnings);
         }
 
         if (!hasMeasuredImpact)
-            fileFailures.Add("no measured impact.* operation");
+            comparison.FileFailures.Add("no measured impact.* operation");
         if (!hasMeasuredContext)
-            fileFailures.Add("no measured context.* operation");
+            comparison.FileFailures.Add("no measured context.* operation");
 
-        var report = new StringBuilder();
-        foreach (var failure in fileFailures)
-            report.AppendLine(CultureInfo.InvariantCulture, $"gate failure: {failure}");
-        if (fileFailures.Count > 0)
-            report.AppendLine();
-        if (runnerImageDiffers)
-        {
-            report.AppendLine(CultureInfo.InvariantCulture, $"warning: runner image differs: baseline {runnerImageBaseline ?? "null"}, candidate {runnerImageCandidate ?? "null"}");
-            report.AppendLine();
-        }
-
-        report.AppendLine("| operation | time baseline | time candidate | time ratio | memory baseline | memory candidate | memory ratio | verdict |");
-        report.AppendLine("|---|---:|---:|---:|---:|---:|---:|---|");
-        foreach (var row in rows)
-            report.AppendLine(row);
-        if (excluded.Count > 0)
-        {
-            report.AppendLine();
-            report.AppendLine(CultureInfo.InvariantCulture, $"skipped as solution-only (not compared): {string.Join(", ", excluded)}");
-        }
-
-        report.AppendLine();
-        var verdictLine = gateFailures + fileFailures.Count > 0 ? "FAIL" : "PASS";
-        report.AppendLine(CultureInfo.InvariantCulture, $"gate verdict: {verdictLine} ({gateFailures + fileFailures.Count} failure(s), {warnings} warning(s))");
-
-        ResultFile.WriteReport(report.ToString(), options.Summary);
-
-        return gateFailures + fileFailures.Count > 0 ? 1 : 0;
+        return comparison.WriteReport(
+            "| operation | time baseline | time candidate | time ratio | memory baseline | memory candidate | memory ratio | verdict |",
+            options.Summary, details, reportWarnings: details.Count - 1);
     }
 
-    private static bool IsAllowedSkip(string reason) => AllowedSkipReasons.Contains(reason);
+    private static void AddVersionWarnings(List<string> details, string baseline, string candidate)
+    {
+        var baselineVersion = ReadToolVersion(baseline);
+        var candidateVersion = ReadToolVersion(candidate);
+        if (baselineVersion == null)
+            details.Add($"warning: cannot read baseline tool version '{baseline}'");
+        if (candidateVersion == null)
+            details.Add($"warning: cannot read candidate tool version '{candidate}'");
+        if (baselineVersion is { } first && candidateVersion is { } second &&
+            (first.Major != second.Major || Math.Abs(first.Minor - second.Minor) > 1))
+            details.Add($"warning: tool version age differs: baseline {baseline}, candidate {candidate}");
+    }
 
-    // Decision B87: the 300 MB cap covers interactive reads only.
+    private static (int Major, int Minor)? ReadToolVersion(string version)
+    {
+        var match = ToolVersionPattern.Match(version);
+        if (!match.Success ||
+            !int.TryParse(match.Groups[1].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out var major) ||
+            !int.TryParse(match.Groups[2].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out var minor))
+            return null;
+        return (major, minor);
+    }
+
+    private static string FormatCap(string name, double value, double limit, string unit)
+        => FormattableString.Invariant($"{name} {value:0.#} {unit} above limit {limit:G} {unit}");
+
+    // The 300 MB cap covers interactive reads only. See the baseline gate in the perf README.
     private static bool IsInteractiveRead(string name)
         => name.StartsWith("impact.", StringComparison.Ordinal)
            || name.StartsWith("context.", StringComparison.Ordinal)
@@ -278,6 +164,4 @@ internal static class BaselineEvaluator
     }
 
     private static bool IsContext(string name) => name.StartsWith("context.", StringComparison.Ordinal);
-
-    private static bool IsSearch(string name) => string.Equals(name, "search", StringComparison.Ordinal);
 }

@@ -40,7 +40,6 @@ internal sealed class SearchSymbolStore
     public SearchSymbolStore(SqliteConnection connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-        TextCaseMatching.Register(_connection);
     }
 
     /// <summary>

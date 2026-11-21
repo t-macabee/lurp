@@ -4,8 +4,9 @@ Performance measurement for Lurp. This folder measures, and it holds the growth 
 
 - `gen/`: deterministic generator for synthetic C# solutions. `--size=1` writes 5 projects,
   `4` writes 20, `16` writes 80; every project has 50 `.cs` files (250 / 1,000 / 4,000
-  documents). `--out` must be outside the Lurp repository; the generator refuses an in-repo
-  path and never deletes. The same `(size, seed)` pair always writes byte-identical files.
+  documents). Put `--out` outside all Lurp checkouts. The generator never deletes files.
+  In a marked directory, it requires a readable manifest with the requested size and seed.
+  The same size and seed always produce byte-identical files.
 - `harness/`: runs the tool under test as a child process and records wall time, peak working
   set, exit code, DB size and its change per run, the index-time step-1 metric, and every
   `--mode=timings` step.
@@ -22,9 +23,10 @@ dotnet run --project scripts/perf/gen -c Release -- --size=4 --out=$HOME/perf/4x
 dotnet restore $HOME/perf/4x/Perf.slnx
 ```
 
-The fixture root carries `.lurp-perf-gen` and `perf-manifest.json`. The manifest holds the size
-counts and an `anchors` object (see "Anchors" below). The harness refuses a `--fixture`
-without the `.lurp-perf-gen` marker, so edit operations can never touch an unmarked tree.
+The fixture root contains `.lurp-perf-gen` and `perf-manifest.json`. The manifest holds the
+size, counts and an `anchors` object. The harness requires the marker before it edits a
+fixture. It also checks that the number of `.cs` files outside `obj` and `bin` matches the
+manifest's `documents` count.
 
 ## Run the harness
 
@@ -54,20 +56,19 @@ dotnet run --project scripts/perf/harness -c Release -- --fixture=<generated dir
 
 - Each operation runs `--warmup` times unmeasured, then `--runs` times measured. Every measured
   run is recorded.
-- `--protocol=gate` fixes `--runs=5 --warmup=3`, records `"protocol": "gate"`, and rejects an
-  explicit `--runs` or `--warmup`. Use it for 1×/4×/16× comparisons. Warmup 3 matches the
-  snapshot pruner, which keeps three snapshots: the first measured incremental run then already
-  runs with pruning active. Without that warmup a 4× run stays under the keep limit and never
-  prunes while a 16× run does, and the 16×/4× ratio compares two different regimes. Without
-  `--protocol`, the harness behaves as before and records `"protocol": "custom"`.
-- `--fixture` and `--solution` are mutually exclusive; exactly one is required.
-- `--work` is scratch space: outside the repo, outside the fixture and outside a `--solution`
-  tree. The harness writes a `.lurp-perf-work` marker and refuses a non-empty directory without
-  that marker.
-- `--out` must be outside the Lurp repo (checked from the path upward for `Lurp.slnx`, like the
-  generator). Parent directories are created.
-- `--anchors` applies to `--solution` runs only; fixtures carry their anchors in the manifest.
-  The file may be either the anchors object itself or an object with an `anchors` member.
+- `--protocol=gate` sets `--runs=5 --warmup=3` and records `"protocol": "gate"`. It rejects
+  an explicit `--runs` or `--warmup`. The pruner keeps three complete snapshots. After
+  the three warmup edits, measured edits run with pruning active at every fixture size.
+  Each full-index run uses a fresh database. A no-op incremental can reuse a snapshot.
+  Without `--protocol`, the harness records `"protocol": "custom"`.
+- Specify exactly one of `--fixture` and `--solution`.
+- Put `--work` outside the fixture or solution tree. The harness writes a `.lurp-perf-work`
+  marker and refuses a non-empty directory without the marker.
+- Put `--work` and `--out` outside all Lurp checkouts. The harness checks the checkout of
+  its binary, the checkout of the working directory, and any `Lurp.slnx` above the given path.
+  It creates parent directories for `--out`.
+- Use `--anchors` for `--solution` runs. Fixtures carry their anchors in the manifest.
+  The file can contain the anchors directly or in an `anchors` member.
 - `--keep-work` skips the cleanup described under "Work directories".
 
 ### Tool under test
@@ -114,15 +115,17 @@ The CI workflow runs by hand and nightly on main, not on pull requests. It takes
 - A time ratio above 5 fails the gate for `full_index`, `incremental_1_file`,
   `incremental_20_files`, `diff` and `dead_candidates`. For every other operation it
   only warns.
-- The gate fails on missing data: an operation that exists in only one file, one of
-  the five operations above that is missing in both files, `failed: true`, a median
-  of 0 or null, a skip that is not a documented solution-only skip, a protocol other
-  than `gate`, and `runs` or `warmup` that differ between the files.
+- Pass a size-4 fixture result first and a size-16 fixture result second. Both must
+  have the same generator version and seed and a null `solution`.
+- The gate requires `protocol: gate`, five runs and three warmups in each file.
+- The gate fails if an operation appears in only one result, or if either result omits
+  one of the five operations above. It also fails on every failed or skipped operation.
+- For each measured operation the gate requires five run records with exit code 0.
+  It calculates both medians from those records. A missing, nonpositive or incorrect
+  stored median fails the gate.
 
-Exit codes: 0 = pass (warnings are allowed), 1 = gate failed, 2 = usage or data error.
-
-The gate fails on growth ratio above 5: memory for all operations, time for the five
-listed. Both sizes must run in the same CI job; absolute wall times only warn.
+Exit codes are 0 for pass, 1 for a failed gate, 2 for a usage or data error, and 3 for a
+harness defect. A file-system error on a given path or a tool that cannot start returns 2.
 
 Time ratios are only valid when both sizes run in the same session. Wall time on this
 machine swings 4-5x between sessions; memory is stable.
@@ -156,18 +159,26 @@ dotnet run --project scripts/perf/harness -c Release -- --baseline=perf\baseline
 dotnet run --project scripts/perf/harness -c Release -- --baseline=perf/baselines/ubuntu24.json --candidate=$HOME/perf/results/enotev2.json --summary=$HOME/perf/results/baseline-summary.md
 ```
 
-The limits, all inclusive (a value exactly at the limit passes):
+A value equal to its limit passes.
 
-- Memory: a candidate peak above 1.25x the baseline peak fails, for every operation.
-- Interactive read memory: a candidate peak above 300 MB fails for `impact.*`, `context.*`,
-  `search`, `grep` and `find_symbol`. Index, incremental, diff, dead-candidates, freshness and
-  MCP status operations are not under this cap; the 1.25x rule covers them.
-- Time: a candidate wall above 1.25x the baseline wall warns, for every operation.
-- Time caps (warnings): `impact.*.d6.*` above 2,000 ms, `context.*` above 3,000 ms, `search`
-  above 500 ms.
-- The gate fails on missing data, on a skip that is not a documented solution-only skip, on a
-  missing measured `impact.*` or `context.*` operation, and when `solution_commit` differs
-  between the two files or is missing.
+- A candidate peak above 1.25 times the baseline peak fails for every operation.
+- A candidate peak above 300 MB fails for `impact.*`, `context.*`, `search`, `grep` and
+  `find_symbol`.
+- A candidate wall time above 1.25 times the baseline wall time warns when the baseline
+  median is at least 25 ms.
+- Wall times above the caps also warn. The caps are 2,000 ms for `impact.*.d6.*`,
+  3,000 ms for `context.*` and 500 ms for `search`.
+- Both files must come from `--solution` runs and have the same `solution_commit` and
+  `runner_os`. Both require `protocol: gate`, five runs and three warmups.
+- Each measured operation must have five run records with exit code 0. A missing,
+  nonpositive or incorrect stored median fails the gate.
+- The gate requires measured `impact.*` and `context.*` operations. It accepts a skip
+  only when both results skip the operation and each gives one of these reasons:
+  `--solution runs never edit files` or `--solution runs never touch files`.
+  A solution run records `diff` as skipped with the first reason.
+
+The report shows both tool versions. It warns when a version is unreadable, the major
+versions differ, or the minor versions differ by more than one.
 
 The baseline key is the runner OS only (`ImageOS`, for example `win25-vs2026`), so
 `perf/baselines/win25-vs2026.json`. `ImageVersion` changes about once a week on hosted runners; a
@@ -182,7 +193,8 @@ To take a new baseline: download the `perf-enotev2-<OS>` artifact from a `real-p
 review the `enotev2.json` it holds, and commit it as `perf/baselines/<ImageOS>.json` in its own
 commit.
 
-Exit codes: 0 = pass (warnings are allowed), 1 = gate failed, 2 = usage or data error.
+Exit codes are 0 for pass, 1 for a failed gate, 2 for a usage or data error, and 3 for a
+harness defect. A file-system error on a given path or a tool that cannot start returns 2.
 
 ## Result JSON (`--out`)
 
@@ -192,7 +204,7 @@ Exit codes: 0 = pass (warnings are allowed), 1 = gate failed, 2 = usage or data 
   "tool_cmd": "dotnet C:\\...\\Lurp.dll",
   "tool_version": "lurp 2.0.0",        // first line of `--version`
   "repo_commit": "27b5c3e",            // `git log --oneline -1`, null when not a repo
-  "repo_dirty": true,                  // `git status --short` non-empty
+  "repo_dirty": true,                  // tracked changes only
   "os": "Microsoft Windows 10.0.26300",
   "runner_image": "20251001.1",        // env ImageVersion, null locally
   "runner_os": "win25-vs2026",                // env ImageOS, null locally
@@ -243,15 +255,20 @@ otherwise drop it. The pin is cleared before the read operations run.
 Index operations: `full_index`, `noop_incremental`, `incremental_1_file`,
 `incremental_20_files`. Reads: `impact.{upstream|downstream}.d{3|6}.{anchor}`,
 `context.{default|maxhops6}.{anchor}`, `search`, `grep`, `find_symbol`, `diff`,
-`find_symbol.freshness_{auto|hash}_{untouched|touched}`, `dead_candidates`,
-`mcp_status.{default|full}`. The two `_touched` operations run last, after `mcp_status`, so no
-other operation observes the touched mtimes; see "Edits".
+`find_symbol.freshness_{auto|hash}_{untouched|touched}`,
+`find_symbol.freshness_auto_new_file`, `dead_candidates`, `mcp_status.{default|full}`.
+The touched and new-file operations run after `mcp_status`. See "Edits".
 
 `timings_total_ms` and `timings_steps` come from one `--mode=timings --json` call per index run
 that wrote a new snapshot. The tool keys timings by snapshot id, so a run that reused the
 previous snapshot (a no-op) records both as null.
 
 ## Peak working set
+
+The harness records `peak_working_set_mb` in MiB and rounds up to a whole MiB.
+One MiB is 1,048,576 bytes. For `mcp_status.*`, each value is the peak of the server
+process up to that call. The five values share one server lifetime. Their median
+represents the post-start peak.
 
 The harness polls `Process.PeakWorkingSet64` every 50 ms while the child runs (calling
 `Process.Refresh()` first; without it the value is cached and stays at its first sample).
@@ -277,23 +294,27 @@ shape (`PerfEditB<n>`), with `n` continuing from the methods already in the file
 therefore never returns to a state that was already indexed, and every edit run produces a new
 snapshot and a step-1 metric.
 
-The touched freshness operations add one narrower change, and it is the only write the harness
-performs besides the generated-file edit above. Before
-`find_symbol.freshness_auto_touched` and `find_symbol.freshness_hash_touched` the harness
+A fixture `diff` must report a positive `change_count`.
+
+Before `find_symbol.freshness_auto_touched` and `find_symbol.freshness_hash_touched`, the harness
 selects every 10th fixture document (`.cs` files outside `obj`/`bin`, sorted by relative path,
 ordinal) and sets its `LastWriteTimeUtc` to now + 1 minute without changing its content. The two
 operations record the count as `touched_files`. The harness restores every original mtime in a
-`finally` block, on failure as well. The touched operations run last, after `mcp_status`, so no
-other operation sees the touched files. `freshness_auto_touched` must report `stale` with
+`finally` block, on failure as well. `freshness_auto_touched` must report `stale` with
 `changed_document_count` equal to `touched_files`; `freshness_hash_touched` must report `fresh`
 with 0 changed documents. A mismatch marks the operation failed and records the observed values
 in `failure`.
+
+After the touched operations, the harness adds a temporary C# source file to the first
+fixture project and runs `find_symbol.freshness_auto_new_file`. The result must report
+`stale` and one changed document. The harness deletes the source file in a `finally` block.
 
 ## Work directories
 
 The harness creates `run-<utcstamp>-<pid>` under `--work`. On the next invocation it deletes
 sibling `run-*` directories from earlier runs (output dirs it created) before starting, unless
-`--keep-work` is given. It never deletes anything else and never touches the repository.
+`--keep-work` is given.
+The harness keeps its work and result paths outside the Lurp repository.
 
 ## Anchors
 

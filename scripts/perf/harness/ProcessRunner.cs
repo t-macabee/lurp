@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 
@@ -29,7 +30,7 @@ internal static class ProcessRunner
             psi.ArgumentList.Add(argv[i]);
 
         var stopwatch = Stopwatch.StartNew();
-        using var process = Process.Start(psi) ?? throw new HarnessError($"could not start '{argv[0]}'.");
+        using var process = Start(psi);
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
         var peakBytes = SamplePeak(process);
@@ -62,6 +63,18 @@ internal static class ProcessRunner
         var stderr = stderrTask.GetAwaiter().GetResult();
         stopwatch.Stop();
         return new RunOutcome(stopwatch.ElapsedMilliseconds, ToMegabytes(peakBytes), exitCode, timedOut, stdout, stderr);
+    }
+
+    private static Process Start(ProcessStartInfo info)
+    {
+        try
+        {
+            return Process.Start(info) ?? throw new HarnessError($"could not start '{info.FileName}'.");
+        }
+        catch (Win32Exception ex)
+        {
+            throw new HarnessError($"could not start '{info.FileName}': {ex.Message}", ex);
+        }
     }
 
     internal static long SamplePeak(Process process)

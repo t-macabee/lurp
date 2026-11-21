@@ -1,5 +1,6 @@
 using Lurp.Storage;
 using Lurp.Workspace;
+using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -14,15 +15,11 @@ public sealed class TestDatabaseTests
     }
 
     [Fact]
-    public void IntegrationTestBase_Dispose_RemovesTestDir_AfterAPooledReadOnlyStore()
+    public void IntegrationTestBase_Dispose_RemovesTestDir_AfterAPooledReadOnlyConnection()
     {
         var probe = new Probe();
         new MigrationRunner(probe.DbPath).RunMigrations();
-        using (var store = new SqliteIndexStore(probe.DbPath))
-        {
-            store.OpenReadOnly();
-            store.Close();
-        }
+        OpenAndClosePooledReadOnlyConnection(probe.DbPath);
 
         Assert.True(File.Exists(probe.DbPath));
 
@@ -93,22 +90,30 @@ public sealed class TestDatabaseTests
     }
 
     [Fact]
-    public void DeleteDirectory_RemovesTheDirectory_AfterAPooledReadOnlyStore()
+    public void DeleteDirectory_RemovesTheDirectory_AfterAPooledReadOnlyConnection()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"lurp-testdb-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
         var dbPath = Path.Combine(dir, "index.db");
         new MigrationRunner(dbPath).RunMigrations();
-        using (var store = new SqliteIndexStore(dbPath))
-        {
-            store.OpenReadOnly();
-            store.Close();
-        }
+        OpenAndClosePooledReadOnlyConnection(dbPath);
 
         Assert.True(File.Exists(dbPath));
 
         TestDatabase.DeleteDirectory(dir);
 
         Assert.False(Directory.Exists(dir));
+    }
+
+    private static void OpenAndClosePooledReadOnlyConnection(string dbPath)
+    {
+        var builder = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = true
+        };
+        using var connection = new SqliteConnection(builder.ConnectionString);
+        connection.Open();
     }
 }

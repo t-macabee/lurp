@@ -5,4 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../harness/PathTools.cs" Link="PathTools.cs" />
+    <Compile Include="../harness/JsonTools.cs" Link="JsonTools.cs" />
+  </ItemGroup>
 </Project>

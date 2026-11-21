@@ -55,8 +55,8 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     ///     Opens the database for reads only: the connection is opened with SQLite
     ///     <c>ReadOnly</c> mode and pinned with <c>query_only=ON</c>, so a read path
     ///     can neither write nor migrate, even if the file permissions would allow
-    ///     it. <c>trusted_schema=OFF</c> stops a crafted database schema from
-    ///     invoking SQL functions; Lurp registers none, so nothing legitimate is lost.
+    ///     it. Lurp registers a search function for direct queries.
+    ///     <c>trusted_schema=OFF</c> prevents database schema objects from calling it.
     /// </summary>
     public void OpenReadOnly()
     {
@@ -78,14 +78,14 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
             // Foreign keys are enforced on every connection; the setting is explicit so it
             // does not depend on the SQLite build's default.
             ForeignKeys = true,
-            // Read connections are short-lived per MCP tool call, so pooling keeps their
-            // open cost low. Writer connections are long-lived for the run (or one-shot
-            // writes) and are closed for real, so the database file is released when the
-            // caller closes the store.
-            Pooling = mode == SqliteOpenMode.ReadOnly
+            // The Microsoft.Data.Sqlite 10.0.10 pool can give the same native handle
+            // to two readers during parallel opens. Closing one can remove the
+            // search function from the other.
+            Pooling = false
         };
 
         var connection = new SqliteConnection(builder.ConnectionString);
+        TextCaseMatching.Register(connection);
         connection.Open();
 
         // Explicit busy handling for every connection: WAL lets readers proceed

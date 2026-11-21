@@ -44,6 +44,8 @@
        harness.dll next to the test assembly. The harness has no package dependencies. -->
   <ItemGroup>
     <ProjectReference Include="..\scripts\perf\harness\harness.csproj" />
+    <!-- The generator tests run gen.dll as a process. -->
+    <ProjectReference Include="..\scripts\perf\gen\gen.csproj" />
   </ItemGroup>
 
   <!-- Fixtures are indexed, not compiled into the test assembly. -->

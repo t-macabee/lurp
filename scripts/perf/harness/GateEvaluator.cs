@@ -1,12 +1,11 @@
 using System.Globalization;
-using System.Text;
 using System.Text.Json.Nodes;
 
 namespace Lurp.PerfHarness;
 
 internal static class GateEvaluator
 {
-    // A time-ratio breach fails the gate for these operations only; every other operation only warns on time.
+    // Only these operations fail the gate when the time ratio exceeds the limit.
     private static readonly string[] TimeFailTrackOperations =
     [
         "full_index",
@@ -16,187 +15,68 @@ internal static class GateEvaluator
         "dead_candidates"
     ];
 
-    // Skip reasons only --solution runs produce (see Program.cs); they carry no measurement and do not fail the gate.
-    private static readonly string[] SolutionOnlySkipReasons =
-    [
-        SkipReasons.NeverEdits,
-        SkipReasons.NeverTouches,
-        SkipReasons.NoAnchors,
-        SkipReasons.NoAnchorsPassAnchors
-    ];
-
     public static int Evaluate(HarnessOptions options)
     {
         var parts = options.Evaluate!.Split(',', 2);
         if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
             throw new HarnessError("--evaluate expects two comma-separated result files: --evaluate=<4x.json>,<16x.json>.");
 
-        var path4 = parts[0].Trim();
-        var path16 = parts[1].Trim();
-        var maxRatio = options.MaxRatio;
-
-        var root4 = ResultFile.ReadResult(path4);
-        var root16 = ResultFile.ReadResult(path16);
-
-        var fileFailures = new List<string>();
-        var gateFailures = 0;
-        var warnings = 0;
-
-        var protocol4 = JsonTools.GetString(root4, "protocol");
-        var protocol16 = JsonTools.GetString(root16, "protocol");
-        if (protocol4 != "gate")
-            fileFailures.Add($"{path4}: protocol is '{protocol4 ?? "null"}', expected 'gate'");
-        if (protocol16 != "gate")
-            fileFailures.Add($"{path16}: protocol is '{protocol16 ?? "null"}', expected 'gate'");
-
-        var runs4 = ResultFile.ReadInt(root4, "runs");
-        var runs16 = ResultFile.ReadInt(root16, "runs");
-        if (runs4 == null || runs16 == null)
-            fileFailures.Add("runs is missing in one of the result files");
-        else if (runs4 != runs16)
-            fileFailures.Add($"runs differ between the two files: 4x has {runs4}, 16x has {runs16}");
-
-        var warmup4 = ResultFile.ReadInt(root4, "warmup");
-        var warmup16 = ResultFile.ReadInt(root16, "warmup");
-        if (warmup4 == null || warmup16 == null)
-            fileFailures.Add("warmup is missing in one of the result files");
-        else if (warmup4 != warmup16)
-            fileFailures.Add($"warmup differs between the two files: 4x has {warmup4}, 16x has {warmup16}");
-
-        var ops4 = ResultFile.ReadOperations(path4, root4);
-        var ops16 = ResultFile.ReadOperations(path16, root16);
-
-        var rows = new List<string>();
-        var excluded = new List<string>();
-
-        foreach (var name in ops4.Keys.Union(ops16.Keys).Union(TimeFailTrackOperations).OrderBy(static name => name, StringComparer.Ordinal))
+        var small = GateResult.Read(parts[0].Trim(), "4x");
+        var large = GateResult.Read(parts[1].Trim(), "16x");
+        var comparison = new ResultComparison(small, large, TimeFailTrackOperations);
+        var smallFixture = ValidateFixture(small, 4, comparison.FileFailures);
+        var largeFixture = ValidateFixture(large, 16, comparison.FileFailures);
+        if (smallFixture != null && largeFixture != null)
         {
-            if (!ops4.TryGetValue(name, out var op4))
-            {
-                rows.Add(ops16.ContainsKey(name)
-                    ? $"| {name} | - | - | - | - | - | - | FAIL (missing in 4x result) |"
-                    : $"| {name} | - | - | - | - | - | - | FAIL (missing in both results) |");
-                gateFailures++;
-                continue;
-            }
+            var smallVersion = JsonTools.GetString(smallFixture, "generator_version");
+            var largeVersion = JsonTools.GetString(largeFixture, "generator_version");
+            if (string.IsNullOrEmpty(smallVersion) || smallVersion != largeVersion)
+                comparison.FileFailures.Add($"fixture.generator_version is missing or differs: 4x '{smallVersion ?? "null"}', 16x '{largeVersion ?? "null"}'");
 
-            if (!ops16.TryGetValue(name, out var op16))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (missing in 16x result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (ResultFile.ReadFailed(op4))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (failed in 4x result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (ResultFile.ReadFailed(op16))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (failed in 16x result) |");
-                gateFailures++;
-                continue;
-            }
-
-            var skip4 = ResultFile.ReadSkipped(op4, out var reason4);
-            var skip16 = ResultFile.ReadSkipped(op16, out var reason16);
-            if (skip4 && !IsSolutionOnlySkip(reason4))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (skipped in 4x result: {reason4}) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (skip16 && !IsSolutionOnlySkip(reason16))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (skipped in 16x result: {reason16}) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (skip4 || skip16)
-            {
-                excluded.Add(name);
-                continue;
-            }
-
-            if (!ResultFile.TryReadMedian(op4, out var wall4, out var peak4))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (median missing or null in 4x result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (!ResultFile.TryReadMedian(op16, out var wall16, out var peak16))
-            {
-                rows.Add($"| {name} | - | - | - | - | - | - | FAIL (median missing or null in 16x result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (wall4 <= 0 || peak4 <= 0)
-            {
-                rows.Add($"| {name} | {ResultFile.Format(wall4)} | - | - | {ResultFile.Format(peak4)} | - | - | FAIL (median is 0 in 4x result) |");
-                gateFailures++;
-                continue;
-            }
-
-            if (wall16 <= 0 || peak16 <= 0)
-            {
-                rows.Add($"| {name} | - | {ResultFile.Format(wall16)} | - | - | {ResultFile.Format(peak16)} | - | FAIL (median is 0 in 16x result) |");
-                gateFailures++;
-                continue;
-            }
-
-            var timeRatio = wall16 / wall4;
-            var memoryRatio = peak16 / peak4;
-            var timeFails = TimeFailTrackOperations.Contains(name);
-            var reasons = new List<string>();
-            var warn = false;
-            if (memoryRatio > maxRatio)
-                reasons.Add($"memory ratio {ResultFile.FormatRatio(memoryRatio)} > {ResultFile.FormatRatio(maxRatio)}");
-            if (timeRatio > maxRatio)
-            {
-                if (timeFails)
-                    reasons.Add($"time ratio {ResultFile.FormatRatio(timeRatio)} > {ResultFile.FormatRatio(maxRatio)}");
-                else
-                    warn = true;
-            }
-
-            if (warn)
-                warnings++;
-            if (reasons.Count > 0)
-                gateFailures++;
-            var verdict = reasons.Count > 0 ? $"FAIL ({string.Join("; ", reasons)})" : warn ? "WARN" : "PASS";
-            rows.Add($"| {name} | {ResultFile.Format(wall4)} | {ResultFile.Format(wall16)} | {ResultFile.FormatRatio(timeRatio)} | {ResultFile.Format(peak4)} | {ResultFile.Format(peak16)} | {ResultFile.FormatRatio(memoryRatio)} | {verdict} |");
+            var smallSeed = JsonTools.GetInt(smallFixture, "seed");
+            var largeSeed = JsonTools.GetInt(largeFixture, "seed");
+            if (smallSeed == null || smallSeed != largeSeed)
+                comparison.FileFailures.Add($"fixture.seed is missing or differs: 4x '{smallSeed?.ToString(CultureInfo.InvariantCulture) ?? "null"}', 16x '{largeSeed?.ToString(CultureInfo.InvariantCulture) ?? "null"}'");
         }
 
-        var report = new StringBuilder();
-        foreach (var failure in fileFailures)
-            report.AppendLine(CultureInfo.InvariantCulture, $"gate failure: {failure}");
-        if (fileFailures.Count > 0)
-            report.AppendLine();
-        report.AppendLine("| operation | time 4x | time 16x | time ratio | memory 4x | memory 16x | memory ratio | verdict |");
-        report.AppendLine("|---|---:|---:|---:|---:|---:|---:|---|");
-        foreach (var row in rows)
-            report.AppendLine(row);
-        if (excluded.Count > 0)
+        foreach (var operation in comparison.Operations)
         {
-            report.AppendLine();
-            report.AppendLine(CultureInfo.InvariantCulture, $"skipped as solution-only (not compared): {string.Join(", ", excluded)}");
+            if (operation.Failure != null)
+            {
+                comparison.AddRow(operation, [], []);
+                continue;
+            }
+
+            var failures = new List<string>();
+            var warnings = new List<string>();
+            if (operation.MemoryRatio > options.MaxRatio)
+                failures.Add(ResultFile.FormatRatioReason("memory", operation.MemoryRatio, options.MaxRatio));
+            if (operation.TimeRatio > options.MaxRatio)
+            {
+                var reasons = TimeFailTrackOperations.Contains(operation.Name) ? failures : warnings;
+                reasons.Add(ResultFile.FormatRatioReason("time", operation.TimeRatio, options.MaxRatio));
+            }
+            comparison.AddRow(operation, failures, warnings);
         }
 
-        report.AppendLine();
-        var verdictLine = gateFailures + fileFailures.Count > 0 ? "FAIL" : "PASS";
-        report.AppendLine(CultureInfo.InvariantCulture, $"gate verdict: {verdictLine} ({gateFailures + fileFailures.Count} failure(s), {warnings} warning(s))");
-
-        ResultFile.WriteReport(report.ToString(), options.Summary);
-
-        return gateFailures + fileFailures.Count > 0 ? 1 : 0;
+        return comparison.WriteReport(
+            "| operation | time 4x | time 16x | time ratio | memory 4x | memory 16x | memory ratio | verdict |",
+            options.Summary);
     }
 
-    private static bool IsSolutionOnlySkip(string reason) => SolutionOnlySkipReasons.Contains(reason);
+    private static JsonObject? ValidateFixture(GateResult result, int expectedSize, List<string> failures)
+    {
+        if (result.Root["solution"] != null)
+            failures.Add($"{result.Label} result: solution must be null");
+        if (result.Root["fixture"] is not JsonObject fixture)
+        {
+            failures.Add($"{result.Label} result: fixture is missing or is not an object");
+            return null;
+        }
+
+        var size = JsonTools.GetInt(fixture, "size");
+        if (size != expectedSize)
+            failures.Add($"{result.Label} result: fixture.size is {size?.ToString(CultureInfo.InvariantCulture) ?? "missing or invalid"}, expected {expectedSize}");
+        return fixture;
+    }
 }

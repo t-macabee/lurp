@@ -14,7 +14,6 @@ internal sealed class TextSearchStore
     public TextSearchStore(SqliteConnection connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-        TextCaseMatching.Register(_connection);
     }
 
     /// <summary>

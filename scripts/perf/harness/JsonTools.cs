@@ -8,6 +8,9 @@ internal static class JsonTools
     public static string? GetString(JsonObject obj, string key)
         => obj[key] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
+    public static int? GetInt(JsonObject obj, string key)
+        => obj[key] is JsonValue value && value.TryGetValue<int>(out var number) ? number : null;
+
     public static JsonObject? TryParseObject(string text)
     {
         var start = text.IndexOf('{');

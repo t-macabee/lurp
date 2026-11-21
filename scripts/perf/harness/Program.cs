@@ -40,6 +40,11 @@ internal static class Program
             Console.Error.WriteLine("ERROR: " + ex.Message);
             return 2;
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine("ERROR: " + ex.Message);
+            return 2;
+        }
         catch (Exception ex)
         {
             Console.Error.WriteLine("ERROR: unexpected harness failure: " + ex);
@@ -56,14 +61,16 @@ internal static class Program
             return GateEvaluator.Evaluate(options);
 
         var startedAt = DateTime.UtcNow;
-        var repoRoot = PathTools.FindRepoRoot(AppContext.BaseDirectory) ?? PathTools.FindRepoRoot(Directory.GetCurrentDirectory());
+        var binaryRepo = PathTools.FindRepoRoot(AppContext.BaseDirectory);
+        var workingRepo = PathTools.FindRepoRoot(Directory.GetCurrentDirectory());
+        var repoRoot = binaryRepo ?? workingRepo;
         var workDir = Path.GetFullPath(options.Work);
         var outPath = Path.GetFullPath(options.Out);
 
-        if (repoRoot != null && PathTools.IsInside(workDir, repoRoot))
-            throw new HarnessError($"--work '{workDir}' is inside the Lurp repo at '{repoRoot}'. Use scratch space outside the repo.");
-        if (repoRoot != null && PathTools.IsInside(outPath, repoRoot))
-            throw new HarnessError($"--out '{outPath}' is inside the Lurp repo at '{repoRoot}'. Keep result files outside the repo.");
+        var pathError = PathTools.CheckOutsideRepo("--work", workDir, isFile: false, binaryRepo, workingRepo)
+            ?? PathTools.CheckOutsideRepo("--out", outPath, isFile: true, binaryRepo, workingRepo);
+        if (pathError != null)
+            throw new HarnessError(pathError);
 
         string solutionPath;
         string? fixtureRoot = null;
@@ -84,6 +91,11 @@ internal static class Program
                 throw new HarnessError($"--fixture '{fixtureRoot}' has no perf-manifest.json.");
             fixtureManifest = JsonTools.TryParseObject(File.ReadAllText(manifestPath))
                               ?? throw new HarnessError($"perf-manifest.json in '{fixtureRoot}' is not a JSON object.");
+            var expectedDocuments = JsonTools.GetInt(fixtureManifest, "documents")
+                ?? throw new HarnessError($"perf-manifest.json in '{fixtureRoot}' has no valid documents count.");
+            var actualDocuments = Session.FixtureDocuments(fixtureRoot).Count();
+            if (actualDocuments != expectedDocuments)
+                throw new HarnessError($"--fixture '{fixtureRoot}' has {actualDocuments} source documents. The manifest lists {expectedDocuments}.");
             anchors = ReadAnchors(fixtureManifest, requireEditDocument: true);
             var solutions = Directory.GetFiles(fixtureRoot, "*.slnx");
             if (solutions.Length != 1)
@@ -146,16 +158,15 @@ internal static class Program
 
         operations.Add(session.Incremental("noop_incremental", 0));
 
-        if (fixtureRoot != null && anchors?.EditDocument != null)
+        if (fixtureRoot != null)
         {
             operations.Add(session.Incremental("incremental_1_file", 1));
             operations.Add(session.Incremental("incremental_20_files", 20));
         }
         else
         {
-            var editReason = fixtureRoot == null ? SkipReasons.NeverEdits : "no edit_document anchor";
-            operations.Add(Skipped("incremental_1_file", null, editReason));
-            operations.Add(Skipped("incremental_20_files", null, editReason));
+            operations.Add(Skipped("incremental_1_file", null, SkipReasons.NeverEdits));
+            operations.Add(Skipped("incremental_20_files", null, SkipReasons.NeverEdits));
         }
 
         if (fullSnapshotPinned)
@@ -207,11 +218,20 @@ internal static class Program
             operations.Add(session.Read("find_symbol", ["--mode=find-symbol", $"--symbol={middleFqn}", "--output=json", "--quiet", $"--output-dir={primaryDir}"]));
         }
 
-        var latestSnapshot = session.GetLatestSnapshotId(primaryDir);
-        if (latestSnapshot == null)
-            operations.Add(Skipped("diff", null, "no latest snapshot id available"));
+        if (fixtureRoot == null)
+        {
+            operations.Add(Skipped("diff", null, SkipReasons.NeverEdits));
+        }
         else
-            operations.Add(session.Read("diff", ["--mode=diff", $"--from-snapshot={primarySnapshot}", $"--to-snapshot={latestSnapshot}", $"--output-dir={primaryDir}"]));
+        {
+            var latestSnapshot = session.GetLatestSnapshotId(primaryDir);
+            if (latestSnapshot == null)
+                operations.Add(Skipped("diff", null, "no latest snapshot id available"));
+            else
+                operations.Add(session.Read("diff",
+                    ["--mode=diff", $"--from-snapshot={primarySnapshot}", $"--to-snapshot={latestSnapshot}", $"--output-dir={primaryDir}"],
+                    checkOutput: Session.CheckDiffOutput));
+        }
 
         if (anchors == null)
         {
@@ -229,20 +249,25 @@ internal static class Program
         operations.Add(session.McpStatus("mcp_status.default", full: false));
         operations.Add(session.McpStatus("mcp_status.full", full: true));
 
-        // The mtime touch must come last so no other operation sees touched files.
+        // Change the tree after all other reads. Add the new file after the mtime touch
+        // to keep it out of the touched file selection.
         if (fixtureRoot == null)
         {
             operations.Add(Skipped("find_symbol.freshness_auto_touched", null, SkipReasons.NeverTouches));
             operations.Add(Skipped("find_symbol.freshness_hash_touched", null, SkipReasons.NeverTouches));
+            operations.Add(Skipped("find_symbol.freshness_auto_new_file", null, SkipReasons.NeverEdits));
         }
         else if (anchors == null)
         {
             operations.Add(Skipped("find_symbol.freshness_auto_touched", null, SkipReasons.NoAnchors));
             operations.Add(Skipped("find_symbol.freshness_hash_touched", null, SkipReasons.NoAnchors));
+            operations.Add(Skipped("find_symbol.freshness_auto_new_file", null, SkipReasons.NoAnchors));
         }
         else
         {
-            session.FreshnessTouchedOps(session.AnchorFqn("middle")!, primaryDir);
+            var middleFqn = session.AnchorFqn("middle")!;
+            session.FreshnessTouchedOps(middleFqn, primaryDir);
+            session.FreshnessNewFile(middleFqn, primaryDir);
         }
 
         WriteOutput(outPath, options, toolArgv, toolVersion, repoCommit, repoDirty, runnerImage, solutionCommit, fixtureManifest, fixtureRoot, solutionPath, workDir, runDir, startedAt, operations);
@@ -317,11 +342,12 @@ internal static class Program
         operations.Add(Skipped("search", null, anchors == null ? SkipReasons.NoAnchors : reason));
         operations.Add(Skipped("grep", null, anchors == null ? SkipReasons.NoAnchors : reason));
         operations.Add(Skipped("find_symbol", null, anchors == null ? SkipReasons.NoAnchors : reason));
-        operations.Add(Skipped("diff", null, reason));
+        operations.Add(Skipped("diff", null, editReason));
         operations.Add(Skipped("find_symbol.freshness_auto_untouched", null, anchors == null ? SkipReasons.NoAnchors : reason));
         operations.Add(Skipped("find_symbol.freshness_hash_untouched", null, anchors == null ? SkipReasons.NoAnchors : reason));
         operations.Add(Skipped("find_symbol.freshness_auto_touched", null, fixturePresent ? reason : SkipReasons.NeverTouches));
         operations.Add(Skipped("find_symbol.freshness_hash_touched", null, fixturePresent ? reason : SkipReasons.NeverTouches));
+        operations.Add(Skipped("find_symbol.freshness_auto_new_file", null, editReason));
         operations.Add(Skipped("dead_candidates", null, reason));
         operations.Add(Skipped("mcp_status.default", null, reason));
         operations.Add(Skipped("mcp_status.full", null, reason));
@@ -378,7 +404,7 @@ internal static class Program
         return lines.Length > 0 ? lines[0] : "";
     }
 
-    private static (string? Commit, bool? Dirty) ReadRepoState(string? repoRoot)
+    internal static (string? Commit, bool? Dirty) ReadRepoState(string? repoRoot)
     {
         if (repoRoot == null)
             return (null, null);
@@ -392,7 +418,7 @@ internal static class Program
                 commit = fields[0];
         }
 
-        var status = ProcessRunner.Run(["git", "-C", repoRoot, "status", "--short"], 60 * 1000);
+        var status = ProcessRunner.Run(["git", "-C", repoRoot, "status", "--short", "--untracked-files=no"], 60 * 1000);
         bool? dirty = status.ExitCode == 0 && !status.TimedOut ? status.Stdout.Trim().Length > 0 : null;
         return (commit, dirty);
     }
@@ -417,7 +443,7 @@ internal static class Program
         return new AnchorSet(upstream, downstream, middle, editDocument);
     }
 
-    private static void WriteOutput(
+    internal static void WriteOutput(
         string outPath,
         HarnessOptions options,
         string[] toolArgv,
@@ -565,15 +591,12 @@ internal static class Program
     {
         if (runs.Count == 0)
             return null;
-        var walls = runs.Select(run => run.WallMs).OrderBy(value => value).ToList();
-        var peaks = runs.Select(run => run.PeakWorkingSetMb).OrderBy(value => value).ToList();
-        return new Summary(Median(walls), walls[^1], Median(peaks), peaks[^1]);
+        return new Summary(
+            ResultFile.Median(runs.Select(run => (double)run.WallMs)),
+            runs.Max(run => run.WallMs),
+            ResultFile.Median(runs.Select(run => (double)run.PeakWorkingSetMb)),
+            runs.Max(run => run.PeakWorkingSetMb));
     }
-
-    private static double Median(List<long> values)
-        => values.Count % 2 == 1
-            ? values[values.Count / 2]
-            : (values[values.Count / 2 - 1] + values[values.Count / 2]) / 2.0;
 
     private sealed record Summary(double MedianWallMs, long MaxWallMs, double MedianPeakMb, long MaxPeakMb);
 }

@@ -226,10 +226,9 @@ jobs:
           dotnet run --project scripts/perf/harness -c Release -- "--solution=$solution" "--anchors=$env:RUNNER_TEMP/enotev2-anchors.json" "--work=$env:RUNNER_TEMP/perf-work" "--out=$env:RUNNER_TEMP/perf/enotev2.json" --protocol=gate "--lurp-cmd=$env:LURP_CMD"
           if ($LASTEXITCODE -ne 0) { throw "the eNoteV2 perf run failed with exit code $LASTEXITCODE." }
 
-      # Decision 4: the baseline key is ImageOS only, so a weekly ImageVersion
-      # change does not fail the gate; a different image only warns.
-      # Decision 8: no baseline yet still runs the cap checks and then fails
-      # with the commit instruction.
+      # ImageOS selects the baseline. A different ImageVersion only warns.
+      # If the baseline is missing, check the caps and fail with the commit instruction.
+      # See the baseline gate in scripts/perf/README.md.
       - name: Baseline perf gate on eNoteV2
         if: ${{ !cancelled() }}
         shell: pwsh

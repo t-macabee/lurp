@@ -35,7 +35,7 @@ public sealed class GateEvaluatorTests : IDisposable
     {
         var (code, stdout, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         Assert.Equal(0, code);
         Assert.Contains("gate verdict: PASS", stdout);
@@ -47,7 +47,7 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops16 = ComparedOperations.Select(name => name == "full_index" ? Op16(name, 600) : Op16(name));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 3, ops16));
+            Result("gate", 5, 3, ops16, size: 16));
 
         Assert.Equal(1, code);
     }
@@ -58,7 +58,7 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops16 = ComparedOperations.Select(name => name == "search" ? Op16(name, 600) : Op16(name));
         var (code, stdout, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 3, ops16));
+            Result("gate", 5, 3, ops16, size: 16));
 
         Assert.Equal(0, code);
         Assert.Contains("WARN", stdout);
@@ -70,7 +70,7 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops16 = ComparedOperations.Select(name => name == "search" ? Op16(name, 300, 300) : Op16(name));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 3, ops16));
+            Result("gate", 5, 3, ops16, size: 16));
 
         Assert.Equal(1, code);
     }
@@ -81,7 +81,7 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops16 = ComparedOperations.Where(name => name != "search").Select(name => Op16(name));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 3, ops16));
+            Result("gate", 5, 3, ops16, size: 16));
 
         Assert.Equal(1, code);
     }
@@ -92,21 +92,27 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops4 = ComparedOperations.Where(name => name != "search").Select(name => Op4(name));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ops4),
-            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         Assert.Equal(1, code);
     }
 
-    [Fact]
-    public void RequiredOperationMissingInBoth_Fails()
+    [Theory]
+    [InlineData("full_index")]
+    [InlineData("incremental_1_file")]
+    [InlineData("incremental_20_files")]
+    [InlineData("diff")]
+    [InlineData("dead_candidates")]
+    public void RequiredOperationMissingInBoth_Fails(string missing)
     {
-        var ops4 = ComparedOperations.Where(name => name != "full_index").Select(name => Op4(name));
-        var ops16 = ComparedOperations.Where(name => name != "full_index").Select(name => Op16(name));
-        var (code, _, _) = RunEvaluate(
+        var ops4 = ComparedOperations.Where(name => name != missing).Select(name => Op4(name));
+        var ops16 = ComparedOperations.Where(name => name != missing).Select(name => Op16(name));
+        var (code, stdout, _) = RunEvaluate(
             Result("gate", 5, 3, ops4),
-            Result("gate", 5, 3, ops16));
+            Result("gate", 5, 3, ops16, size: 16));
 
         Assert.Equal(1, code);
+        Assert.Contains($"| {missing} | - | - | - | - | - | - | FAIL (missing in both results) |", stdout);
     }
 
     [Fact]
@@ -115,7 +121,7 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops4 = ComparedOperations.Select(name => name == "full_index" ? Op4(name, failed: true) : Op4(name));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ops4),
-            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         Assert.Equal(1, code);
     }
@@ -125,7 +131,7 @@ public sealed class GateEvaluatorTests : IDisposable
     {
         var (code, _, _) = RunEvaluate(
             Result("custom", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         Assert.Equal(1, code);
     }
@@ -135,7 +141,7 @@ public sealed class GateEvaluatorTests : IDisposable
     {
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 6, 3, ComparedOperations.Select(name => Op16(name))));
+            Result("gate", 6, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         Assert.Equal(1, code);
     }
@@ -145,7 +151,7 @@ public sealed class GateEvaluatorTests : IDisposable
     {
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 2, ComparedOperations.Select(name => Op16(name))));
+            Result("gate", 5, 2, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         Assert.Equal(1, code);
     }
@@ -155,7 +161,7 @@ public sealed class GateEvaluatorTests : IDisposable
     {
         var path4 = Path.Combine(_tempDir, "4x.json");
         File.WriteAllText(path4, "{not json");
-        var path16 = PerfHarnessResults.WriteResult(_tempDir, "16x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+        var path16 = PerfHarnessResults.WriteResult(_tempDir, "16x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         var (code, _, _) = PerfHarnessResults.RunHarness([$"--evaluate={path4},{path16}"]);
 
@@ -168,7 +174,7 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops16 = ComparedOperations.Select(name => name == "full_index" ? Op16(name, 400) : Op16(name));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 3, ops16),
+            Result("gate", 5, 3, ops16, size: 16),
             "--max-ratio=3");
 
         Assert.Equal(1, code);
@@ -180,7 +186,7 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops16 = ComparedOperations.Select(name => Op16(name, 500, 250));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))),
-            Result("gate", 5, 3, ops16));
+            Result("gate", 5, 3, ops16, size: 16));
 
         Assert.Equal(0, code);
     }
@@ -191,26 +197,139 @@ public sealed class GateEvaluatorTests : IDisposable
         var ops4 = ComparedOperations.Select(name => name == "full_index" ? Op4(name, 0) : Op4(name));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ops4),
-            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         Assert.Equal(1, code);
     }
 
-    [Fact]
-    public void DocumentedSolutionOnlySkip_Passes()
+    [Theory]
+    [InlineData("both")]
+    [InlineData("16x")]
+    public void FixtureSkip_Fails(string side)
     {
-        var ops4 = ComparedOperations.Select(name => name == "search"
-            ? Op4(name, skipped: true, skipReason: "no anchors available")
-            : Op4(name));
-        var ops16 = ComparedOperations.Select(name => name == "search"
-            ? Op16(name, skipped: true, skipReason: "no anchors available")
-            : Op16(name));
-        var (code, stdout, _) = RunEvaluate(
-            Result("gate", 5, 3, ops4),
-            Result("gate", 5, 3, ops16));
+        var small = StandardResult(4);
+        var large = StandardResult(16);
+        foreach (var result in side == "both" ? new[] { small, large } : [large])
+        {
+            var op = PerfHarnessResults.FindOperation(result, "full_index");
+            op["skipped"] = true;
+            op["skip_reason"] = "no anchors available";
+        }
 
-        Assert.Equal(0, code);
-        Assert.Contains("skipped as solution-only (not compared): search", stdout);
+        var (code, stdout, _) = RunEvaluate(small, large);
+        Assert.Equal(1, code);
+        Assert.Contains($"skipped in {(side == "both" ? "4x" : "16x")} result", stdout);
+    }
+
+    [Theory]
+    [InlineData("swapped", "fixture.size")]
+    [InlineData("same size", "fixture.size")]
+    [InlineData("generator version", "fixture.generator_version")]
+    [InlineData("seed", "fixture.seed")]
+    [InlineData("solution", "fixture is missing")]
+    [InlineData("protocol counts", "expected 5")]
+    public void InvalidFiles_Fail(string change, string reason)
+    {
+        var small = StandardResult(4);
+        var large = StandardResult(16);
+        switch (change)
+        {
+            case "swapped": (small, large) = (large, small); break;
+            case "same size": large["fixture"]!["size"] = 4; break;
+            case "generator version": large["fixture"]!["generator_version"] = "1.0.0"; break;
+            case "seed": large["fixture"]!["seed"] = 2; break;
+            case "solution":
+                foreach (var result in new[] { small, large })
+                {
+                    result["fixture"] = null;
+                    result["solution"] = "Perf.slnx";
+                }
+                break;
+            case "protocol counts":
+                foreach (var result in new[] { small, large })
+                {
+                    result["runs"] = 1;
+                    result["warmup"] = 0;
+                    foreach (var operation in result["operations"]!.AsArray())
+                        operation!["runs"] = new JsonArray(operation["runs"]![0]!.DeepClone());
+                }
+                break;
+        }
+
+        var (code, stdout, _) = RunEvaluate(small, large);
+        Assert.Equal(1, code);
+        Assert.Contains("gate failure:", stdout);
+        Assert.Contains(reason, stdout);
+    }
+
+    [Theory]
+    [InlineData("median", "4x result: stored median wall_ms")]
+    [InlineData("exit", "16x result: run 1 has exit code 1")]
+    [InlineData("count", "4x result: 4 run records, expected 5")]
+    public void InvalidRunRecords_Fail(string change, string reason)
+    {
+        var small = StandardResult(4);
+        var large = StandardResult(16);
+        var runs = PerfHarnessResults.FindOperation(change == "exit" ? large : small, "full_index")["runs"]!.AsArray();
+        switch (change)
+        {
+            case "median":
+                foreach (var run in runs)
+                    run!["wall_ms"] = 900;
+                break;
+            case "exit": runs[0]!["exit_code"] = 1; break;
+            case "count": runs.RemoveAt(0); break;
+        }
+        var (code, stdout, _) = RunEvaluate(small, large);
+
+        Assert.Equal(1, code);
+        Assert.Contains(reason, stdout);
+    }
+
+    [Fact]
+    public void FailingRatio_PrintsFourDecimals()
+    {
+        var small = StandardResult(4);
+        var large = StandardResult(16);
+        small["operations"]![0] = Op4("full_index", 1000);
+        large["operations"]![0] = Op16("full_index", 5004);
+
+        var (code, stdout, _) = RunEvaluate(small, large);
+
+        Assert.Equal(1, code);
+        Assert.Contains("time ratio 5.0040 above limit 5", stdout);
+    }
+
+    [Theory]
+    [InlineData(4, "zero", "median is 0")]
+    [InlineData(16, "zero", "median is 0")]
+    [InlineData(4, "null", "median missing or null")]
+    [InlineData(16, "null", "median missing or null")]
+    [InlineData(4, "failed", "failed in")]
+    [InlineData(16, "failed", "failed in")]
+    public void InvalidOperation_Fails(int size, string change, string reason)
+    {
+        var small = StandardResult(4);
+        var large = StandardResult(16);
+        var operation = PerfHarnessResults.FindOperation(size == 4 ? small : large, "full_index");
+        PerfHarnessResults.InvalidateOperation(operation, change);
+
+        var (code, stdout, _) = RunEvaluate(small, large);
+
+        Assert.Equal(1, code);
+        Assert.Contains($"{reason} {(change == "failed" ? "" : "in ")}{size}x result", stdout);
+    }
+
+    [Fact]
+    public void SummaryUnderAFile_Returns2()
+    {
+        var file = Path.Combine(_tempDir, "file");
+        File.WriteAllText(file, "");
+
+        var (code, _, stderr) = RunEvaluate(StandardResult(4), StandardResult(16), $"--summary={Path.Combine(file, "summary.md")}");
+
+        Assert.Equal(2, code);
+        Assert.DoesNotContain("unexpected", stderr);
     }
 
     [Fact]
@@ -221,7 +340,7 @@ public sealed class GateEvaluatorTests : IDisposable
             : Op4(name));
         var (code, _, _) = RunEvaluate(
             Result("gate", 5, 3, ops4),
-            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+            Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
 
         Assert.Equal(1, code);
     }
@@ -230,7 +349,7 @@ public sealed class GateEvaluatorTests : IDisposable
     public void SummaryFile_MatchesStdout()
     {
         var path4 = PerfHarnessResults.WriteResult(_tempDir, "4x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))));
-        var path16 = PerfHarnessResults.WriteResult(_tempDir, "16x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+        var path16 = PerfHarnessResults.WriteResult(_tempDir, "16x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name)), size: 16));
         var summaryPath = Path.Combine(_tempDir, "gate-summary.md");
 
         var (code, stdout, _) = PerfHarnessResults.RunHarness([$"--evaluate={path4},{path16}", $"--summary={summaryPath}"]);
@@ -258,7 +377,10 @@ public sealed class GateEvaluatorTests : IDisposable
         return PerfHarnessResults.RunHarness([$"--evaluate={path4},{path16}", .. extraArgs]);
     }
 
-    private static JsonObject Result(string protocol, int runs, int warmup, IEnumerable<JsonObject> operations)
+    private static JsonObject StandardResult(int size)
+        => Result("gate", 5, 3, ComparedOperations.Select(name => size == 4 ? Op4(name) : Op16(name)), size);
+
+    private static JsonObject Result(string protocol, int runs, int warmup, IEnumerable<JsonObject> operations, int size = 4)
     {
         var array = new JsonArray();
         foreach (var operation in operations)
@@ -269,6 +391,8 @@ public sealed class GateEvaluatorTests : IDisposable
             ["protocol"] = protocol,
             ["runs"] = runs,
             ["warmup"] = warmup,
+            ["fixture"] = new JsonObject { ["size"] = size, ["generator_version"] = "1.1.0", ["seed"] = 1 },
+            ["solution"] = null,
             ["operations"] = array
         };
     }

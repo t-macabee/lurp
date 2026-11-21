@@ -15,7 +15,7 @@ public sealed class BaselineEvaluatorTests : IDisposable
     private static readonly string[] DefaultOperationNames =
     [
         "full_index", "noop_incremental", "impact.upstream.d3.middle", "impact.upstream.d6.middle",
-        "context.default.middle", "search", "grep", "find_symbol", "diff", "dead_candidates",
+        "context.default.middle", "search", "grep", "find_symbol", "dead_candidates",
         "mcp_status.full"
     ];
 
@@ -91,11 +91,11 @@ public sealed class BaselineEvaluatorTests : IDisposable
     public void TimeAboveFactor_Warns()
     {
         var ops = DefaultOperations();
-        With(Find(ops, "diff"), wallMs: 1300);
+        With(Find(ops, "noop_incremental"), wallMs: 1300);
         var (code, stdout, _) = RunBaseline(Result(), Result(operations: ops));
 
         Assert.Equal(0, code);
-        Assert.Contains("WARN", Row(stdout, "diff"));
+        Assert.Contains("WARN", Row(stdout, "noop_incremental"));
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public sealed class BaselineEvaluatorTests : IDisposable
         var (code, stdout, _) = RunBaseline(Result(), Result());
 
         Assert.Equal(0, code);
-        Assert.Contains("skipped as solution-only (not compared): incremental_1_file, incremental_20_files", stdout);
+        Assert.Contains("skipped as solution-only (not compared): diff, incremental_1_file, incremental_20_files", stdout);
     }
 
     [Fact]
@@ -293,6 +293,187 @@ public sealed class BaselineEvaluatorTests : IDisposable
             "stdout should start with the summary markdown");
     }
 
+    [Theory]
+    [InlineData("runner OS", "runner_os differs")]
+    [InlineData("missing OS", "runner_os differs")]
+    [InlineData("fixture", "candidate result: solution is missing")]
+    [InlineData("protocol counts", "expected 5")]
+    [InlineData("warmup", "baseline result: warmup")]
+    public void InvalidFiles_Fail(string change, string reason)
+    {
+        var baseline = Result();
+        var candidate = Result();
+        switch (change)
+        {
+            case "runner OS": candidate["runner_os"] = "ubuntu24"; break;
+            case "missing OS": candidate["runner_os"] = null; break;
+            case "fixture": candidate["solution"] = null; break;
+            case "warmup": baseline["warmup"] = 0; break;
+            case "protocol counts":
+                foreach (var result in new[] { baseline, candidate })
+                {
+                    result["runs"] = 1;
+                    result["warmup"] = 0;
+                    foreach (var operation in result["operations"]!.AsArray())
+                        operation!["runs"] = new JsonArray(operation["runs"]![0]!.DeepClone());
+                }
+                break;
+        }
+
+        var (code, stdout, _) = RunBaseline(baseline, candidate);
+
+        Assert.Equal(1, code);
+        Assert.Contains("gate failure:", stdout);
+        Assert.Contains(reason, stdout);
+    }
+
+    [Theory]
+    [InlineData("median", "baseline result: stored median wall_ms")]
+    [InlineData("exit", "candidate result: run 1 has exit code 1")]
+    public void InvalidRunRecords_Fail(string change, string reason)
+    {
+        var baseline = Result();
+        var candidate = Result();
+        if (change == "median")
+            PerfHarnessResults.FindOperation(baseline, "full_index")["median"]!["wall_ms"] = 900;
+        else
+            PerfHarnessResults.FindOperation(candidate, "full_index")["runs"]![0]!["exit_code"] = 1;
+
+        var (code, stdout, _) = RunBaseline(baseline, candidate);
+
+        Assert.Equal(1, code);
+        Assert.Contains(reason, Row(stdout, "full_index"));
+    }
+
+    [Theory]
+    [InlineData("baseline", "zero", "median is 0 in")]
+    [InlineData("candidate", "zero", "median is 0 in")]
+    [InlineData("baseline", "null", "median missing or null in")]
+    [InlineData("candidate", "null", "median missing or null in")]
+    [InlineData("baseline", "failed", "failed in")]
+    [InlineData("candidate", "failed", "failed in")]
+    public void InvalidOperation_Fails(string side, string change, string reason)
+    {
+        var baseline = Result();
+        var candidate = Result();
+        var operation = PerfHarnessResults.FindOperation(side == "baseline" ? baseline : candidate, "full_index");
+        PerfHarnessResults.InvalidateOperation(operation, change);
+
+        var (code, stdout, _) = RunBaseline(baseline, candidate);
+
+        Assert.Equal(1, code);
+        Assert.Contains($"{reason} {side} result", Row(stdout, "full_index"));
+    }
+
+    [Fact]
+    public void OneSidedSkip_Fails()
+    {
+        var candidate = Result();
+        WithSkip(PerfHarnessResults.FindOperation(candidate, "noop_incremental"), NeverEdits);
+
+        var (code, stdout, _) = RunBaseline(Result(), candidate);
+
+        Assert.Equal(1, code);
+        Assert.Contains($"skipped in candidate result only: {NeverEdits}", Row(stdout, "noop_incremental"));
+    }
+
+    [Fact]
+    public void DiffAbsentInBoth_Passes()
+    {
+        var (code, stdout, _) = RunBaseline(
+            Result(operations: DefaultOperations().Where(op => (string?)op["name"] != "diff")),
+            Result(operations: DefaultOperations().Where(op => (string?)op["name"] != "diff")));
+
+        Assert.Equal(0, code);
+        Assert.Contains("gate verdict: PASS", stdout);
+    }
+
+    [Theory]
+    [InlineData(3, 4, "PASS")]
+    [InlineData(25, 32, "WARN")]
+    [InlineData(100, 125, "PASS")]
+    [InlineData(100, 126, "WARN")]
+    public void TimeRatioUsesNoiseFloorAndLimit(int baselineWall, int candidateWall, string verdict)
+    {
+        var baselineOps = DefaultOperations();
+        var candidateOps = DefaultOperations();
+        With(Find(baselineOps, "mcp_status.full"), wallMs: baselineWall);
+        With(Find(candidateOps, "mcp_status.full"), wallMs: candidateWall);
+
+        var (code, stdout, _) = RunBaseline(Result(operations: baselineOps), Result(operations: candidateOps));
+
+        Assert.Equal(0, code);
+        Assert.Contains($"| {verdict}", Row(stdout, "mcp_status.full"));
+    }
+
+    [Fact]
+    public void FailingMemoryRatio_PrintsFourDecimals()
+    {
+        var baselineOps = DefaultOperations();
+        var candidateOps = DefaultOperations();
+        With(Find(baselineOps, "full_index"), peakMb: 399);
+        With(Find(candidateOps, "full_index"), peakMb: 499);
+
+        var (code, stdout, _) = RunBaseline(Result(operations: baselineOps), Result(operations: candidateOps));
+
+        Assert.Equal(1, code);
+        Assert.Contains("memory ratio 1.2506 above limit 1.25", Row(stdout, "full_index"));
+    }
+
+    [Theory]
+    [InlineData("lurp 2.0.0", "lurp 3.6.1", "warning: tool version age")]
+    [InlineData("lurp 3.4.0", "lurp 3.6.1", "warning: tool version age")]
+    [InlineData("lurp 3.5.0", "lurp 3.6.1", null)]
+    [InlineData("lurp 3.6.1", "x", "warning: cannot read candidate tool version 'x'")]
+    public void ToolVersionsAreReported(string baselineVersion, string candidateVersion, string? warning)
+    {
+        var (code, stdout, _) = RunBaseline(Result(toolVersion: baselineVersion), Result(toolVersion: candidateVersion));
+
+        Assert.Equal(0, code);
+        Assert.Contains($"tool versions: baseline {baselineVersion}, candidate {candidateVersion}", stdout);
+        if (warning == null)
+            Assert.Contains("gate verdict: PASS (0 failure(s), 0 warning(s))", stdout);
+        else
+        {
+            Assert.Contains(warning, stdout);
+            Assert.Contains("gate verdict: PASS (0 failure(s), 1 warning(s))", stdout);
+        }
+    }
+
+    [Theory]
+    [InlineData("search", 300, 0)]
+    [InlineData("search", 301, 1)]
+    [InlineData("impact.upstream.d6.middle", 301, 1)]
+    [InlineData("context.default.middle", 301, 1)]
+    [InlineData("grep", 301, 1)]
+    [InlineData("find_symbol", 301, 1)]
+    public void InteractiveMemoryCap_IsStrict(string name, int peak, int expectedCode)
+    {
+        var ops = DefaultOperations();
+        With(Find(ops, name), peakMb: peak);
+        var (code, stdout, _) = RunBaseline(Result(operations: ops), Result(operations: ops));
+
+        Assert.Equal(expectedCode, code);
+        Assert.Contains(expectedCode == 0 ? "| PASS |" : "interactive read peak", Row(stdout, name));
+    }
+
+    [Theory]
+    [InlineData("impact.upstream.d6.middle", 2000, "PASS")]
+    [InlineData("impact.upstream.d6.middle", 2001, "WARN")]
+    [InlineData("context.default.middle", 3000, "PASS")]
+    [InlineData("context.default.middle", 3001, "WARN")]
+    [InlineData("search", 500, "PASS")]
+    [InlineData("search", 501, "WARN")]
+    public void InteractiveTimeCap_IsStrict(string name, int wall, string verdict)
+    {
+        var ops = DefaultOperations();
+        With(Find(ops, name), wallMs: wall);
+        var (code, stdout, _) = RunBaseline(Result(operations: ops), Result(operations: ops));
+
+        Assert.Equal(0, code);
+        Assert.Contains($"| {verdict}", Row(stdout, name));
+    }
+
     private (int Code, string Stdout, string Stderr) RunBaseline(JsonObject baseline, JsonObject candidate, params string[] extraArgs)
     {
         var pathBaseline = PerfHarnessResults.WriteResult(_tempDir, "baseline.json", baseline);
@@ -308,14 +489,16 @@ public sealed class BaselineEvaluatorTests : IDisposable
         string? solutionCommit = Commit,
         string? runnerOs = "win25",
         string? runnerImage = "20261005.1.0",
+        string toolVersion = "lurp 3.6.1",
         IEnumerable<JsonObject>? operations = null)
     {
         var array = new JsonArray();
         foreach (var operation in operations ?? DefaultOperations())
-            array.Add(operation);
+            array.Add(operation.DeepClone());
         return new JsonObject
         {
             ["schema_version"] = 1,
+            ["tool_version"] = toolVersion,
             ["protocol"] = protocol,
             ["runs"] = runs,
             ["warmup"] = warmup,
@@ -330,8 +513,9 @@ public sealed class BaselineEvaluatorTests : IDisposable
     private static List<JsonObject> DefaultOperations()
     {
         var ops = DefaultOperationNames
-            .Select(name => PerfHarnessResults.Operation(name, 1000, 100))
+            .Select(name => PerfHarnessResults.Operation(name, name == "search" ? 500 : 1000, 100))
             .ToList();
+        ops.Add(PerfHarnessResults.Operation("diff", 0, 0, skipped: true, skipReason: NeverEdits));
         ops.Add(PerfHarnessResults.Operation("incremental_1_file", 0, 0, skipped: true, skipReason: NeverEdits));
         ops.Add(PerfHarnessResults.Operation("incremental_20_files", 0, 0, skipped: true, skipReason: NeverEdits));
         return ops;
@@ -343,10 +527,13 @@ public sealed class BaselineEvaluatorTests : IDisposable
     private static JsonObject With(JsonObject op, double? wallMs = null, double? peakMb = null)
     {
         var median = (JsonObject)op["median"]!;
-        if (wallMs != null)
-            median["wall_ms"] = wallMs.Value;
-        if (peakMb != null)
-            median["peak_working_set_mb"] = peakMb.Value;
+        foreach (var entry in op["runs"]!.AsArray().OfType<JsonObject>().Prepend(median))
+        {
+            if (wallMs is double wall)
+                entry["wall_ms"] = wall;
+            if (peakMb is double peak)
+                entry["peak_working_set_mb"] = peak;
+        }
         return op;
     }
 

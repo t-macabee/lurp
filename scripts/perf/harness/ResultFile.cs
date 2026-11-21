@@ -57,9 +57,6 @@ internal static class ResultFile
         return operations;
     }
 
-    internal static int? ReadInt(JsonObject root, string key)
-        => root[key] is JsonValue value && value.TryGetValue<int>(out var result) ? result : null;
-
     internal static bool ReadFailed(JsonObject op)
         => op["failed"] is JsonValue value && value.TryGetValue<bool>(out var failed) && failed;
 
@@ -76,15 +73,23 @@ internal static class ResultFile
     }
 
     internal static bool TryReadMedian(JsonObject op, out double wallMs, out double peakMb)
+        => TryReadMeasurements(op["median"] as JsonObject, out wallMs, out peakMb);
+
+    internal static bool TryReadMeasurements(JsonObject? obj, out double wallMs, out double peakMb)
     {
         wallMs = 0;
         peakMb = 0;
-        if (op["median"] is not JsonObject median)
-            return false;
-        if (median["wall_ms"] is not JsonValue wall || !wall.TryGetValue<double>(out wallMs))
-            return false;
-        if (median["peak_working_set_mb"] is not JsonValue peak || !peak.TryGetValue<double>(out peakMb))
-            return false;
-        return true;
+        return obj?["wall_ms"] is JsonValue wall && wall.TryGetValue(out wallMs) && double.IsFinite(wallMs)
+            && obj["peak_working_set_mb"] is JsonValue peak && peak.TryGetValue(out peakMb) && double.IsFinite(peakMb);
     }
+
+    internal static double Median(IEnumerable<double> values)
+    {
+        var sorted = values.Order().ToArray();
+        var middle = sorted.Length / 2;
+        return sorted.Length % 2 == 1 ? sorted[middle] : sorted[middle - 1] / 2 + sorted[middle] / 2;
+    }
+
+    internal static string FormatRatioReason(string metric, double ratio, double limit)
+        => FormattableString.Invariant($"{metric} ratio {ratio:F4} above limit {limit:G}");
 }

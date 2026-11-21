@@ -16,6 +16,14 @@ internal static class PathTools
         return null;
     }
 
+    public static string? CheckOutsideRepo(string flag, string path, bool isFile, params string?[] knownRoots)
+    {
+        var directory = isFile ? Path.GetDirectoryName(path) ?? path : path;
+        var root = knownRoots.FirstOrDefault(root => root != null && IsInside(path, root))
+            ?? FindRepoRoot(directory);
+        return root == null ? null : $"{flag} '{path}' is inside the Lurp repo at '{root}'. Use scratch space outside the repo.";
+    }
+
     public static bool IsInside(string candidate, string root)
     {
         var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate));

@@ -13,7 +13,6 @@ internal sealed class SearchSourceStore
     public SearchSourceStore(SqliteConnection connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-        TextCaseMatching.Register(_connection);
     }
 
     /// <summary>

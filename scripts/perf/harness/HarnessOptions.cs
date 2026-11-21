@@ -2,6 +2,13 @@ using System.Globalization;
 
 namespace Lurp.PerfHarness;
 
+internal static class GateProtocol
+{
+    public const string Name = "gate";
+    public const int Runs = 5;
+    public const int Warmup = 3;
+}
+
 internal sealed class HarnessOptions
 {
     public const string Usage =
@@ -124,11 +131,11 @@ internal sealed class HarnessOptions
         {
             if (runsRaw != null || warmupRaw != null)
                 throw new HarnessError("--runs and --warmup cannot be combined with --protocol; the protocol sets both.");
-            if (!string.Equals(protocolRaw, "gate", StringComparison.OrdinalIgnoreCase))
-                throw new HarnessError($"unknown --protocol '{protocolRaw}'; supported: gate.");
-            options.Protocol = "gate";
-            options.Runs = 5;
-            options.Warmup = 3;
+            if (!string.Equals(protocolRaw, GateProtocol.Name, StringComparison.OrdinalIgnoreCase))
+                throw new HarnessError($"unknown --protocol '{protocolRaw}'; supported: {GateProtocol.Name}.");
+            options.Protocol = GateProtocol.Name;
+            options.Runs = GateProtocol.Runs;
+            options.Warmup = GateProtocol.Warmup;
         }
 
         if (string.IsNullOrWhiteSpace(options.Fixture) == string.IsNullOrWhiteSpace(options.Solution))

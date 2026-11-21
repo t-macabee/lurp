@@ -91,7 +91,7 @@ internal sealed class Session(
         return op;
     }
 
-    public OperationRecord Read(string name, IReadOnlyList<string> args, string? anchor = null)
+    public OperationRecord Read(string name, IReadOnlyList<string> args, string? anchor = null, Func<string, string?>? checkOutput = null)
     {
         var op = new OperationRecord { Name = name, Anchor = anchor };
         for (var i = 1; i <= options.Warmup + options.Runs; i++)
@@ -104,9 +104,22 @@ internal sealed class Session(
                 ? $"timed out after {ToolTimeoutMs} ms"
                 : outcome.ExitCode != 0 ? LastErrorLine(outcome.Stderr, outcome.Stdout) : null;
             AddRun(op, new RunRecord(outcome.WallMs, outcome.PeakWorkingSetMb, outcome.ExitCode, Error: error));
+            if (error == null && checkOutput?.Invoke(outcome.Stdout) is { } failure)
+                MarkFailed(op, failure);
         }
 
         return op;
+    }
+
+    internal static string? CheckDiffOutput(string stdout)
+    {
+        var json = JsonTools.TryParseObject(stdout);
+        if (json == null)
+            return "diff output is not a readable JSON object.";
+        var count = JsonTools.GetInt(json, "change_count");
+        return count > 0
+            ? null
+            : $"diff change_count was {json["change_count"]?.ToJsonString() ?? "missing or null"}. Expected a positive integer.";
     }
 
     public OperationRecord Freshness(string name, string mode, string symbolFqn, string dbDir, int? touchedFiles = null, (string State, int ChangedCount)? expected = null)
@@ -178,14 +191,43 @@ internal sealed class Session(
         }
     }
 
+    public void FreshnessNewFile(string symbolFqn, string dbDir)
+    {
+        var path = Path.Combine(fixtureRoot, "Perf.P0", "LurpPerfNewFile.cs");
+        var created = false;
+        try
+        {
+            using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write))
+            {
+                created = true;
+                file.Write("namespace Perf.P0; internal sealed class LurpPerfNewFile { }\n"u8);
+            }
+            Operations.Add(Freshness("find_symbol.freshness_auto_new_file", "auto", symbolFqn, dbDir, expected: ("stale", 1)));
+        }
+        finally
+        {
+            if (created)
+            {
+                try
+                {
+                    File.Delete(path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Console.Error.WriteLine($"warning: could not delete '{path}': {ex.Message}");
+                }
+            }
+        }
+    }
+
+    internal static IEnumerable<string> FixtureDocuments(string fixtureRoot)
+        => Directory.EnumerateFiles(fixtureRoot, "*.cs", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(fixtureRoot, path).Replace('\\', '/'))
+            .Where(path => !IsBuildOutputPath(path));
+
     private List<string> SelectTouchedDocuments()
     {
-        var relativePaths = Directory.EnumerateFiles(fixtureRoot, "*.cs", SearchOption.AllDirectories)
-            .Select(path => Path.GetRelativePath(fixtureRoot, path).Replace('\\', '/'))
-            .Where(path => !IsBuildOutputPath(path))
-            .OrderBy(path => path, StringComparer.Ordinal)
-            .ToList();
-
+        var relativePaths = FixtureDocuments(fixtureRoot).Order(StringComparer.Ordinal).ToList();
         var touched = new List<string>();
         for (var index = TouchEveryNthDocument - 1; index < relativePaths.Count; index += TouchEveryNthDocument)
             touched.Add(relativePaths[index]);
@@ -458,7 +500,7 @@ internal sealed class Session(
         }
     }
 
-    private static string AppendEditMethod(string text)
+    internal static string AppendEditMethod(string text)
     {
         var brace = text.LastIndexOf('}');
         if (brace < 0)
@@ -477,7 +519,7 @@ internal sealed class Session(
         return text.Insert(brace, block);
     }
 
-    private static string CrossCheck(long polledMb, long metricMb)
+    internal static string CrossCheck(long polledMb, long metricMb)
     {
         if (metricMb <= 0)
             return "mismatch";

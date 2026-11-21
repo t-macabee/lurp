@@ -1,9 +1,8 @@
 namespace Lurp.PerfHarness;
 
 /// <summary>
-///     Every skip reason a --solution run records in Program.cs that carries no measurement
-///     and therefore does not fail the growth or baseline gate. The literals live here so
-///     Program.cs and GateEvaluator compare the same strings.
+///     Skip reasons the harness records for solution runs. Only the baseline gate
+///     accepts NeverEdits and NeverTouches.
 /// </summary>
 internal static class SkipReasons
 {

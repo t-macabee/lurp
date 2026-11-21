@@ -9,6 +9,9 @@ The baseline key is the runner OS only. `ImageVersion` changes about once a week
 runners and is ignored (a different value only warns), so the file does not need a weekly
 update. A new runner OS has no baseline and fails the gate until one is committed.
 
+The gate warns when the tools differ by a major version or by more than one minor
+version. Replace the baseline in its own reviewed commit when this warning appears.
+
 A baseline file changes only in its own reviewed commit, on its own: a baseline update must be
 reviewable without an unrelated change beside it.
 
