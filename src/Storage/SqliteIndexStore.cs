@@ -36,8 +36,14 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
 
     public void Dispose()
     {
-        Close();
+        Dispose(true);
         GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+            Close();
     }
 
     // ── Connection lifecycle ────────────────────────────────────────────

@@ -93,47 +93,45 @@ internal sealed class IndexTool
                 var opSink = new McpIndexOutputSink(op);
                 task = Task.Run(async () =>
                 {
-                    using var _solLock = solutionLock;
-                    using var _dbLock = databaseLock;
-                    // Writer store — separate from the session's query_only connection so readers
-                    // keep answering from the old pin while the run is active.
-                    SqliteIndexStore? store = null;
-                    try
+                    Action publish;
+                    using (solutionLock)
+                    using (databaseLock)
+                    using (opCts)
                     {
-                        store = _storeFactory(dbPath);
-                        store.Open();
-                        store.RunMigrations();
-
-                        var skipAdapters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                        var selectedSnapshotId = await IndexRunner.RunAsync(store, solutionPath, skipAdapters, null, strategy, output: opSink, force: force ?? false, cancellationToken: opCts.Token);
-                        opSink.WriteLine($"index operation {operationId} completed. snapshot: {selectedSnapshotId}");
-                        opRef.Complete(selectedSnapshotId);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        opSink.WriteLine($"index operation {operationId} cancelled.");
-                        opRef.Cancel();
-                    }
-                    catch (WorkspaceUnreadableException wue)
-                    {
-                        opSink.WriteErrorLine($"ERROR: workspace unreadable: {wue.Message}");
-                        opRef.Fail(wue.Message, "workspace_unreadable", McpErrorMapper.WorkspaceUnreadable(wue.Message));
-                    }
-                    catch (Exception ex)
-                    {
-                        opSink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
-                        opRef.Fail(ex.Message, "index_failed", new { message = ex.Message });
-                    }
-                    finally
-                    {
-                        if (store != null)
+                        try
                         {
-                            try { store.Close(); } catch { }
-                        }
+                            // Writer store — separate from the session's query_only connection so readers
+                            // keep answering from the old pin while the run is active.
+                            using var store = _storeFactory(dbPath);
+                            store.Open();
+                            store.RunMigrations();
 
-                        try { opCts.Dispose(); } catch { }
+                            var skipAdapters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                            var selectedSnapshotId = await IndexRunner.RunAsync(store, solutionPath, skipAdapters, null, strategy, output: opSink, force: force ?? false, cancellationToken: opCts.Token);
+                            opSink.WriteLine($"index operation {operationId} completed. snapshot: {selectedSnapshotId}");
+                            publish = () => opRef.Complete(selectedSnapshotId);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            opSink.WriteLine($"index operation {operationId} cancelled.");
+                            publish = opRef.Cancel;
+                        }
+                        catch (WorkspaceUnreadableException wue)
+                        {
+                            opSink.WriteErrorLine($"ERROR: workspace unreadable: {wue.Message}");
+                            publish = () => opRef.Fail(wue.Message, "workspace_unreadable", McpErrorMapper.WorkspaceUnreadable(wue.Message));
+                        }
+                        catch (Exception ex)
+                        {
+                            opSink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
+                            publish = () => opRef.Fail(ex.Message, "index_failed", new { message = ex.Message });
+                        }
                     }
+
+                    // Publish the final status only after the store, the locks and the token source
+                    // are released: a client that sees it can delete the database or start the next run.
+                    publish();
                 }, CancellationToken.None);
 
                 op.BackgroundTask = task;

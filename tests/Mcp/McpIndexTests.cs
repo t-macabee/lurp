@@ -421,6 +421,35 @@ public sealed class McpIndexTests : IntegrationTestBase
         Assert.Equal(SnapshotStatusValues.Failed, store.GetSnapshotStatus(attempted[0], workspaceId));
     }
 
+    [Fact]
+    public async Task Run_PublishesFinalStatus_OnlyAfterItReleasesStoreAndLocks()
+    {
+        await IndexInitialAsync();
+        await using var session = McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={TestDir}"]);
+        using var holdingStore = new HoldOnDisposeStoreFactory();
+        var tool = new IndexTool(session, new McpIndexSessionState(), holdingStore.Create);
+        CreateProject("IndexProj2", new Dictionary<string, string> { ["B.cs"] = "namespace IndexProj2; public class B {}" });
+
+        using var start = Parse(tool.LurpIndex(strategy: "full"));
+        var opId = GetString(start.RootElement, "operation_id");
+
+        // A client that sees a final status can delete the database or start the next run at once,
+        // so the run must not report one while it still holds its writer store.
+        Assert.True(holdingStore.WaitForDisposeEntered(TimeSpan.FromSeconds(60)),
+            "the background run never disposed its writer store");
+        using (var held = Parse(tool.LurpIndex(operation_id: opId)))
+            Assert.Equal("running", GetString(held.RootElement, "status"));
+
+        holdingStore.Release();
+        using var final = await WaitForCompletionAsync(tool, opId);
+        Assert.Equal("completed", GetString(final.RootElement, "status"));
+        foreach (var path in new[] { SolutionPath, DbPath })
+        {
+            using var runLock = IndexRunLock.TryAcquire(IndexRunLock.NormalizeKey(Path.GetFullPath(path)));
+            Assert.True(runLock != null, $"the completed run still holds the index run lock of {path}");
+        }
+    }
+
     /// <summary>All snapshot rows of the workspace, whatever their status.</summary>
     private List<string> ReadSnapshotIdsIncludingIncomplete(string workspaceId)
     {
@@ -463,6 +492,40 @@ public sealed class McpIndexTests : IntegrationTestBase
             _release.Set();
             _entered.Dispose();
             _release.Dispose();
+        }
+    }
+
+    /// <summary>
+    ///     Store factory for <see cref="IndexTool" /> whose stores stop inside <c>Dispose</c> until
+    ///     the test releases them. Holds the background run at the point where it frees its store.
+    /// </summary>
+    private sealed class HoldOnDisposeStoreFactory : IDisposable
+    {
+        private readonly ManualResetEventSlim _disposeEntered = new(false);
+        private readonly ManualResetEventSlim _release = new(false);
+
+        public bool WaitForDisposeEntered(TimeSpan timeout) => _disposeEntered.Wait(timeout);
+
+        public void Release() => _release.Set();
+
+        public SqliteIndexStore Create(string path) => new HoldOnDisposeStore(path, this);
+
+        public void Dispose()
+        {
+            _release.Set();
+            _disposeEntered.Dispose();
+            _release.Dispose();
+        }
+
+        private sealed class HoldOnDisposeStore(string path, HoldOnDisposeStoreFactory owner) : SqliteIndexStore(path)
+        {
+            protected override void Dispose(bool disposing)
+            {
+                owner._disposeEntered.Set();
+                if (!owner._release.Wait(TimeSpan.FromSeconds(60)))
+                    throw new InvalidOperationException("the held store was never released; the test did not reach its release step");
+                base.Dispose(disposing);
+            }
         }
     }
 
