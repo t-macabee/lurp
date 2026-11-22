@@ -26,6 +26,10 @@ name: Real Parity
 # On success the run attests the nupkg and records a `real-parity` commit
 # status carrying the nupkg digest; on failure it records a `failure` status.
 #
+# Set `measure_only: true` to collect perf artifacts for a baseline refresh.
+# R1, integrity, recall, and measurement must still pass. This mode skips
+# the baseline gate and the record job. A measurement run cannot qualify a release.
+#
 # Fires only on manual dispatch with the lurp commit SHA whose CI artifact
 # should be exercised:
 #   gh workflow run real-parity.yml -f sha=<full commit SHA>
@@ -36,6 +40,10 @@ on:
         description: 'Full lurp commit SHA; the ci.yml run for this SHA must have uploaded the lurp-nupkg artifact'
         required: true
         type: string
+      measure_only:
+        description: 'Collect perf results without the baseline gate, commit status, or attestation'
+        default: false
+        type: boolean
 
 concurrency:
   # One run per SHA, so a dispatch for another SHA does not cancel this one.
@@ -54,6 +62,12 @@ jobs:
       digest: ${{ steps.nupkg.outputs.digest }}
 
     steps:
+      - name: Mark the measurement run
+        if: ${{ inputs.measure_only }}
+        shell: pwsh
+        run: |
+          'Measurement run for a baseline refresh. This run does not qualify a release.' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Resolve and verify the CI nupkg
@@ -238,7 +252,7 @@ jobs:
       # (the cap checks still run), and this job fails with the commit instruction.
       # See the baseline gate in scripts/perf/README.md.
       - name: Baseline perf gate on eNoteV2
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.measure_only }}
         shell: pwsh
         run: |
           if (-not $env:ImageOS) { throw "ImageOS is not set; cannot pick a perf baseline." }
@@ -278,7 +292,7 @@ jobs:
   record:
     runs-on: windows-latest
     needs: [resolve, real-parity]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && !inputs.measure_only }}
     timeout-minutes: 30
     permissions:
       contents: read

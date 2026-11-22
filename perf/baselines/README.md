@@ -25,19 +25,15 @@ derive an exact byte value from a schema 1 file.
 The gate warns when the tools differ by a major version or by more than one minor
 version. Replace the baseline in its own reviewed commit when this warning appears.
 
-A baseline update gets its own reviewed commit. During the 4.0.0 migration, review artifacts
-from a failed comparison only for these expected failures:
+A baseline update gets its own reviewed commit. Collect both artifacts with a successful
+`measure_only` run of `real-parity.yml`. This run keeps R1, integrity, recall, and performance
+measurement enabled. It skips the baseline gate and the job that writes the release records.
 
-- Linux has no baseline for `ubuntu26`.
-- The Windows baseline measures `diff` and lacks
-  `find_symbol.freshness_auto_new_file`, `outline`, `navigate`, `get_symbol`,
-  `get_annotations.document`, and `grep.ignore_case`.
-- The legacy Windows peak for `context.maxhops6.middle` gives a range that crosses 1.25.
-  Accept this exception only when a paired 3.6.1 and 4.0.0 run on the same Windows runner
-  measures an exact median ratio at or below 1.25.
+The old Windows file measured Lurp 2.0.0. The proposed Windows comparison with 3.6.1 used
+the wrong baseline version. Local measurements on one machine showed a lower peak with
+4.0.0 than with either earlier version for `context.maxhops6.middle`.
 
-Before accepting either artifact, require that paired result and a successful parity,
-integrity, recall, and measurement run for the candidate. Check the runner and solution pin.
+Before accepting either artifact, check the runner and solution pin.
 Require schema 2 and valid byte samples for every measured operation. To check the hard caps
 on all candidate operations, pass the same artifact path to `--baseline` and `--candidate`.
 Expect exit 1 with the self-check as the only failure. Review the time warnings. Stop on any

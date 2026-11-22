@@ -119,6 +119,13 @@ gh workflow run real-parity.yml -f sha=<sha>
 
 A pass needs both legs (Windows and Linux) and writes the `real-parity` status and an attestation.
 
+For a baseline refresh, dispatch with `-f measure_only=true`. R1, integrity, recall, and
+performance measurement still run. The workflow uploads the perf results and skips the
+baseline comparison, commit status, and attestation. GitHub attaches job checks to the
+dispatch ref's SHA. Use a separate ref with a different SHA to keep these checks off `main`.
+Use the `main` commit SHA as the `sha` input to select its CI package. A measurement run
+cannot qualify a release.
+
 4. Optional dry run. It checks every step and stops before the push:
 
 ```bash

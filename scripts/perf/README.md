@@ -207,9 +207,12 @@ uses that range for the memory comparison and shows it with `~`. If the whole ra
 or below the limit, the gate reports WARN and asks for a refreshed baseline. If the range
 extends above the limit, the gate fails. A schema 1 result never supplies an exact byte value.
 
-Download `enotev2.json` from the `perf-enotev2-<OS>` artifact. Apply the [baseline review
-rules](../../perf/baselines/README.md) before you commit the file. Those rules list the expected
-comparison failures for the 4.0.0 migration and the checks that each artifact must pass.
+For a baseline refresh, dispatch `real-parity.yml` with `-f measure_only=true`. Both runner
+legs still run R1, integrity, recall, and performance measurement. The workflow skips the
+baseline comparison, commit status, and attestation. Use a dispatch ref with a SHA outside
+`main` to keep its job checks off `main`. Set `sha` to the `main` commit that provides the CI
+package. Download `enotev2.json` from each `perf-enotev2-<OS>` artifact. Apply the
+[baseline review rules](../../perf/baselines/README.md) before you commit the files.
 
 Exit codes are 0 for pass, 1 for a failed gate, 2 for a usage or data error, and 3 for a
 harness defect. A file-system error on a given path or a tool that cannot start returns 2.
