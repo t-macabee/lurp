@@ -11,3 +11,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+
+  # global.json pins one exact SDK. A new SDK can add analyzer rules, and
+  # Release builds treat warnings as errors, so each update comes as a PR.
+  - package-ecosystem: dotnet-sdk
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

@@ -2,12 +2,14 @@
 
 ## Prerequisites
 
-- .NET 10 SDK. `global.json` pins `10.0.301` with `rollForward=latestMajor`, and
+- .NET 10 SDK, exactly the version in `global.json` (`rollForward=disable`).
   CI installs the SDK from that same file (`setup-dotnet` `global-json-file`),
-  so local and CI builds follow one selection rule. Roslyn 5.6 requires `net10.0`.
-  On Linux, distro packages ship only the 10.0.1xx band, which does not satisfy
-  the pin. Install 10.0.3xx with `dotnet-install.sh` or from Microsoft's package
-  feed.
+  so local and CI builds use the same compiler and the same analyzer rules.
+  A new SDK, a patch included, can add analyzer rules, and Release builds treat
+  warnings as errors. Dependabot proposes each SDK update as a pull request, so
+  CI checks the new rules before they reach `main`. Roslyn 5.6 requires
+  `net10.0`. Install the pinned version with
+  `dotnet-install.sh --version <version>` or from Microsoft's package feed.
 - PowerShell 7 (`pwsh`) on every OS. The tests start it (`McpStdioClientTests`),
   and the CI and smoke scripts run under it.
 - Familiarity with C# and Roslyn is helpful but not required.

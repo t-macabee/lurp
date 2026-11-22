@@ -88,7 +88,14 @@ internal static class McpServeHandler
         if (backgroundTask != null)
         {
             indexState.CancelCurrent();
-            await Task.WhenAny(backgroundTask, Task.Delay(ShutdownIndexWait));
+            try
+            {
+                // The background task catches its own exceptions, so only the wait can time out.
+                await backgroundTask.WaitAsync(ShutdownIndexWait);
+            }
+            catch (TimeoutException)
+            {
+            }
         }
     }
 }

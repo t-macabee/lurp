@@ -141,8 +141,8 @@ dotnet run --project src -- --mode=index --solution=path/to/Your.slnx --output-d
 ```
 
 Environment variables `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to
-`--solution=` and `--output-dir=`. Requires .NET 10 SDK (pinned via the root
-`global.json` `rollForward=latestMajor`; Roslyn 5.6 requires `net10.0`).
+`--solution=` and `--output-dir=`. Requires .NET 10 SDK (the root `global.json`
+pins one exact version, see CONTRIBUTING; Roslyn 5.6 requires `net10.0`).
 
 **Installing a local build as the global tool:** if you pack a local build and its
 version number matches the version already on nuget.org, `dotnet tool install
