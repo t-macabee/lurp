@@ -110,6 +110,15 @@ public sealed class PerfHarnessHelperTests
         }
         finally
         {
+            // A shallow source clone makes git clone --shared copy the pack, and git marks it
+            // read-only. Windows cannot delete such a file, so clear the attribute first.
+            foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                var attributes = File.GetAttributes(file);
+                if ((attributes & FileAttributes.ReadOnly) != 0)
+                    File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+            }
+
             TestDatabase.DeleteDirectory(dir);
         }
     }

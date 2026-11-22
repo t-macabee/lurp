@@ -8,8 +8,8 @@
   A new SDK, a patch included, can add analyzer rules, and Release builds treat
   warnings as errors. Dependabot proposes each SDK update as a pull request, so
   CI checks the new rules before they reach `main`. Roslyn 5.6 requires
-  `net10.0`. Install the pinned version with
-  `dotnet-install.sh --version <version>` or from Microsoft's package feed.
+  `net10.0`. Install that version with `dotnet-install.sh` or from Microsoft's
+  package feed.
 - PowerShell 7 (`pwsh`) on every OS. The tests start it (`McpStdioClientTests`),
   and the CI and smoke scripts run under it.
 - Familiarity with C# and Roslyn is helpful but not required.
