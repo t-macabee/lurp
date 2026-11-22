@@ -820,11 +820,8 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     // ── Cross-table batched maintenance ──────────────────────────────────
 
     /// <summary>
-    ///     Deletes edges, binding-incompleteness rows, and annotations for the
-    ///     given document paths. Each statement binds the path list once as a JSON
-    ///     parameter, and the three deletes run in one transaction. Callers scoping
-    ///     a delete to exactly one of those tables should keep using the individual
-    ///     methods.
+    ///     Retires edge sites, binding-incompleteness rows and annotations for the
+    ///     given document paths in one transaction. An edge keeps its remaining sites.
     /// </summary>
     public void DeleteFactsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
@@ -836,14 +833,7 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         using var transaction = _connection!.BeginTransaction();
         try
         {
-            using (var deleteEdgesCmd = _connection.CreateCommand())
-            {
-                deleteEdgesCmd.Transaction = transaction;
-                deleteEdgesCmd.CommandText = EdgeOperationsStore.DeleteEdgesByDocumentPathsSql();
-                deleteEdgesCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-                SqlIdList.Bind(deleteEdgesCmd, "@documentPaths", pathList);
-                deleteEdgesCmd.ExecuteNonQuery();
-            }
+            _edgeOps!.RetireSitesByDocumentPaths(transaction, snapshotId, pathList);
 
             using (var deleteBindingCmd = _connection.CreateCommand())
             {

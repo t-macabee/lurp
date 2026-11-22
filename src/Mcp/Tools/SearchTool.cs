@@ -17,7 +17,7 @@ internal sealed class SearchTool
     }
 
     [McpServerTool(Name = "lurp_search", Title = "Lurp Search", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Search source or symbols in the pinned snapshot. Type picks the store: source, symbol, or all. Uses FTS5 phrase quoting verbatim and cursor pagination for symbol search.")]
+    [Description("Search source or symbols in the pinned snapshot. Type picks the store: source, symbol, or all. Uses FTS5 phrase quoting verbatim and cursor pagination for symbol search. Source snippets keep the whole first match, even if it exceeds snippet_tokens.")]
     public string LurpSearch(
         [McpRequired] string? query = null,
         string? type = null,

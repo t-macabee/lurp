@@ -64,6 +64,54 @@ public sealed class SourceSearchSnippetTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Snippet_SourceControlCharacters_DoNotMoveTheMark()
+    {
+        await IndexFullAsync("App", new Dictionary<string, string>
+        {
+            ["A.cs"] = "namespace App;\n// \u0002decoy\u0003 needle\npublic class A { }\n"
+        });
+
+        var snippets = await RunSourceSearchAsync("needle", snippetTokens: 1);
+        Assert.Equal("…<mark>needle</mark>…", SnippetForFile(snippets, "A.cs"));
+    }
+
+    [Fact]
+    public async Task Snippet_UnpairedSourceMarker_DoesNotWidenTheMark()
+    {
+        await IndexFullAsync("App", new Dictionary<string, string>
+        {
+            ["B.cs"] = "namespace App;\n// \u0002 lead needle tail\npublic class B { }\n"
+        });
+
+        var snippets = await RunSourceSearchAsync("needle", snippetTokens: 1);
+        Assert.Equal("…<mark>needle</mark>…", SnippetForFile(snippets, "B.cs"));
+    }
+
+    [Fact]
+    public async Task Snippet_SourceMarkersNextToMatch_StayOutsideTheMark()
+    {
+        await IndexFullAsync("App", new Dictionary<string, string>
+        {
+            ["Adjacent.cs"] = "namespace App;\n// lead \u0002needle\u0003\u0003 tail\npublic class A { }\n"
+        });
+
+        var snippets = await RunSourceSearchAsync("needle", snippetTokens: 3);
+        Assert.Equal("…lead \u0002<mark>needle</mark>\u0003\u0003 tail…", SnippetForFile(snippets, "Adjacent.cs"));
+    }
+
+    [Fact]
+    public async Task Snippet_MatchLongerThanTheLimit_KeepsTheWholeMatch()
+    {
+        await IndexFullAsync("App", new Dictionary<string, string>
+        {
+            ["C.cs"] = "namespace App;\n// gamma alpha beta delta\npublic class C { }\n"
+        });
+
+        var snippets = await RunSourceSearchAsync("alpha beta", snippetTokens: 1);
+        Assert.Equal("…<mark>alpha beta</mark>…", SnippetForFile(snippets, "C.cs"));
+    }
+
+    [Fact]
     public async Task Snippet_FragmentFallbackHasTheSameFormat()
     {
         await IndexSnippetFixtureAsync();

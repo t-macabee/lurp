@@ -162,8 +162,9 @@ dotnet run --project scripts/perf/harness -c Release -- --baseline=perf/baseline
 A value equal to its limit passes.
 
 - A candidate peak above 1.25 times the baseline peak fails for every operation.
-- A candidate peak above 300 MB fails for `impact.*`, `context.*`, `search`, `grep` and
-  `find_symbol`.
+- A candidate peak above 300 MB fails for `impact.*`, `context.*`, `search`, `grep`,
+  `find_symbol`, `outline`, `navigate`, `get_symbol`, `get_annotations.document`
+  and `grep.ignore_case`.
 - A candidate wall time above 1.25 times the baseline wall time warns when the baseline
   median is at least 25 ms.
 - Wall times above the caps also warn. The caps are 2,000 ms for `impact.*.d6.*`,
@@ -254,9 +255,12 @@ otherwise drop it. The pin is cleared before the read operations run.
 
 Index operations: `full_index`, `noop_incremental`, `incremental_1_file`,
 `incremental_20_files`. Reads: `impact.{upstream|downstream}.d{3|6}.{anchor}`,
-`context.{default|maxhops6}.{anchor}`, `search`, `grep`, `find_symbol`, `diff`,
+`context.{default|maxhops6}.{anchor}`, `search`, `grep`, `find_symbol`, `outline`,
+`navigate`, `get_symbol`, `get_annotations.document`, `grep.ignore_case`, `diff`,
 `find_symbol.freshness_{auto|hash}_{untouched|touched}`,
 `find_symbol.freshness_auto_new_file`, `dead_candidates`, `mcp_status.{default|full}`.
+The five reads from `outline` to `grep.ignore_case` use the middle anchor. The harness
+skips them when no anchor is available. The `get_symbol` read uses `--view=metadata`.
 The touched and new-file operations run after `mcp_status`. See "Edits".
 
 `timings_total_ms` and `timings_steps` come from one `--mode=timings --json` call per index run

@@ -25,6 +25,10 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   gone. New facts: the `ExtensionReceiver` edge and the receiver-type constraints
   of calls in top-level statements and initializers, and the `ExtensionReceiver`
   edge of an extension `Add` in a collection initializer.
+- When Lurp merges facts for one relation, it keeps the receiver-type constraints
+  of every fact, even if a fact with higher provenance has no constraints.
+- The capsule gives one uncertainty entry for a reflection relation that it
+  reaches from both ends.
 - The `occurrence_count` of a `binding_incompleteness` row is the number of
   distinct binding sites (document, node span, reason). A site that several
   extractors see counts once. Before, a call that did not resolve was also counted
@@ -283,9 +287,9 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   or a full run in a database with older snapshots, `outline`, `navigate` and
   dead candidates no longer return the declarations of an older compilation.
   Schema v38.
-- Schema v39 drops four write-only columns and two unused tables. No behavior
-  changes except `snapshot_graph_nodes`, which now holds only boundary nodes
-  that are not snapshot symbols.
+- Schema v39 drops three write-only columns, the index on one of them and two
+  unused tables. The `snapshot_graph_nodes` table now holds only boundary nodes
+  outside the snapshot symbol set.
 - Schema v40 adds `edge_sites`: an edge keeps every site of its relation.
   Existing edges get one site.
 - Every extractor reports every site of a relation. Reindex once.
@@ -314,6 +318,11 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 - Schema v48 recomputes the line table of every stored document with the Roslyn
   line breaks (CR, LF, CRLF, NEL, LS, PS); text that ends with a line break has
   a last, empty line.
+- Schema v49 indexes edge sites by document. An incremental run retires the sites
+  of the changed documents and keeps the sites of unchanged documents.
+- Schema v50 keeps the evidence of every provenance for each edge site. When
+  an incremental run retires the sites of the highest provenance, the edge
+  falls back to the next provenance, as a full index does.
 
 ## Snapshot lifecycle
 
@@ -416,6 +425,7 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 - `search --type=source` matches the document text only, and `snippet` is a
   window around the first match with `<mark>` markers in both the token and the
   fragment paths.
+  The `<mark>` span stays correct when the source contains U+0002 or U+0003.
 - Line numbers of files with CR, NEL, LS or PS line breaks now agree with the
   compiler; a span that ends the file with a line break ends at column 0 of the
   next line; `get-source` counts the last, empty line.
@@ -458,7 +468,7 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 | Component | 3.6.1 | 4.0.0 |
 |---|---|---|
 | Tool | 3.6.1 | 4.0.0 |
-| Database schema | v37 | v48 |
+| Database schema | v37 | v50 |
 | Extractor | 1.11.0 | 1.12.0 |
 | CLI/MCP contract | v6 | v7 |
 | Output schema | v6 | v7 |

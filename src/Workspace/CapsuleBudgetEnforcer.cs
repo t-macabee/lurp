@@ -45,12 +45,6 @@ internal static class CapsuleBudgetEnforcer
     internal static void Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority,
         CapsuleAnnotationScope? annotations = null)
     {
-        EnforceContentBudget(capsule, budget, tierPriority, annotations);
-    }
-
-    private static int EnforceContentBudget(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority,
-        CapsuleAnnotationScope? annotations)
-    {
         var trimmer = new SectionTrimmer(capsule, tierPriority);
 
         if (Measure(capsule) > budget)
@@ -88,7 +82,7 @@ internal static class CapsuleBudgetEnforcer
             var estimate = Measure(capsule);
             capsule.EstimatedTokens = estimate;
             if (estimate <= budget)
-                return estimate;
+                return;
 
             var entry = trimmer.TrimNextLowestPriority();
             if (entry == null)
@@ -106,7 +100,7 @@ internal static class CapsuleBudgetEnforcer
                 capsule.EstimatedTokens = Measure(capsule);
                 if (capsule.EstimatedTokens > budget)
                     RecordTruncation(capsule, new TruncationEntry("anchor", "budget_exhausted"));
-                return capsule.EstimatedTokens;
+                return;
             }
 
             RecordTruncation(capsule, entry);

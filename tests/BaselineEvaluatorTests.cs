@@ -75,6 +75,22 @@ public sealed class BaselineEvaluatorTests : IDisposable
         Assert.Equal(1, code);
     }
 
+    [Theory]
+    [InlineData("outline")]
+    [InlineData("navigate")]
+    [InlineData("get_symbol")]
+    [InlineData("get_annotations.document")]
+    [InlineData("grep.ignore_case")]
+    public void InteractiveReadCap_AppliesToTheNewReads(string name)
+    {
+        var operations = DefaultOperations();
+        operations.Add(PerfHarnessResults.Operation(name, wallMs: 100, peakMb: 310));
+        var (code, stdout, _) = RunBaseline(Result(operations: operations), Result(operations: operations));
+
+        Assert.Equal(1, code);
+        Assert.Contains("interactive read peak 310 MB above limit 300 MB", stdout);
+    }
+
     [Fact]
     public void IndexAboveCap_Passes()
     {

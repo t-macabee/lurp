@@ -11,48 +11,36 @@ internal static class SnippetWindowBuilder
     private const char HighlightStartMarker = '\u0002';
     private const char HighlightEndMarker = '\u0003';
 
-    internal static string BuildFromHighlighted(string highlighted, int snippetTokens)
+    internal static string BuildFromHighlighted(string content, string highlighted, int snippetTokens)
     {
-        if (string.IsNullOrEmpty(highlighted))
-            return "";
-
-        var sb = new StringBuilder(highlighted.Length);
+        var contentIndex = 0;
         var matchStart = -1;
-        var matchEnd = -1;
-        var inFirstMatch = false;
-        var sawFirstMatch = false;
 
         foreach (var c in highlighted)
         {
-            if (c == HighlightStartMarker)
+            if (contentIndex < content.Length && c == content[contentIndex])
             {
-                if (!sawFirstMatch && !inFirstMatch)
-                {
-                    matchStart = sb.Length;
-                    inFirstMatch = true;
-                }
+                contentIndex++;
                 continue;
             }
 
-            if (c == HighlightEndMarker)
+            if (c == HighlightStartMarker && matchStart < 0)
             {
-                if (inFirstMatch)
-                {
-                    matchEnd = sb.Length;
-                    inFirstMatch = false;
-                    sawFirstMatch = true;
-                }
-                continue;
+                matchStart = contentIndex;
             }
+            else if (c == HighlightEndMarker && matchStart >= 0)
+            {
+                // FTS inserts the close marker before any identical source characters.
+                // Alignment can consume those characters before it detects the extra marker.
+                var matchEnd = contentIndex;
+                while (matchEnd > matchStart && content[matchEnd - 1] == HighlightEndMarker)
+                    matchEnd--;
 
-            sb.Append(c);
+                return BuildWindow(content, matchStart, matchEnd - matchStart, snippetTokens);
+            }
         }
 
-        var cleanText = sb.ToString();
-        if (matchStart < 0 || matchEnd < matchStart)
-            return BuildWindow(cleanText, 0, 0, snippetTokens);
-
-        return BuildWindow(cleanText, matchStart, matchEnd - matchStart, snippetTokens);
+        return BuildWindow(content, 0, 0, snippetTokens);
     }
 
     internal static string BuildFromPlainText(string text, string query, int snippetTokens)

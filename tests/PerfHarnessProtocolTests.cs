@@ -32,6 +32,14 @@ public sealed class PerfHarnessProtocolTests : IDisposable
         Assert.True(result.Code == 0, result.Stdout + result.Stderr);
 
         var json = JsonNode.Parse(File.ReadAllText(output))!.AsObject();
+        foreach (var name in new[] { "outline", "navigate", "get_symbol", "get_annotations.document", "grep.ignore_case" })
+        {
+            var operation = PerfHarnessResults.FindOperation(json, name);
+            Assert.False((bool?)operation["skipped"]);
+            Assert.False((bool?)operation["failed"]);
+            Assert.Single(operation["runs"]!.AsArray());
+        }
+
         var diff = PerfHarnessResults.FindOperation(json, "diff");
         var newFile = Assert.Single(json["operations"]!.AsArray(),
             op => (string?)op!["name"] == "find_symbol.freshness_auto_new_file")!.AsObject();

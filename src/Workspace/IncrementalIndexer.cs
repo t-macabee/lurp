@@ -297,14 +297,9 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         _store.CopyAnnotationsToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.CopyBindingIncompleteness(previousSnapshotId, newSnapshotIdStr);
 
-        // Delete facts only for the documents in the extraction scope — the same
-        // set that is about to be re-extracted, so deleted rows are replaced by
-        // the re-extraction and nothing is silently lost. Extraction and deletion
-        // must always be scoped to exactly the same set; documents outside it
-        // keep their copied-forward edges intact.
+        // Retire facts for the documents in the extraction scope.
+        // Documents outside the scope keep their copied edge sites.
         if (extractionScopePaths.Count > 0)
-            // Batched: one call deletes edges, binding-incompleteness rows and annotations
-            // for the whole path set, each with one statement over the JSON path list.
             _store.DeleteFactsByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
 
         // Null-path edges (from symbols with no DeclaringSyntaxReferences, e.g. an

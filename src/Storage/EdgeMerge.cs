@@ -5,10 +5,8 @@ namespace Lurp.Storage;
 public static class EdgeMerge
 {
     /// <summary>
-    ///     Collapses a batch to one edge for each (source, target, kind). The edge with the
-    ///     higher provenance rank wins (the first one on a tie); the type-argument and the
-    ///     receiver-constraint variants of every edge of the key are kept (<see cref="Merge" />),
-    ///     and <see cref="EdgeRecord.Sites" /> keeps the ordered sites of the winning rank (D155.4).
+    ///     Combines records of each edge key. Keeps all evidence and the union of the payloads.
+    ///     Projects the fields and shown sites of the highest provenance (D209).
     /// </summary>
     public static List<EdgeRecord> CollapseBatch(IEnumerable<EdgeRecord> edges)
     {
@@ -27,34 +25,6 @@ public static class EdgeMerge
         foreach (var builder in builders.Values)
             result.Add(builder.Build());
         return result;
-    }
-
-    /// <summary>
-    ///     The row of <paramref name="winner" /> with the union of the type-argument variants and
-    ///     the union of the receiver-constraint variants of both edges, and sites per D155.4
-    ///     (equal rank adds sites; lower rank adds none).
-    /// </summary>
-    public static EdgeRecord Merge(EdgeRecord winner, EdgeRecord other)
-    {
-        var typeArguments = MergeTypeArguments(winner.TypeArgumentsJson, other.TypeArgumentsJson);
-        var constraints = MergeReceiverTypeConstraints(winner.ReceiverTypeConstraintsJson, other.ReceiverTypeConstraintsJson);
-        var winnerSites = NormalizeSites(GetSites(winner));
-        var mergedSites = ProvenanceRank(winner.Provenance) == ProvenanceRank(other.Provenance)
-            ? NormalizeSites(winnerSites.Concat(GetSites(other)))
-            : winnerSites;
-
-        return winner.WithSites(mergedSites, typeArguments, constraints);
-    }
-
-    internal static IReadOnlyList<EdgeSite> GetSites(EdgeRecord edge)
-    {
-        if (edge.Sites.Count > 0)
-            return edge.Sites;
-
-        if (TryGetPrimarySite(edge, out var site))
-            return [site];
-
-        return [];
     }
 
     private static bool TryGetPrimarySite(EdgeRecord edge, out EdgeSite site)
@@ -78,21 +48,6 @@ public static class EdgeMerge
         return false;
     }
 
-    internal static IReadOnlyList<EdgeSite> NormalizeSites(IEnumerable<EdgeSite> sites)
-    {
-        if (sites is IReadOnlyList<EdgeSite> readOnly)
-        {
-            if (readOnly.Count == 0)
-                return [];
-            if (readOnly.Count == 1)
-                return [readOnly[0]];
-        }
-
-        var list = sites.Distinct().ToList();
-        list.Sort(CompareSites);
-        return list;
-    }
-
     internal static int CompareSites(EdgeSite a, EdgeSite b)
     {
         var cmp = StringComparer.Ordinal.Compare(a.DocumentPath, b.DocumentPath);
@@ -105,62 +60,92 @@ public static class EdgeMerge
         return cmp != 0 ? cmp : a.EndColumn.CompareTo(b.EndColumn);
     }
 
+    private static int CompareEvidence(EdgeSiteEvidence a, EdgeSiteEvidence b)
+    {
+        var cmp = ProvenanceRank(b.Provenance).CompareTo(ProvenanceRank(a.Provenance));
+        if (cmp != 0) return cmp;
+        cmp = CompareSites(a.Site, b.Site);
+        if (cmp != 0) return cmp;
+        cmp = string.CompareOrdinal(a.Provenance, b.Provenance);
+        if (cmp != 0) return cmp;
+        cmp = string.CompareOrdinal(a.ExtractorVersion, b.ExtractorVersion);
+        return cmp != 0 ? cmp : a.IsCrossGenerated.CompareTo(b.IsCrossGenerated);
+    }
+
     private sealed class BatchEdgeBuilder
     {
-        private EdgeRecord _winner;
-        private int _winnerRank;
+        private readonly EdgeRecord _first;
+        private readonly List<EdgeSiteEvidence> _evidence = [];
+        private EdgeRecord? _unlocated;
         private string? _typeArguments;
         private bool _typeArgumentsNormalized;
         private string? _constraints;
         private bool _constraintsNormalized;
-        private readonly List<EdgeSite> _sites = [];
 
         public BatchEdgeBuilder(EdgeRecord first)
         {
-            _winner = first;
-            _winnerRank = ProvenanceRank(first.Provenance);
+            _first = first;
             _typeArguments = first.TypeArgumentsJson;
             _constraints = first.ReceiverTypeConstraintsJson;
-            AddSites(first);
+            AddEvidence(first);
         }
 
         public void Add(EdgeRecord edge)
         {
-            var edgeRank = ProvenanceRank(edge.Provenance);
-            if (edgeRank > _winnerRank)
-            {
-                var taNormalized = false;
-                _typeArguments = MergePayload(edge.TypeArgumentsJson, _typeArguments, ref taNormalized);
-                _typeArgumentsNormalized = taNormalized;
-
-                var rcNormalized = false;
-                _constraints = MergePayload(edge.ReceiverTypeConstraintsJson, _constraints, ref rcNormalized);
-                _constraintsNormalized = rcNormalized;
-
-                _winner = edge;
-                _winnerRank = edgeRank;
-                _sites.Clear();
-                AddSites(edge);
-            }
-            else
-            {
-                _typeArguments = MergePayload(_typeArguments, edge.TypeArgumentsJson, ref _typeArgumentsNormalized);
-                _constraints = MergePayload(_constraints, edge.ReceiverTypeConstraintsJson, ref _constraintsNormalized);
-                if (edgeRank == _winnerRank)
-                    AddSites(edge);
-            }
+            _typeArguments = MergePayload(_typeArguments, edge.TypeArgumentsJson, ref _typeArgumentsNormalized);
+            _constraints = MergePayload(_constraints, edge.ReceiverTypeConstraintsJson, ref _constraintsNormalized);
+            AddEvidence(edge);
         }
 
-        public EdgeRecord Build() =>
-            _winner.WithSites(NormalizeSites(_sites), _typeArguments, _constraints);
-
-        private void AddSites(EdgeRecord edge)
+        public EdgeRecord Build()
         {
-            if (edge.Sites.Count > 0)
-                _sites.AddRange(edge.Sites);
-            else if (TryGetPrimarySite(edge, out var site))
-                _sites.Add(site);
+            if (_evidence.Count > 1)
+            {
+                _evidence.Sort(CompareEvidence);
+                var count = 1;
+                for (var i = 1; i < _evidence.Count; i++)
+                {
+                    var current = _evidence[i];
+                    var previous = _evidence[count - 1];
+                    if (current.Site != previous.Site || current.Provenance != previous.Provenance)
+                        _evidence[count++] = current;
+                }
+                _evidence.RemoveRange(count, _evidence.Count - count);
+            }
+
+            if (_unlocated != null && (_evidence.Count == 0 ||
+                ProvenanceRank(_unlocated.Provenance) > ProvenanceRank(_evidence[0].Provenance)))
+                return _unlocated.WithSites([], _typeArguments, _constraints, _evidence, null);
+
+            var winner = _evidence[0];
+            var sites = _evidence.Count == 1
+                ? [winner.Site]
+                : _evidence.Where(e => e.Provenance == winner.Provenance).Select(e => e.Site).ToArray();
+            return _first.WithSites(sites, _typeArguments, _constraints, _evidence, winner);
         }
+
+        private void AddEvidence(EdgeRecord edge)
+        {
+            if (edge.Evidence.Count > 0)
+                _evidence.AddRange(edge.Evidence);
+            else if (edge.Sites.Count > 0)
+            {
+                foreach (var site in edge.Sites)
+                    AddSite(edge, site);
+            }
+            else if (TryGetPrimarySite(edge, out var site))
+            {
+                AddSite(edge, site);
+                return;
+            }
+
+            if (edge.Sites.Count == 0 &&
+                (_unlocated == null || ProvenanceRank(edge.Provenance) > ProvenanceRank(_unlocated.Provenance)))
+                _unlocated = edge;
+        }
+
+        private void AddSite(EdgeRecord edge, EdgeSite site) =>
+            _evidence.Add(new EdgeSiteEvidence(site, edge.Provenance ?? "", edge.ExtractorVersion ?? "", edge.IsCrossGenerated));
 
         private static string? MergePayload(string? left, string? right, ref bool leftNormalized)
         {
@@ -257,7 +242,7 @@ public static class EdgeMerge
         return JsonSerializer.Serialize(canonical);
     }
 
-    public static int ProvenanceRank(string provenance)
+    public static int ProvenanceRank(string? provenance)
     {
         return provenance switch
         {

@@ -200,7 +200,9 @@ public class MigrationRunner
             new Migration_045_ProjectInternalsVisibleTo(),
             new Migration_046_ProjectFilePath(),
             new Migration_047_SnapshotSymbolBareFqn(),
-            new Migration_048_RecomputeLineStarts()
+            new Migration_048_RecomputeLineStarts(),
+            new Migration_049_EdgeSitesDocumentIndex(),
+            new Migration_050_EdgeSiteEvidence()
         ];
     }
 }

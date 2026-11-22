@@ -14,7 +14,7 @@ public sealed class Migration_047_SnapshotSymbolBareFqn : IMigration
     public void Up(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
-        var existingColumns = GetColumnNames(command, "snapshot_symbols");
+        var existingColumns = MigrationSchema.ColumnNames(command, "snapshot_symbols");
         if (!existingColumns.Contains("bare_fqn"))
         {
             command.CommandText = "ALTER TABLE snapshot_symbols ADD COLUMN bare_fqn TEXT;";
@@ -65,15 +65,5 @@ public sealed class Migration_047_SnapshotSymbolBareFqn : IMigration
             fqnParam.Value = fqn;
             updateCommand.ExecuteNonQuery();
         }
-    }
-
-    private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
-    {
-        command.CommandText = $"PRAGMA table_info({tableName});";
-        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-            columns.Add(reader.GetString(1));
-        return columns;
     }
 }

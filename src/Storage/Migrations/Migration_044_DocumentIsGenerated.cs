@@ -18,7 +18,7 @@ public sealed class Migration_044_DocumentIsGenerated : IMigration
     {
         using var command = connection.CreateCommand();
 
-        var existingColumns = GetColumnNames(command, "document_versions");
+        var existingColumns = MigrationSchema.ColumnNames(command, "document_versions");
         if (!existingColumns.Contains("is_generated"))
         {
             command.CommandText = "ALTER TABLE document_versions ADD COLUMN is_generated INTEGER NOT NULL DEFAULT 0;";
@@ -63,15 +63,5 @@ public sealed class Migration_044_DocumentIsGenerated : IMigration
             ON document_versions(document_version_id, is_generated);
             """;
         command.ExecuteNonQuery();
-    }
-
-    private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
-    {
-        command.CommandText = $"PRAGMA table_info({tableName});";
-        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-            columns.Add(reader.GetString(1));
-        return columns;
     }
 }

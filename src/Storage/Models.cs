@@ -68,6 +68,12 @@ public sealed record EdgeSite(
     int EndLine,
     int EndColumn);
 
+internal readonly record struct EdgeSiteEvidence(
+    EdgeSite Site,
+    string Provenance,
+    string ExtractorVersion,
+    bool IsCrossGenerated);
+
 public sealed class EdgeRecord
 {
     public string SourceSymbolId { get; init; } = string.Empty;
@@ -97,6 +103,7 @@ public sealed class EdgeRecord
     public bool SourceIsBoundary { get; init; }
     public bool TargetIsBoundary { get; init; }
     public IReadOnlyList<EdgeSite> Sites { get; init; } = [];
+    internal IReadOnlyList<EdgeSiteEvidence> Evidence { get; init; } = [];
 
     /// <summary>
     ///     Returns a copy of this edge with <see cref="Sites" /> (and the primary location
@@ -115,12 +122,21 @@ public sealed class EdgeRecord
     public EdgeRecord WithSites(
         IReadOnlyList<EdgeSite> sites,
         string? typeArgumentsJson,
-        string? receiverTypeConstraintsJson)
+        string? receiverTypeConstraintsJson) =>
+        WithSites(sites, typeArgumentsJson, receiverTypeConstraintsJson, Evidence, null);
+
+    internal EdgeRecord WithSites(
+        IReadOnlyList<EdgeSite> sites,
+        string? typeArgumentsJson,
+        string? receiverTypeConstraintsJson,
+        IReadOnlyList<EdgeSiteEvidence> evidence,
+        EdgeSiteEvidence? winner)
     {
         ArgumentNullException.ThrowIfNull(sites);
 
         var first = sites.Count > 0 ? sites[0] : null;
-        if (string.Equals(typeArgumentsJson, TypeArgumentsJson, StringComparison.Ordinal) &&
+        if (winner == null && ReferenceEquals(Evidence, evidence) &&
+            string.Equals(typeArgumentsJson, TypeArgumentsJson, StringComparison.Ordinal) &&
             string.Equals(receiverTypeConstraintsJson, ReceiverTypeConstraintsJson, StringComparison.Ordinal) &&
             Sites.SequenceEqual(sites) &&
             (first == null || (
@@ -136,19 +152,20 @@ public sealed class EdgeRecord
             SourceSymbolId = SourceSymbolId,
             TargetSymbolId = TargetSymbolId,
             Kind = Kind,
-            Provenance = Provenance,
+            Provenance = winner?.Provenance ?? Provenance,
             SnapshotId = SnapshotId,
-            ExtractorVersion = ExtractorVersion,
+            ExtractorVersion = winner?.ExtractorVersion ?? ExtractorVersion,
             SourceDocumentPath = first?.DocumentPath ?? SourceDocumentPath,
             SourceStartLine = first?.StartLine ?? SourceStartLine,
             SourceStartColumn = first?.StartColumn ?? SourceStartColumn,
             SourceEndLine = first?.EndLine ?? SourceEndLine,
             SourceEndColumn = first?.EndColumn ?? SourceEndColumn,
-            IsCrossGenerated = IsCrossGenerated,
+            IsCrossGenerated = winner?.IsCrossGenerated ?? IsCrossGenerated,
             TypeArgumentsJson = typeArgumentsJson,
             ReceiverTypeConstraintsJson = receiverTypeConstraintsJson,
             SourceIsBoundary = SourceIsBoundary,
             TargetIsBoundary = TargetIsBoundary,
+            Evidence = evidence,
             Sites = sites
         };
     }

@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 4.0.0, schema v48, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -113,7 +113,7 @@ Declarations are per document: a `partial` type declared in two documents
 yields two declaration records of a snapshot with one symbol id, and the
 snapshot's symbol set holds that symbol once. `declarations_extracted_this_run`
 therefore counts declaration records while `symbols_in_snapshot` counts symbols.
-An edge keeps every site of its relation in source order; impact hops and
+An edge shows every site of its highest provenance in source order. Impact hops and
 capsule path hops list up to 20 sites with `site_count`.
 
 ### 4.1 Framework adapters

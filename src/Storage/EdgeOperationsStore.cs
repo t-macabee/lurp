@@ -6,11 +6,41 @@ namespace Lurp.Storage;
 
 internal sealed class EdgeOperationsStore
 {
+    private const string SiteOrderSql =
+        "document_path COLLATE lurp_ordinal, start_line, start_column, end_line, end_column";
+
+    internal const string ProjectEvidenceSql = $"""
+        UPDATE edges
+        SET provenance = winner.provenance,
+            extractor_version = winner.extractor_version,
+            is_cross_generated = winner.is_cross_generated,
+            source_document_path = winner.document_path,
+            source_start_line = winner.start_line,
+            source_start_column = winner.start_column,
+            source_end_line = winner.end_line,
+            source_end_column = winner.end_column
+        FROM edge_sites AS winner
+        WHERE edges.edge_id IN (SELECT value FROM json_each(@edgeIds))
+          AND (@locatedOnly = 0 OR edges.source_document_path IS NOT NULL)
+          AND winner.rowid = (
+              SELECT rowid
+              FROM edge_sites
+              WHERE edge_id = edges.edge_id
+              ORDER BY lurp_provenance_rank(provenance) DESC, {SiteOrderSql}, provenance COLLATE lurp_ordinal
+              LIMIT 1
+          )
+          AND (@keepUnlocated = 0 OR edges.source_document_path IS NOT NULL
+               OR lurp_provenance_rank(winner.provenance) >= lurp_provenance_rank(edges.provenance));
+        """;
+
     private readonly SqliteConnection _connection;
 
     public EdgeOperationsStore(SqliteConnection connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        // Use the same UTF-16 path order as EdgeMerge.CompareSites.
+        _connection.CreateCollation("lurp_ordinal", string.CompareOrdinal);
+        _connection.CreateFunction<string?, int>("lurp_provenance_rank", EdgeMerge.ProvenanceRank, isDeterministic: true);
     }
 
     /// <summary>
@@ -21,15 +51,6 @@ internal sealed class EdgeOperationsStore
     public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
     {
         var collapsed = EdgeMerge.CollapseBatch(edges);
-        // Both TypeArgumentsJson and ReceiverTypeConstraintsJson need an app-side JSON
-        // union merge on conflict (see WriteSplitEdges), which requires reading the
-        // existing row first. An edge carrying either one must take that path — routing
-        // only on TypeArgumentsJson left Calls edges (which carry receiver constraints
-        // but never type arguments) on the bulk path, where receiver_type_constraints_json
-        // was still a rank-gated overwrite instead of a merge (ARCH-003).
-        var bulkEdges = collapsed.Where(e => e.TypeArgumentsJson == null && e.ReceiverTypeConstraintsJson == null).ToList();
-        var splitEdges = collapsed.Where(e => e.TypeArgumentsJson != null || e.ReceiverTypeConstraintsJson != null).ToList();
-
         using var transaction = _connection.BeginTransaction();
         try
         {
@@ -51,10 +72,28 @@ internal sealed class EdgeOperationsStore
             using var insertSession = new EdgeInsertSession(_connection, transaction, snapshotId);
             using var siteSession = new SiteWriteSession(_connection, transaction);
 
-            if (bulkEdges.Count > 0) WriteBulkEdges(snapshotId, bulkEdges, transaction, insertSession, siteSession);
+            var existing = FetchExistingEdges(snapshotId, collapsed, transaction);
+            var mergedEdges = new List<long>(existing.Count);
+            foreach (var edge in collapsed)
+            {
+                var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
+                if (existing.TryGetValue(key, out var edgeId))
+                {
+                    if (edge.TypeArgumentsJson != null || edge.ReceiverTypeConstraintsJson != null)
+                        MergePayloads(transaction, edgeId, edge);
+                    if (edge.SourceDocumentPath == null)
+                        PromoteUnlocatedWinner(transaction, edgeId, edge);
+                    mergedEdges.Add(edgeId);
+                }
+                else
+                {
+                    edgeId = insertSession.Insert(edge);
+                }
 
-            if (splitEdges.Count > 0) WriteSplitEdges(snapshotId, splitEdges, transaction, insertSession, siteSession);
+                siteSession.WriteSites(edgeId, edge.Evidence);
+            }
 
+            ProjectEvidence(transaction, mergedEdges, keepUnlocated: true);
             transaction.Commit();
         }
         catch
@@ -66,10 +105,10 @@ internal sealed class EdgeOperationsStore
         return collapsed.Count;
     }
 
-    private Dictionary<(string SourceSymbolId, string TargetSymbolId, string Kind), (long EdgeId, int Rank)>
+    private Dictionary<(string SourceSymbolId, string TargetSymbolId, string Kind), long>
         FetchExistingEdges(string snapshotId, List<EdgeRecord> edges, SqliteTransaction transaction)
     {
-        var existing = new Dictionary<(string, string, string), (long, int)>();
+        var existing = new Dictionary<(string, string, string), long>();
 
         using (var anyCmd = _connection.CreateCommand())
         {
@@ -84,7 +123,7 @@ internal sealed class EdgeOperationsStore
         using var lookupCmd = _connection.CreateCommand();
         lookupCmd.Transaction = transaction;
         lookupCmd.CommandText = """
-            SELECT e.source_symbol_id, e.target_symbol_id, e.kind, e.edge_id, e.provenance
+            SELECT e.source_symbol_id, e.target_symbol_id, e.kind, e.edge_id
             FROM json_each(@triples) j
             CROSS JOIN edges e
               ON e.snapshot_id = @snapshotId
@@ -104,202 +143,78 @@ internal sealed class EdgeOperationsStore
             while (reader.Read())
             {
                 var key = (reader.GetString(0), reader.GetString(1), reader.GetString(2));
-                var edgeId = reader.GetInt64(3);
-                var provenance = reader.IsDBNull(4) ? string.Empty : reader.GetString(4);
-                existing[key] = (edgeId, EdgeMerge.ProvenanceRank(provenance));
+                existing[key] = reader.GetInt64(3);
             }
         }
 
         return existing;
     }
 
-    private void WriteBulkEdges(
-        string snapshotId,
-        List<EdgeRecord> edges,
-        SqliteTransaction transaction,
-        EdgeInsertSession insertSession,
-        SiteWriteSession siteSession)
+    private void MergePayloads(SqliteTransaction transaction, long edgeId, EdgeRecord edge)
     {
-        var existing = FetchExistingEdges(snapshotId, edges, transaction);
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT type_arguments_json, receiver_type_constraints_json FROM edges WHERE edge_id = @edgeId;
+            """;
+        command.Parameters.AddWithValue("@edgeId", edgeId);
 
-        using var updateCmd = _connection.CreateCommand();
-        updateCmd.Transaction = transaction;
-        updateCmd.CommandText = """
-            UPDATE edges SET
-                provenance = @provenance,
-                extractor_version = @extractorVersion,
-                source_document_path = @sourceDocumentPath,
-                source_start_line = @sourceStartLine,
-                source_start_column = @sourceStartColumn,
-                source_end_line = @sourceEndLine,
-                source_end_column = @sourceEndColumn,
-                is_cross_generated = @isCrossGenerated,
-                receiver_type_constraints_json = @receiverTypeConstraintsJson
+        string? typeArguments;
+        string? constraints;
+        using (var reader = command.ExecuteReader())
+        {
+            reader.Read();
+            typeArguments = reader.IsDBNull(0) ? null : reader.GetString(0);
+            constraints = reader.IsDBNull(1) ? null : reader.GetString(1);
+        }
+
+        var mergedTypeArguments = EdgeMerge.MergeTypeArguments(typeArguments, edge.TypeArgumentsJson);
+        var mergedConstraints = EdgeMerge.MergeReceiverTypeConstraints(constraints, edge.ReceiverTypeConstraintsJson);
+        if (mergedTypeArguments == typeArguments && mergedConstraints == constraints)
+            return;
+
+        command.CommandText = """
+            UPDATE edges
+            SET type_arguments_json = @typeArguments, receiver_type_constraints_json = @constraints
             WHERE edge_id = @edgeId;
             """;
-        var upEdgeId = updateCmd.Parameters.Add(new SqliteParameter("@edgeId", 0L));
-        var upProv = updateCmd.Parameters.Add(new SqliteParameter("@provenance", null));
-        var upVer = updateCmd.Parameters.Add(new SqliteParameter("@extractorVersion", null));
-        var upDoc = updateCmd.Parameters.Add(new SqliteParameter("@sourceDocumentPath", null));
-        var upSl = updateCmd.Parameters.Add(new SqliteParameter("@sourceStartLine", null));
-        var upSc = updateCmd.Parameters.Add(new SqliteParameter("@sourceStartColumn", null));
-        var upEl = updateCmd.Parameters.Add(new SqliteParameter("@sourceEndLine", null));
-        var upEc = updateCmd.Parameters.Add(new SqliteParameter("@sourceEndColumn", null));
-        var upCg = updateCmd.Parameters.Add(new SqliteParameter("@isCrossGenerated", null));
-        var upRc = updateCmd.Parameters.Add(new SqliteParameter("@receiverTypeConstraintsJson", null));
-
-        foreach (var edge in edges)
-        {
-            var incomingRank = EdgeMerge.ProvenanceRank(edge.Provenance ?? "");
-            long edgeId;
-            int? oldRank;
-
-            if (!existing.TryGetValue((edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind), out var persisted))
-            {
-                edgeId = insertSession.Insert(edge);
-                oldRank = null;
-            }
-            else
-            {
-                edgeId = persisted.EdgeId;
-                oldRank = persisted.Rank;
-                if (incomingRank > persisted.Rank)
-                {
-                    upEdgeId.Value = edgeId;
-                    upProv.Value = (object?)edge.Provenance ?? DBNull.Value;
-                    upVer.Value = (object?)edge.ExtractorVersion ?? DBNull.Value;
-                    upDoc.Value = (object?)edge.SourceDocumentPath ?? DBNull.Value;
-                    upSl.Value = (object?)edge.SourceStartLine ?? DBNull.Value;
-                    upSc.Value = (object?)edge.SourceStartColumn ?? DBNull.Value;
-                    upEl.Value = (object?)edge.SourceEndLine ?? DBNull.Value;
-                    upEc.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
-                    upCg.Value = edge.IsCrossGenerated;
-                    upRc.Value = (object?)edge.ReceiverTypeConstraintsJson ?? DBNull.Value;
-                    updateCmd.ExecuteNonQuery();
-                }
-            }
-
-            siteSession.WriteSites(edgeId, incomingRank, oldRank, edge.Sites);
-        }
+        command.Parameters.AddWithValue("@typeArguments", (object?)mergedTypeArguments ?? DBNull.Value);
+        command.Parameters.AddWithValue("@constraints", (object?)mergedConstraints ?? DBNull.Value);
+        command.ExecuteNonQuery();
     }
 
-    private void WriteSplitEdges(
-        string snapshotId,
-        List<EdgeRecord> edges,
-        SqliteTransaction transaction,
-        EdgeInsertSession insertSession,
-        SiteWriteSession siteSession)
+    private void PromoteUnlocatedWinner(SqliteTransaction transaction, long edgeId, EdgeRecord edge)
     {
-        using var selectCmd = _connection.CreateCommand();
-        selectCmd.Transaction = transaction;
-        selectCmd.CommandText = "SELECT edge_id, type_arguments_json, receiver_type_constraints_json, provenance FROM edges WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k LIMIT 1;";
-        selectCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
-        var selectSrc = selectCmd.Parameters.Add(new SqliteParameter("@src", null));
-        var selectTgt = selectCmd.Parameters.Add(new SqliteParameter("@tgt", null));
-        var selectK = selectCmd.Parameters.Add(new SqliteParameter("@k", null));
-
-        using var splitUpdateWinnerCmd = _connection.CreateCommand();
-        splitUpdateWinnerCmd.Transaction = transaction;
-        splitUpdateWinnerCmd.CommandText = """
-            UPDATE edges SET
-                type_arguments_json = @mergedTypeArguments,
-                provenance = @provenance,
-                extractor_version = @extractorVersion,
-                source_document_path = @sourceDocumentPath,
-                source_start_line = @sourceStartLine,
-                source_start_column = @sourceStartColumn,
-                source_end_line = @sourceEndLine,
-                source_end_column = @sourceEndColumn,
-                is_cross_generated = @isCrossGenerated,
-                receiver_type_constraints_json = @receiverTypeConstraintsJson
-            WHERE edge_id = @edgeId;
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE edges
+            SET provenance = @provenance, extractor_version = @version, is_cross_generated = @crossGenerated,
+                source_document_path = NULL, source_start_line = NULL, source_start_column = NULL,
+                source_end_line = NULL, source_end_column = NULL
+            WHERE edge_id = @edgeId AND @rank > lurp_provenance_rank(provenance);
             """;
-        var upEdgeId = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@edgeId", 0L));
-        var upProv = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@provenance", null));
-        var upVer = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@extractorVersion", null));
-        var upDoc = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@sourceDocumentPath", null));
-        var upSl = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@sourceStartLine", null));
-        var upSc = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@sourceStartColumn", null));
-        var upEl = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@sourceEndLine", null));
-        var upEc = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@sourceEndColumn", null));
-        var upCg = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@isCrossGenerated", null));
-        var upRc = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@receiverTypeConstraintsJson", null));
-        var upMerged = splitUpdateWinnerCmd.Parameters.Add(new SqliteParameter("@mergedTypeArguments", null));
+        command.Parameters.AddWithValue("@edgeId", edgeId);
+        command.Parameters.AddWithValue("@provenance", (object?)edge.Provenance ?? DBNull.Value);
+        command.Parameters.AddWithValue("@version", (object?)edge.ExtractorVersion ?? DBNull.Value);
+        command.Parameters.AddWithValue("@crossGenerated", edge.IsCrossGenerated);
+        command.Parameters.AddWithValue("@rank", EdgeMerge.ProvenanceRank(edge.Provenance));
+        command.ExecuteNonQuery();
+    }
 
-        using var splitUpdatePayloadsCmd = _connection.CreateCommand();
-        splitUpdatePayloadsCmd.Transaction = transaction;
-        splitUpdatePayloadsCmd.CommandText = """
-            UPDATE edges SET
-                type_arguments_json = @mergedTypeArguments,
-                receiver_type_constraints_json = @receiverTypeConstraintsJson
-            WHERE edge_id = @edgeId;
-            """;
-        var payEdgeId = splitUpdatePayloadsCmd.Parameters.Add(new SqliteParameter("@edgeId", 0L));
-        var payMerged = splitUpdatePayloadsCmd.Parameters.Add(new SqliteParameter("@mergedTypeArguments", null));
-        var payRc = splitUpdatePayloadsCmd.Parameters.Add(new SqliteParameter("@receiverTypeConstraintsJson", null));
+    private void ProjectEvidence(SqliteTransaction transaction, IReadOnlyCollection<long> edgeIds,
+        bool keepUnlocated, bool locatedOnly = false)
+    {
+        if (edgeIds.Count == 0)
+            return;
 
-        foreach (var edge in edges)
-        {
-            selectSrc.Value = edge.SourceSymbolId;
-            selectTgt.Value = edge.TargetSymbolId;
-            selectK.Value = edge.Kind;
-
-            long edgeId = 0;
-            string? existingTypeArgs = null;
-            string? existingReceiverConstraints = null;
-            string? existingProvenance = null;
-            bool hasRow;
-            using (var reader = selectCmd.ExecuteReader())
-            {
-                hasRow = reader.Read();
-                if (hasRow)
-                {
-                    edgeId = reader.GetInt64(0);
-                    existingTypeArgs = reader.IsDBNull(1) ? null : reader.GetString(1);
-                    existingReceiverConstraints = reader.IsDBNull(2) ? null : reader.GetString(2);
-                    existingProvenance = reader.IsDBNull(3) ? null : reader.GetString(3);
-                }
-            }
-
-            var incomingRank = EdgeMerge.ProvenanceRank(edge.Provenance ?? "");
-            int? oldRank = hasRow ? EdgeMerge.ProvenanceRank(existingProvenance ?? "") : null;
-
-            if (!hasRow)
-            {
-                edgeId = insertSession.Insert(edge);
-            }
-            else
-            {
-                var merged = EdgeMerge.MergeTypeArguments(existingTypeArgs, edge.TypeArgumentsJson);
-                var mergedReceiverConstraints = EdgeMerge.MergeReceiverTypeConstraints(existingReceiverConstraints, edge.ReceiverTypeConstraintsJson);
-
-                if (incomingRank > oldRank!.Value)
-                {
-                    upEdgeId.Value = edgeId;
-                    upProv.Value = (object?)edge.Provenance ?? DBNull.Value;
-                    upVer.Value = (object?)edge.ExtractorVersion ?? DBNull.Value;
-                    upDoc.Value = (object?)edge.SourceDocumentPath ?? DBNull.Value;
-                    upSl.Value = (object?)edge.SourceStartLine ?? DBNull.Value;
-                    upSc.Value = (object?)edge.SourceStartColumn ?? DBNull.Value;
-                    upEl.Value = (object?)edge.SourceEndLine ?? DBNull.Value;
-                    upEc.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
-                    upCg.Value = edge.IsCrossGenerated;
-                    upRc.Value = (object?)mergedReceiverConstraints ?? DBNull.Value;
-                    upMerged.Value = (object?)merged ?? DBNull.Value;
-                    splitUpdateWinnerCmd.ExecuteNonQuery();
-                }
-                else if (!string.Equals(merged, existingTypeArgs, StringComparison.Ordinal) ||
-                         !string.Equals(mergedReceiverConstraints, existingReceiverConstraints, StringComparison.Ordinal))
-                {
-                    payEdgeId.Value = edgeId;
-                    payMerged.Value = (object?)merged ?? DBNull.Value;
-                    payRc.Value = (object?)mergedReceiverConstraints ?? DBNull.Value;
-                    splitUpdatePayloadsCmd.ExecuteNonQuery();
-                }
-            }
-
-            siteSession.WriteSites(edgeId, incomingRank, oldRank, edge.Sites);
-        }
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = ProjectEvidenceSql;
+        command.Parameters.AddWithValue("@edgeIds", JsonSerializer.Serialize(edgeIds));
+        command.Parameters.AddWithValue("@locatedOnly", locatedOnly);
+        command.Parameters.AddWithValue("@keepUnlocated", keepUnlocated);
+        command.ExecuteNonQuery();
     }
 
     private sealed class EdgeInsertSession : IDisposable
@@ -367,124 +282,59 @@ internal sealed class EdgeOperationsStore
 
     private sealed class SiteWriteSession : IDisposable
     {
-        private readonly SqliteCommand _deleteCmd;
-        private readonly SqliteParameter _deleteEdgeId;
         private readonly SqliteCommand _insertCmd;
-        private readonly SqliteParameter _insertEdgeId;
-        private readonly SqliteParameter _insertDoc;
-        private readonly SqliteParameter _insertSl;
-        private readonly SqliteParameter _insertSc;
-        private readonly SqliteParameter _insertEl;
-        private readonly SqliteParameter _insertEc;
-        private readonly SqliteCommand _firstCmd;
-        private readonly SqliteParameter _firstEdgeId;
-        private readonly SqliteCommand _updateCmd;
-        private readonly SqliteParameter _updateEdgeId;
-        private readonly SqliteParameter _updateDoc;
-        private readonly SqliteParameter _updateSl;
-        private readonly SqliteParameter _updateSc;
-        private readonly SqliteParameter _updateEl;
-        private readonly SqliteParameter _updateEc;
+        private readonly SqliteParameter _edgeId;
+        private readonly SqliteParameter _doc;
+        private readonly SqliteParameter _sl;
+        private readonly SqliteParameter _sc;
+        private readonly SqliteParameter _el;
+        private readonly SqliteParameter _ec;
+        private readonly SqliteParameter _provenance;
+        private readonly SqliteParameter _version;
+        private readonly SqliteParameter _crossGenerated;
 
         public SiteWriteSession(SqliteConnection connection, SqliteTransaction transaction)
         {
-            _deleteCmd = connection.CreateCommand();
-            _deleteCmd.Transaction = transaction;
-            _deleteCmd.CommandText = "DELETE FROM edge_sites WHERE edge_id = @edgeId;";
-            _deleteEdgeId = _deleteCmd.Parameters.Add(new SqliteParameter("@edgeId", 0L));
-
             _insertCmd = connection.CreateCommand();
             _insertCmd.Transaction = transaction;
             _insertCmd.CommandText = """
-                INSERT OR IGNORE INTO edge_sites (edge_id, document_path, start_line, start_column, end_line, end_column)
-                VALUES (@edgeId, @doc, @sl, @sc, @el, @ec);
+                INSERT INTO edge_sites (edge_id, provenance, document_path, start_line, start_column, end_line, end_column,
+                                        extractor_version, is_cross_generated)
+                VALUES (@edgeId, @provenance, @doc, @sl, @sc, @el, @ec, @version, @crossGenerated)
+                ON CONFLICT (edge_id, provenance, document_path, start_line, start_column, end_line, end_column)
+                DO UPDATE SET extractor_version = excluded.extractor_version, is_cross_generated = excluded.is_cross_generated
+                WHERE (excluded.extractor_version COLLATE lurp_ordinal, excluded.is_cross_generated)
+                    < (edge_sites.extractor_version COLLATE lurp_ordinal, edge_sites.is_cross_generated);
                 """;
-            _insertEdgeId = _insertCmd.Parameters.Add(new SqliteParameter("@edgeId", 0L));
-            _insertDoc = _insertCmd.Parameters.Add(new SqliteParameter("@doc", null));
-            _insertSl = _insertCmd.Parameters.Add(new SqliteParameter("@sl", 0));
-            _insertSc = _insertCmd.Parameters.Add(new SqliteParameter("@sc", 0));
-            _insertEl = _insertCmd.Parameters.Add(new SqliteParameter("@el", 0));
-            _insertEc = _insertCmd.Parameters.Add(new SqliteParameter("@ec", 0));
-
-            _firstCmd = connection.CreateCommand();
-            _firstCmd.Transaction = transaction;
-            _firstCmd.CommandText = """
-                SELECT document_path, start_line, start_column, end_line, end_column
-                FROM edge_sites
-                WHERE edge_id = @edgeId
-                ORDER BY document_path, start_line, start_column, end_line, end_column
-                LIMIT 1;
-                """;
-            _firstEdgeId = _firstCmd.Parameters.Add(new SqliteParameter("@edgeId", 0L));
-
-            _updateCmd = connection.CreateCommand();
-            _updateCmd.Transaction = transaction;
-            _updateCmd.CommandText = """
-                UPDATE edges
-                SET source_document_path = @doc,
-                    source_start_line = @sl,
-                    source_start_column = @sc,
-                    source_end_line = @el,
-                    source_end_column = @ec
-                WHERE edge_id = @edgeId;
-                """;
-            _updateEdgeId = _updateCmd.Parameters.Add(new SqliteParameter("@edgeId", 0L));
-            _updateDoc = _updateCmd.Parameters.Add(new SqliteParameter("@doc", null));
-            _updateSl = _updateCmd.Parameters.Add(new SqliteParameter("@sl", 0));
-            _updateSc = _updateCmd.Parameters.Add(new SqliteParameter("@sc", 0));
-            _updateEl = _updateCmd.Parameters.Add(new SqliteParameter("@el", 0));
-            _updateEc = _updateCmd.Parameters.Add(new SqliteParameter("@ec", 0));
+            _edgeId = _insertCmd.Parameters.Add(new SqliteParameter("@edgeId", 0L));
+            _doc = _insertCmd.Parameters.Add(new SqliteParameter("@doc", null));
+            _sl = _insertCmd.Parameters.Add(new SqliteParameter("@sl", 0));
+            _sc = _insertCmd.Parameters.Add(new SqliteParameter("@sc", 0));
+            _el = _insertCmd.Parameters.Add(new SqliteParameter("@el", 0));
+            _ec = _insertCmd.Parameters.Add(new SqliteParameter("@ec", 0));
+            _provenance = _insertCmd.Parameters.Add(new SqliteParameter("@provenance", null));
+            _version = _insertCmd.Parameters.Add(new SqliteParameter("@version", null));
+            _crossGenerated = _insertCmd.Parameters.Add(new SqliteParameter("@crossGenerated", false));
         }
 
-        public void WriteSites(long edgeId, int incomingRank, int? oldRank, IReadOnlyList<EdgeSite> sites)
+        public void WriteSites(long edgeId, IReadOnlyList<EdgeSiteEvidence> evidence)
         {
-            if (oldRank.HasValue && incomingRank < oldRank.Value)
-                return;
-
-            if (oldRank.HasValue && incomingRank > oldRank.Value)
+            _edgeId.Value = edgeId;
+            foreach (var row in evidence)
             {
-                _deleteEdgeId.Value = edgeId;
-                _deleteCmd.ExecuteNonQuery();
-            }
-
-            if (sites.Count == 0)
-                return;
-
-            _insertEdgeId.Value = edgeId;
-            foreach (var site in sites)
-            {
-                _insertDoc.Value = site.DocumentPath;
-                _insertSl.Value = site.StartLine;
-                _insertSc.Value = site.StartColumn;
-                _insertEl.Value = site.EndLine;
-                _insertEc.Value = site.EndColumn;
+                _doc.Value = row.Site.DocumentPath;
+                _sl.Value = row.Site.StartLine;
+                _sc.Value = row.Site.StartColumn;
+                _el.Value = row.Site.EndLine;
+                _ec.Value = row.Site.EndColumn;
+                _provenance.Value = row.Provenance;
+                _version.Value = row.ExtractorVersion;
+                _crossGenerated.Value = row.IsCrossGenerated;
                 _insertCmd.ExecuteNonQuery();
             }
-
-            if (oldRank.HasValue && incomingRank == oldRank.Value)
-            {
-                _firstEdgeId.Value = edgeId;
-                using var reader = _firstCmd.ExecuteReader();
-                if (reader.Read())
-                {
-                    _updateEdgeId.Value = edgeId;
-                    _updateDoc.Value = reader.GetString(0);
-                    _updateSl.Value = reader.GetInt32(1);
-                    _updateSc.Value = reader.GetInt32(2);
-                    _updateEl.Value = reader.GetInt32(3);
-                    _updateEc.Value = reader.GetInt32(4);
-                    _updateCmd.ExecuteNonQuery();
-                }
-            }
         }
 
-        public void Dispose()
-        {
-            _deleteCmd.Dispose();
-            _insertCmd.Dispose();
-            _firstCmd.Dispose();
-            _updateCmd.Dispose();
-        }
+        public void Dispose() => _insertCmd.Dispose();
     }
 
     private static void RegisterGraphNode(
@@ -611,13 +461,55 @@ internal sealed class EdgeOperationsStore
         return ReadEdgeRecords(command);
     }
 
-    // The unary + keeps the planner off idx_edges_snapshot_id, so the path list drives
-    // idx_edges_document (B16 U1b).
-    internal static string DeleteEdgesByDocumentPathsSql() => """
-        DELETE FROM edges
-        WHERE +snapshot_id = @snapshotId
-          AND source_document_path IN (SELECT value FROM json_each(@documentPaths));
+    // Read the path list first so SQLite seeks by document even on a small database.
+    internal const string DeleteSitesByDocumentPathsSql = """
+        DELETE FROM edge_sites
+        WHERE rowid IN (
+            SELECT edge_sites.rowid
+            FROM json_each(@documentPaths) AS paths
+            CROSS JOIN edge_sites INDEXED BY idx_edge_sites_document
+            WHERE edge_sites.document_path = paths.value
+              AND EXISTS (
+                  SELECT 1 FROM edges
+                  WHERE edge_id = edge_sites.edge_id AND snapshot_id = @snapshotId
+              )
+        )
+        RETURNING edge_id;
         """;
+
+    internal const string DeleteAffectedEdgesWithoutSitesSql = """
+        DELETE FROM edges
+        WHERE edge_id IN (SELECT value FROM json_each(@edgeIds))
+          AND source_document_path IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM edge_sites WHERE edge_id = edges.edge_id);
+        """;
+
+    internal void RetireSitesByDocumentPaths(
+        SqliteTransaction transaction, string snapshotId, IReadOnlyCollection<string> documentPaths)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = DeleteSitesByDocumentPathsSql;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        SqlIdList.Bind(command, "@documentPaths", documentPaths);
+
+        var affectedEdges = new HashSet<long>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+                affectedEdges.Add(reader.GetInt64(0));
+        }
+
+        if (affectedEdges.Count == 0)
+            return;
+
+        command.Parameters.Clear();
+        command.Parameters.AddWithValue("@edgeIds", JsonSerializer.Serialize(affectedEdges));
+        command.CommandText = DeleteAffectedEdgesWithoutSitesSql;
+        command.ExecuteNonQuery();
+
+        ProjectEvidence(transaction, affectedEdges, keepUnlocated: false, locatedOnly: true);
+    }
 
     public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
     {
@@ -625,16 +517,36 @@ internal sealed class EdgeOperationsStore
         if (idList.Count == 0)
             return;
 
+        using var transaction = _connection.BeginTransaction();
         using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
-            DELETE FROM edges
+            SELECT edge_id FROM edges
             WHERE snapshot_id = @snapshotId
               AND source_document_path IS NULL
               AND source_symbol_id IN (SELECT value FROM json_each(@symbolIds));
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         SqlIdList.Bind(command, "@symbolIds", idList);
+
+        var affectedEdges = new List<long>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+                affectedEdges.Add(reader.GetInt64(0));
+        }
+
+        ProjectEvidence(transaction, affectedEdges, keepUnlocated: false);
+
+        command.CommandText = """
+            DELETE FROM edges
+            WHERE edge_id IN (SELECT value FROM json_each(@edgeIds))
+              AND source_document_path IS NULL;
+            """;
+        command.Parameters.Clear();
+        command.Parameters.AddWithValue("@edgeIds", JsonSerializer.Serialize(affectedEdges));
         command.ExecuteNonQuery();
+        transaction.Commit();
     }
 
     public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
@@ -656,8 +568,10 @@ internal sealed class EdgeOperationsStore
 
         using var siteCmd = _connection.CreateCommand();
         siteCmd.CommandText = """
-            INSERT OR IGNORE INTO edge_sites (edge_id, document_path, start_line, start_column, end_line, end_column)
-            SELECT new_e.edge_id, es.document_path, es.start_line, es.start_column, es.end_line, es.end_column
+            INSERT OR IGNORE INTO edge_sites (edge_id, provenance, document_path, start_line, start_column, end_line, end_column,
+                                             extractor_version, is_cross_generated)
+            SELECT new_e.edge_id, es.provenance, es.document_path, es.start_line, es.start_column, es.end_line, es.end_column,
+                   es.extractor_version, es.is_cross_generated
             FROM edge_sites es
             JOIN edges old_e ON old_e.edge_id = es.edge_id
             JOIN edges new_e ON new_e.snapshot_id = @toSnapshotId
@@ -837,7 +751,7 @@ internal sealed class EdgeOperationsStore
             distinctTriples.Select(static t => new[] { t.SourceSymbolId, t.TargetSymbolId, t.Kind }));
 
         using var command = _connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT e.source_symbol_id, e.target_symbol_id, e.kind,
                    es.document_path, es.start_line, es.start_column, es.end_line, es.end_column
             FROM json_each(@triples) j
@@ -846,9 +760,9 @@ internal sealed class EdgeOperationsStore
              AND e.source_symbol_id = json_extract(j.value, '$[0]')
              AND e.target_symbol_id = json_extract(j.value, '$[1]')
              AND e.kind = json_extract(j.value, '$[2]')
-            JOIN edge_sites es ON es.edge_id = e.edge_id
-            ORDER BY e.source_symbol_id, e.target_symbol_id, e.kind,
-                     es.document_path, es.start_line, es.start_column, es.end_line, es.end_column;
+            JOIN edge_sites es ON es.edge_id = e.edge_id AND es.provenance = COALESCE(e.provenance, '')
+            WHERE e.source_document_path IS NOT NULL
+            ORDER BY e.source_symbol_id, e.target_symbol_id, e.kind, {SiteOrderSql};
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@triples", triplesJson);

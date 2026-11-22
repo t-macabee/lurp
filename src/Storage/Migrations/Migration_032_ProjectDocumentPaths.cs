@@ -17,22 +17,12 @@ public sealed class Migration_032_ProjectDocumentPaths : IMigration
     {
         using var command = connection.CreateCommand();
 
-        var existingColumns = GetColumnNames(command, "projects");
+        var existingColumns = MigrationSchema.ColumnNames(command, "projects");
 
         if (!existingColumns.Contains("document_paths_json"))
         {
             command.CommandText = "ALTER TABLE projects ADD COLUMN document_paths_json TEXT;";
             command.ExecuteNonQuery();
         }
-    }
-
-    private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
-    {
-        command.CommandText = $"PRAGMA table_info({tableName});";
-        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-            columns.Add(reader.GetString(1));
-        return columns;
     }
 }

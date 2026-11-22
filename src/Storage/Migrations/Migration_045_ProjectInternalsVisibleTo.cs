@@ -15,21 +15,11 @@ public sealed class Migration_045_ProjectInternalsVisibleTo : IMigration
     public void Up(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
-        var existingColumns = GetColumnNames(command, "projects");
+        var existingColumns = MigrationSchema.ColumnNames(command, "projects");
         if (!existingColumns.Contains("internals_visible_to"))
         {
             command.CommandText = "ALTER TABLE projects ADD COLUMN internals_visible_to TEXT;";
             command.ExecuteNonQuery();
         }
-    }
-
-    private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
-    {
-        command.CommandText = $"PRAGMA table_info({tableName});";
-        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-            columns.Add(reader.GetString(1));
-        return columns;
     }
 }

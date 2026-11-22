@@ -155,7 +155,8 @@ internal static class BaselineEvaluator
     private static bool IsInteractiveRead(string name)
         => name.StartsWith("impact.", StringComparison.Ordinal)
            || name.StartsWith("context.", StringComparison.Ordinal)
-           || name is "search" or "grep" or "find_symbol";
+           || name is "search" or "grep" or "find_symbol" or "outline" or "navigate" or "get_symbol"
+               or "get_annotations.document" or "grep.ignore_case";
 
     private static bool IsImpactDepth6(string name)
     {

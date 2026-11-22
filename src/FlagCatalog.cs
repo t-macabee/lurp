@@ -57,7 +57,7 @@ internal static class FlagCatalog
     public static readonly FlagSpec Query = new("--query=", "Search term. Symbol search lists whole-token matches of the fully qualified name first (by rank), then case-insensitive substring matches of the fully qualified name (camel-case segments and prefixes count), for plain identifier queries. `--limit` cuts this one list; `--cursor` continues it.", "term");
     public static readonly FlagSpec Type = new("--type=", "Search scope (default: `all`). An unknown value is an error.", AllowedValues: ["all", "source", "symbol"]);
     public static readonly FlagSpec Kind = new("--kind=", "Filter symbol results by kind (case-insensitive). An unknown value is an error.", AllowedValues: DeadCandidateLiveness.CandidateKinds);
-    public static readonly FlagSpec SnippetTokens = new("--snippet-tokens=", $"Max tokens in the window around the first match for source snippets (default: {SearchHandler.DefaultSnippetTokens}).", "n");
+    public static readonly FlagSpec SnippetTokens = new("--snippet-tokens=", $"Tokens in the window around the first match for source snippets (default: {SearchHandler.DefaultSnippetTokens}). The window always holds the whole match.", "n");
 
     public static readonly FlagSpec Limit = new("--limit=", $"Max declarations per page (default: {OutlineHandler.DefaultLimit}).", "n");
 

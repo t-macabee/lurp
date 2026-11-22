@@ -254,13 +254,8 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal(["R1", "R2"], allConstraints);
     }
 
-    // ARCH-003 regression, bulk-path gap: real CallsEdgeExtractor output is a "Calls"
-    // edge with ReceiverTypeConstraintsJson set and TypeArgumentsJson null — unlike the
-    // two tests above, which use a "MayDispatchTo" edge with type arguments and so only
-    // exercise WriteSplitEdges. A Calls edge with no type arguments used to route through
-    // WriteBulkEdges, whose receiver_type_constraints_json column was still a rank-gated
-    // overwrite, silently dropping constraints on an equal-or-lower-rank re-emit even
-    // after the WriteSplitEdges merge fix landed.
+    // A Calls edge can carry receiver constraints without type arguments.
+    // The merge must also preserve the union for this shape (ARCH-003).
     [Fact]
     public void SaveEdges_CallsEdgeNoTypeArgs_ReceiverConstraintsUnionMergeNotOverwritten()
     {
@@ -339,25 +334,12 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal(2, edgeNodeCount);
     }
 
-    // Characterization tests for the strict-`>` tie-break at
-    // EdgeOperationsStore.WriteBulkEdges: `@incomingRank > persistedRank`.
-    // An equal-rank incoming edge must NOT overwrite the persisted
-    // (copied-forward) row's provenance/path/coordinates/is_cross_generated,
-    // so a future `> → >=` loosening or non-deterministic extraction
-    // regression trips these tests. Only type_arguments_json merges
-    // unconditionally (EdgeOperationsStore.cs:163).
     [Fact]
-    public void EqualRankCollision_KeepsCopiedForwardRow_OverIncomingWithDifferentLocation()
+    public void EqualRankCollision_TakesTheFieldsOfTheFirstSite()
     {
         using var store = OpenStore();
-
-        // Seed the "copied-forward" row (MakeEdge defaults SourceDocumentPath = "src/Test.cs").
         store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", sourceStartLine: 10, sourceEndLine: 11)]);
 
-        // Re-emit an equal-rank incoming edge with *different* location/path/
-        // cross-generated to give the `>` clause something it must NOT take.
-        // EdgeRecord is a class with init-only setters, so the differing edge
-        // is constructed explicitly instead of via a `with` expression.
         store.SaveEdges(SnapshotId,
         [
             new EdgeRecord
@@ -378,21 +360,15 @@ public sealed class EdgeWritePathTests : IDisposable
 
         var edge = Assert.Single(store.GetEdges(SnapshotId));
 
-        // Equal rank keeps non-site columns from the persisted (copied-forward) row,
-        // while adding the incoming site and setting edges.source_* to the first site in
-        // source order (D155.3: "src/Other.cs" precedes "src/Test.cs" ordinally).
+        // Ordinal order puts src/Other.cs before src/Test.cs.
         Assert.Equal("src/Other.cs", edge.SourceDocumentPath);
         Assert.Equal(999, edge.SourceStartLine);
         Assert.Equal(1000, edge.SourceEndLine);
-        Assert.False(edge.IsCrossGenerated);
+        Assert.True(edge.IsCrossGenerated);
+        Assert.Equal("1.0.0", edge.ExtractorVersion);
         Assert.Equal("compiler_proved", edge.Provenance);
     }
 
-    // Inverse direction: a higher-rank row persisted first must survive a
-    // lower-rank incoming (name_candidate after compiler_proved). Together
-    // with the equal-rank test this pins the strict-`>` invariant from both
-    // orderings. The name reflects what the test verifies: the lower-rank
-    // incoming does NOT overwrite the already-persisted higher-rank row.
     [Fact]
     public void LowerRankIncoming_DoesNotOverwrite_HigherRankPersisted()
     {
@@ -513,30 +489,34 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal(summary.Total, summary.External + summary.CompilerSynthesized + summary.ExcludedDocument + summary.Other);
     }
 
-    private List<(string Doc, int Sl, int Sc, int El, int Ec)> ReadSites(string snapshotId, string source, string target, string kind)
+    private static List<(string Doc, int Sl, int Sc, int El, int Ec)> ReadSites(
+        SqliteIndexStore store, string snapshotId, string source, string target, string kind)
     {
-        using var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT es.document_path, es.start_line, es.start_column, es.end_line, es.end_column
-            FROM edge_sites es
-            JOIN edges e ON e.edge_id = es.edge_id
-            WHERE e.snapshot_id = @s
-              AND e.source_symbol_id = @src
-              AND e.target_symbol_id = @tgt
-              AND e.kind = @k
-            ORDER BY es.document_path, es.start_line, es.start_column, es.end_line, es.end_column;
+        var key = (source, target, kind);
+        return store.GetEdgeSites(snapshotId, [key]).TryGetValue(key, out var sites)
+            ? sites.Select(site => (site.DocumentPath, site.StartLine, site.StartColumn, site.EndLine, site.EndColumn)).ToList()
+            : [];
+    }
+
+    private List<(string Provenance, string Path, int Line)> ReadEvidence(string source, string target, string kind)
+    {
+        using var connection = TestDatabase.OpenReadOnly(_dbPath);
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT s.provenance, s.document_path, s.start_line
+            FROM edges e JOIN edge_sites s ON e.edge_id = s.edge_id
+            WHERE e.snapshot_id = @snapshot AND e.source_symbol_id = @source AND e.target_symbol_id = @target AND e.kind = @kind
+            ORDER BY s.provenance, s.document_path, s.start_line;
             """;
-        cmd.Parameters.AddWithValue("@s", snapshotId);
-        cmd.Parameters.AddWithValue("@src", source);
-        cmd.Parameters.AddWithValue("@tgt", target);
-        cmd.Parameters.AddWithValue("@k", kind);
-        var result = new List<(string, int, int, int, int)>();
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
-            result.Add((r.GetString(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.GetInt32(4)));
-        return result;
+        command.Parameters.AddWithValue("@snapshot", SnapshotId);
+        command.Parameters.AddWithValue("@source", source);
+        command.Parameters.AddWithValue("@target", target);
+        command.Parameters.AddWithValue("@kind", kind);
+        var evidence = new List<(string, string, int)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            evidence.Add((reader.GetString(0), reader.GetString(1), reader.GetInt32(2)));
+        return evidence;
     }
 
     private long CountAllEdgeSites()
@@ -549,7 +529,7 @@ public sealed class EdgeWritePathTests : IDisposable
     }
 
     private static EdgeRecord MakeSiteEdge(string source, string target, string kind, string provenance,
-        string? docPath, int? sl, int? sc, int? el, int? ec)
+        string? docPath, int? sl, int? sc, int? el, int? ec, string version = "1.0.0", bool crossGenerated = false)
     {
         return new EdgeRecord
         {
@@ -557,7 +537,8 @@ public sealed class EdgeWritePathTests : IDisposable
             TargetSymbolId = target,
             Kind = kind,
             Provenance = provenance,
-            ExtractorVersion = "1.0.0",
+            ExtractorVersion = version,
+            IsCrossGenerated = crossGenerated,
             SourceDocumentPath = docPath,
             SourceStartLine = sl,
             SourceStartColumn = sc,
@@ -582,7 +563,7 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal("src/A.cs", edge.SourceDocumentPath);
         Assert.Equal((2, 3, 2, 11), (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
 
-        var sites = ReadSites(SnapshotId, "src", "tgt", "Calls");
+        var sites = ReadSites(store, SnapshotId, "src", "tgt", "Calls");
         Assert.Equal(
             [
                 ("src/A.cs", 2, 3, 2, 11),
@@ -612,9 +593,9 @@ public sealed class EdgeWritePathTests : IDisposable
                 ("src/A.cs", 3, 0, 3, 5),
                 ("src/A.cs", 7, 0, 7, 5)
             ],
-            ReadSites(SnapshotId, "src", "tgt", "Calls"));
+            ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
 
-        // Lower rank adds no site.
+        // A lower rank adds evidence. The shown sites stay the same.
         store.SaveEdges(SnapshotId,
         [
             MakeSiteEdge("src", "tgt", "Calls", Provenance.Possible, "src/A.cs", 0, 0, 0, 5)
@@ -625,7 +606,7 @@ public sealed class EdgeWritePathTests : IDisposable
                 ("src/A.cs", 3, 0, 3, 5),
                 ("src/A.cs", 7, 0, 7, 5)
             ],
-            ReadSites(SnapshotId, "src", "tgt", "Calls"));
+            ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
 
         // Equal rank adds one site and refreshes the first-site columns if earlier.
         store.SaveEdges(SnapshotId,
@@ -639,14 +620,14 @@ public sealed class EdgeWritePathTests : IDisposable
                 ("src/A.cs", 5, 0, 5, 5),
                 ("src/A.cs", 7, 0, 7, 5)
             ],
-            ReadSites(SnapshotId, "src", "tgt", "Calls"));
+            ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
 
         // D155.3: the edge columns hold the first site in source order, not the last one written.
         var afterEqualRank = Assert.Single(store.GetEdges(SnapshotId));
         Assert.Equal((3, 0, 3, 5),
             (afterEqualRank.SourceStartLine, afterEqualRank.SourceStartColumn, afterEqualRank.SourceEndLine, afterEqualRank.SourceEndColumn));
 
-        // Higher rank against persisted row replaces existing sites.
+        // A higher rank changes the shown sites.
         store.SaveEdges(SnapshotId,
         [
             MakeSiteEdge("src2", "tgt2", "Calls", Provenance.NameCandidate, "src/A.cs", 1, 0, 1, 5)
@@ -659,7 +640,19 @@ public sealed class EdgeWritePathTests : IDisposable
             [
                 ("src/A.cs", 4, 0, 4, 5)
             ],
-            ReadSites(SnapshotId, "src2", "tgt2", "Calls"));
+            ReadSites(store, SnapshotId, "src2", "tgt2", "Calls"));
+        Assert.Equal(
+            [
+                (Provenance.CompilerProved, "src/A.cs", 3),
+                (Provenance.CompilerProved, "src/A.cs", 5),
+                (Provenance.CompilerProved, "src/A.cs", 7),
+                (Provenance.NameCandidate, "src/A.cs", 1),
+                (Provenance.Possible, "src/A.cs", 0)
+            ],
+            ReadEvidence("src", "tgt", "Calls"));
+        Assert.Equal(
+            [(Provenance.CompilerProved, "src/A.cs", 4), (Provenance.NameCandidate, "src/A.cs", 1)],
+            ReadEvidence("src2", "tgt2", "Calls"));
     }
 
     [Fact]
@@ -682,14 +675,191 @@ public sealed class EdgeWritePathTests : IDisposable
         ]);
 
         store.CopyEdgesToSnapshot(SnapshotId, "s2");
-        Assert.Equal(2, ReadSites("s2", "src", "tgt", "Calls").Count);
+        Assert.Equal(2, ReadSites(store, "s2", "src", "tgt", "Calls").Count);
 
         store.DeleteFactsByDocumentPaths("s2", ["src/A.cs"]);
-        Assert.Empty(ReadSites("s2", "src", "tgt", "Calls"));
-        Assert.Equal(2, ReadSites(SnapshotId, "src", "tgt", "Calls").Count);
+        Assert.Empty(ReadSites(store, "s2", "src", "tgt", "Calls"));
+        Assert.Equal(2, ReadSites(store, SnapshotId, "src", "tgt", "Calls").Count);
 
         store.DeleteSnapshotData(SnapshotId);
         Assert.Equal(0L, CountAllEdgeSites());
+    }
+
+    [Fact]
+    public void RetireSites_KeepsTheEdgeOfAnUnchangedDocument_AndMovesThePrimary()
+    {
+        using var store = OpenStore();
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "a.cs", 1, 0, 1, 5),
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "b.cs", 2, 3, 4, 6)
+        ]);
+
+        store.DeleteFactsByDocumentPaths(SnapshotId, ["a.cs"]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Equal("b.cs", edge.SourceDocumentPath);
+        Assert.Equal((2, 3, 4, 6), (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
+        Assert.Equal([("b.cs", 2, 3, 4, 6)], ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
+    }
+
+    [Fact]
+    public void RetireSites_FallsBackToTheRemainingLowerProvenance()
+    {
+        using var store = OpenStore();
+        EdgeRecord[] records =
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.FrameworkDerived, "a.cs", 1, 0, 1, 5, "fw-1"),
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.Convention, "b.cs", 2, 0, 2, 5, "cv-1", true)
+        ];
+        store.SaveEdges(SnapshotId, records);
+
+        AssertWinner(store, SnapshotId, Provenance.FrameworkDerived, "fw-1", false, "a.cs", 1);
+        Assert.Equal([("a.cs", 1, 0, 1, 5)], ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
+
+        store.SaveEdges(SnapshotId, records);
+
+        AssertWinner(store, SnapshotId, Provenance.FrameworkDerived, "fw-1", false, "a.cs", 1);
+
+        store.DeleteFactsByDocumentPaths(SnapshotId, ["a.cs"]);
+
+        AssertWinner(store, SnapshotId, Provenance.Convention, "cv-1", true, "b.cs", 2);
+        Assert.Equal([("b.cs", 2, 0, 2, 5)], ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
+
+        store.DeleteFactsByDocumentPaths(SnapshotId, ["b.cs"]);
+
+        Assert.Empty(store.GetEdges(SnapshotId));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SaveEdges_TheWinnerDoesNotDependOnTheWriteOrder(bool sameSite)
+    {
+        using var store = OpenStore();
+        var firstPath = sameSite ? "a.cs" : "c.cs";
+        var first = MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, firstPath, 0, 0, 0, 5, "2.0");
+        var second = MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "a.cs", 0, 0, 0, 5, "1.0", true);
+
+        store.SaveEdges(SnapshotId, [first, second]);
+        SaveSnapshot("s2");
+        store.SaveEdges("s2", [first]);
+        store.SaveEdges("s2", [second]);
+        SaveSnapshot("s3");
+        store.SaveEdges("s3", [second]);
+        store.SaveEdges("s3", [first]);
+
+        (string, int, int, int, int)[] sites = sameSite
+            ? [("a.cs", 0, 0, 0, 5)]
+            : [("a.cs", 0, 0, 0, 5), ("c.cs", 0, 0, 0, 5)];
+        foreach (var id in new[] { SnapshotId, "s2", "s3" })
+        {
+            AssertWinner(store, id, Provenance.CompilerProved, "1.0", true, "a.cs", 0);
+            Assert.Equal(sites, ReadSites(store, id, "src", "tgt", "Calls"));
+        }
+        return;
+
+        void SaveSnapshot(string id) => store.SaveSnapshot(new SnapshotRow
+        {
+            SnapshotId = id,
+            WorkspaceId = WorkspaceId,
+            GitRoot = "gitroot",
+            SolutionPath = "solution.sln",
+            CreatedAtUtc = DateTime.UtcNow
+        });
+    }
+
+    [Fact]
+    public void NullPathWinner_KeepsItsRow_AndFallsBackToItsEvidence()
+    {
+        using var store = OpenStore();
+        var unlocated = MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, null, null, null, null, null, "u-1");
+        var located = MakeSiteEdge("src", "tgt", "Calls", Provenance.Convention, "b.cs", 2, 0, 2, 5, "cv-1");
+        store.SaveEdges(SnapshotId, [unlocated, located]);
+
+        AssertWinner(store, SnapshotId, Provenance.CompilerProved, "u-1", false, null, null);
+        Assert.Empty(ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
+
+        store.DeleteEdgesWithNullDocumentPathForSymbols(SnapshotId, ["src"]);
+
+        AssertWinner(store, SnapshotId, Provenance.Convention, "cv-1", false, "b.cs", 2);
+        Assert.Equal([("b.cs", 2, 0, 2, 5)], ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
+
+        store.SaveEdges(SnapshotId, [unlocated]);
+
+        AssertWinner(store, SnapshotId, Provenance.CompilerProved, "u-1", false, null, null);
+        Assert.Empty(ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
+
+        store.DeleteFactsByDocumentPaths(SnapshotId, ["b.cs"]);
+
+        AssertWinner(store, SnapshotId, Provenance.CompilerProved, "u-1", false, null, null);
+    }
+
+    [Fact]
+    public void GetEdgeSites_UsesTheOrdinalSiteOrder()
+    {
+        using var store = OpenStore();
+        const string supplementary = "src/\U0001F600.cs";
+        const string privateUse = "src/\uE000.cs";
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, privateUse, 0, 0, 0, 1),
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, supplementary, 0, 0, 0, 1)
+        ]);
+
+        // The first UTF-16 code unit D83D sorts before E000.
+        Assert.Equal([(supplementary, 0, 0, 0, 1), (privateUse, 0, 0, 0, 1)],
+            ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
+    }
+
+    private static void AssertWinner(SqliteIndexStore store, string snapshotId, string provenance,
+        string version, bool crossGenerated, string? path, int? line)
+    {
+        var edge = Assert.Single(store.GetEdges(snapshotId));
+        Assert.Equal(provenance, edge.Provenance);
+        Assert.Equal(version, edge.ExtractorVersion);
+        Assert.Equal(crossGenerated, edge.IsCrossGenerated);
+        Assert.Equal(path, edge.SourceDocumentPath);
+        Assert.Equal(line, edge.SourceStartLine);
+    }
+
+    [Fact]
+    public void RetireSites_DeletesOnlyEdgesThatLoseTheirLastSite()
+    {
+        using var store = OpenStore();
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("changed", "tgt", "Calls", Provenance.CompilerProved, "a.cs", 1, 0, 1, 5),
+            MakeSiteEdge("unchanged", "tgt", "Calls", Provenance.CompilerProved, "b.cs", null, null, null, null)
+        ]);
+
+        store.DeleteFactsByDocumentPaths(SnapshotId, ["a.cs"]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Equal("unchanged", edge.SourceSymbolId);
+        Assert.Equal("b.cs", edge.SourceDocumentPath);
+    }
+
+    [Fact]
+    public void SaveEdges_AndRetireSites_UseOrdinalPathOrder()
+    {
+        using var store = OpenStore();
+        const string supplementary = "\U00010000.cs";
+        const string privateUse = "\uE000.cs";
+
+        store.SaveEdges(SnapshotId,
+            [MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, privateUse, 1, 0, 1, 5)]);
+        store.SaveEdges(SnapshotId,
+            [MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, supplementary, 1, 0, 1, 5)]);
+
+        // In ordinal order the first UTF-16 code unit D800 sorts before E000.
+        Assert.Equal(supplementary, Assert.Single(store.GetEdges(SnapshotId)).SourceDocumentPath);
+
+        store.SaveEdges(SnapshotId,
+            [MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "a.cs", 1, 0, 1, 5)]);
+        store.DeleteFactsByDocumentPaths(SnapshotId, ["a.cs"]);
+
+        Assert.Equal(supplementary, Assert.Single(store.GetEdges(SnapshotId)).SourceDocumentPath);
     }
 
     [Fact]
@@ -704,7 +874,7 @@ public sealed class EdgeWritePathTests : IDisposable
 
         var edge = Assert.Single(store.GetEdges(SnapshotId));
         Assert.Null(edge.SourceDocumentPath);
-        Assert.Empty(ReadSites(SnapshotId, "src", "tgt", "Calls"));
+        Assert.Empty(ReadSites(store, SnapshotId, "src", "tgt", "Calls"));
     }
 
     [Fact]
@@ -723,11 +893,11 @@ public sealed class EdgeWritePathTests : IDisposable
 
         var secondBatch = new List<EdgeRecord>
         {
-            // Higher rank replaces NameCandidate for src0
+            // A higher rank changes the shown sites of src0.
             MakeSiteEdge("src0", "tgt", "Calls", Provenance.CompilerProved, "src/B.cs", 99, 0, 99, 5),
-            // Equal rank adds site for src1
+            // An equal rank adds a shown site for src1.
             MakeSiteEdge("src1", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 0, 0, 0, 5),
-            // Lower rank ignored for src3
+            // A lower rank adds evidence for src3.
             MakeSiteEdge("src3", "tgt", "Calls", Provenance.NameCandidate, "src/Z.cs", 1, 0, 1, 5),
             // Brand new edge
             MakeSiteEdge("srcNew", "tgt", "Calls", Provenance.CompilerProved, "src/C.cs", 4, 0, 4, 5)
@@ -739,17 +909,23 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal(count + 1, edgesBySource.Count);
 
         Assert.Equal(Provenance.CompilerProved, edgesBySource["src0"].Provenance);
-        Assert.Equal([("src/B.cs", 99, 0, 99, 5)], ReadSites(SnapshotId, "src0", "tgt", "Calls"));
+        Assert.Equal([("src/B.cs", 99, 0, 99, 5)], ReadSites(store, SnapshotId, "src0", "tgt", "Calls"));
 
         Assert.Equal(
             [("src/A.cs", 0, 0, 0, 5), ("src/A.cs", 1, 0, 1, 5)],
-            ReadSites(SnapshotId, "src1", "tgt", "Calls"));
+            ReadSites(store, SnapshotId, "src1", "tgt", "Calls"));
         Assert.Equal(0, edgesBySource["src1"].SourceStartLine);
 
         Assert.Equal(Provenance.CompilerProved, edgesBySource["src3"].Provenance);
-        Assert.Equal([("src/A.cs", 3, 0, 3, 5)], ReadSites(SnapshotId, "src3", "tgt", "Calls"));
+        Assert.Equal([("src/A.cs", 3, 0, 3, 5)], ReadSites(store, SnapshotId, "src3", "tgt", "Calls"));
+        Assert.Equal(
+            [(Provenance.CompilerProved, "src/A.cs", 3), (Provenance.NameCandidate, "src/Z.cs", 1)],
+            ReadEvidence("src3", "tgt", "Calls"));
+        Assert.Equal(
+            [(Provenance.CompilerProved, "src/B.cs", 99), (Provenance.NameCandidate, "src/A.cs", 0)],
+            ReadEvidence("src0", "tgt", "Calls"));
 
-        Assert.Equal([("src/C.cs", 4, 0, 4, 5)], ReadSites(SnapshotId, "srcNew", "tgt", "Calls"));
+        Assert.Equal([("src/C.cs", 4, 0, 4, 5)], ReadSites(store, SnapshotId, "srcNew", "tgt", "Calls"));
     }
 
     [Fact]
@@ -771,7 +947,10 @@ public sealed class EdgeWritePathTests : IDisposable
         var edge = Assert.Single(store.GetEdges(SnapshotId));
         Assert.Equal(Provenance.CompilerProved, edge.Provenance);
         Assert.Equal(10, edge.SourceStartLine);
-        Assert.Equal([("src/Test.cs", 10, 1, 10, 10)], ReadSites(SnapshotId, "src", "tgt", "MayDispatchTo"));
+        Assert.Equal([("src/Test.cs", 10, 1, 10, 10)], ReadSites(store, SnapshotId, "src", "tgt", "MayDispatchTo"));
+        Assert.Equal(
+            [(Provenance.CompilerProved, "src/Test.cs", 10), (Provenance.Possible, "src/Test.cs", 1)],
+            ReadEvidence("src", "tgt", "MayDispatchTo"));
         Assert.Equal([["TA"], ["TB"]], EdgeMerge.DeserializeTypeArguments(edge.TypeArgumentsJson));
         Assert.Equal([["R1"], ["R2"]], EdgeMerge.DeserializeTypeArguments(edge.ReceiverTypeConstraintsJson));
     }

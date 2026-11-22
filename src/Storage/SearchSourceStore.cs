@@ -97,7 +97,7 @@ internal sealed class SearchSourceStore
         {
             using var highlightCmd = _connection.CreateCommand();
             highlightCmd.CommandText = """
-                SELECT highlight(source_fts, 1, char(2), char(3))
+                SELECT highlight(source_fts, 1, char(2), char(3)), content
                 FROM source_fts
                 WHERE source_fts MATCH @query
                   AND rowid = @rowid;
@@ -109,8 +109,10 @@ internal sealed class SearchSourceStore
             foreach (var (rowId, docPath) in ftsRows)
             {
                 rowIdParam.Value = rowId;
-                var highlighted = highlightCmd.ExecuteScalar() as string ?? "";
-                var snippet = SnippetWindowBuilder.BuildFromHighlighted(highlighted, snippetTokens);
+                using var reader = highlightCmd.ExecuteReader();
+                var snippet = reader.Read()
+                    ? SnippetWindowBuilder.BuildFromHighlighted(reader.GetString(1), reader.GetString(0), snippetTokens)
+                    : "";
                 results.Add(new SourceSearchResult(docPath, snippet));
             }
         }

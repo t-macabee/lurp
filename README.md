@@ -196,15 +196,15 @@ the evidence ladder is in [§4.2](docs/ARCHITECTURE.md#42-evidence-ladder).
 
 | Measurement | Value |
 |---|---|
-| eNoteV2 (402 docs at `4ba9901`) full index | 15.1 s |
-| eNoteV2 incremental (no changes) | 0.1 s |
+| eNoteV2 (402 docs at `4ba9901`) full index | 18.5 s |
+| eNoteV2 incremental (no changes) | 0.2 s |
 | Capsule token estimates | `estimated_tokens` (content) vs `estimated_artifact_tokens` (delivery) |
 
-Measured on 2026-11-21 with Lurp 4.0.0 (Release build from `9ec39a1` with the 4.0.0 changes) and eNoteV2 at `4ba9901`. The performance harness (`--protocol=gate`) reports the median wall time of five runs after three warm-up runs. The machine used an Intel Core i5-12500H and 16 GB of RAM. It ran Fedora Linux 45 (KDE Plasma Desktop Edition) on AC power with the TuneD Balanced profile. A no-change run hashes every document. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
+Measured on 2026-11-21 with Lurp 4.0.0 (Release build from `f683ccf` with the P2-S23 changes) and eNoteV2 at `4ba9901`. The performance harness (`--protocol=gate`) reports the median wall time of five runs after three warm-up runs. The machine used an Intel Core i5-12500H and 16 GB of RAM. It ran Fedora Linux 45 (KDE Plasma Desktop Edition) on AC power with the TuneD Balanced profile. A no-change run hashes every document. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.0.0, schema v48, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit

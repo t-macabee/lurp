@@ -1,3 +1,4 @@
+using Lurp.Storage;
 using Microsoft.Data.Sqlite;
 using System.Text.Json;
 
@@ -36,11 +37,26 @@ public sealed class MaintenanceQueryPlanTests : IntegrationTestBase
         Assert.Matches(@"^(SEARCH|SCAN) d ", symbolIdPlan[0]);
         Assert.DoesNotContain(symbolIdPlan, detail => detail.Contains("snapshot_symbols USING COVERING INDEX sqlite_autoindex_snapshot_symbols_1 (snapshot_id=?)", StringComparison.Ordinal));
 
-        var edgePlan = QueryPlanFixture.Explain(
+        var siteDeletePlan = QueryPlanFixture.Explain(
             connection,
-            Lurp.Storage.EdgeOperationsStore.DeleteEdgesByDocumentPathsSql(),
+            Lurp.Storage.EdgeOperationsStore.DeleteSitesByDocumentPathsSql,
             new Dictionary<string, object> { ["@snapshotId"] = snapshotId, ["@documentPaths"] = ListJson });
-        Assert.DoesNotContain(edgePlan, detail => detail.Contains("idx_edges_snapshot_id", StringComparison.Ordinal));
+        Assert.Contains(siteDeletePlan, detail => detail.Contains("idx_edge_sites_document", StringComparison.Ordinal));
+        Assert.DoesNotContain(siteDeletePlan, detail => detail.StartsWith("SCAN edge_sites", StringComparison.Ordinal));
+
+        var edgeDeletePlan = QueryPlanFixture.Explain(
+            connection,
+            Lurp.Storage.EdgeOperationsStore.DeleteAffectedEdgesWithoutSitesSql,
+            new Dictionary<string, object> { ["@edgeIds"] = "[1]" });
+        Assert.Contains(edgeDeletePlan, detail => detail.StartsWith("SEARCH edges USING INTEGER PRIMARY KEY", StringComparison.Ordinal));
+
+        _ = new EdgeOperationsStore(connection);
+        var projectionPlan = QueryPlanFixture.Explain(connection, EdgeOperationsStore.ProjectEvidenceSql,
+            new Dictionary<string, object> { ["@edgeIds"] = "[1]", ["@keepUnlocated"] = false, ["@locatedOnly"] = true });
+        Assert.Contains(projectionPlan, detail =>
+            detail.StartsWith("SEARCH edge_sites USING", StringComparison.Ordinal) &&
+            detail.Contains("(edge_id=?)", StringComparison.Ordinal));
+        Assert.DoesNotContain(projectionPlan, detail => detail.StartsWith("SCAN edge_sites", StringComparison.Ordinal));
 
         var diagnosticsPlan = QueryPlanFixture.Explain(
             connection,

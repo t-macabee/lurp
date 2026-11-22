@@ -10,7 +10,7 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            var existingColumns = GetColumnNames(command, "declarations");
+            var existingColumns = MigrationSchema.ColumnNames(command, "declarations");
 
             if (!existingColumns.Contains("is_generated"))
             {
@@ -26,19 +26,6 @@ namespace Lurp.Storage.Migrations
 
             command.CommandText = @"CREATE INDEX IF NOT EXISTS idx_declarations_generated ON declarations(is_generated);";
             command.ExecuteNonQuery();
-        }
-
-        private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
-        {
-            // Not SQL injection: tableName is always a hardcoded literal from this
-            // file's own callers, and PRAGMA table_info() cannot bind identifiers via
-            // parameters in SQLite, so interpolation is the only way to express this.
-            command.CommandText = $"PRAGMA table_info({tableName});";
-            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
-                columns.Add(reader.GetString(1));
-            return columns;
         }
     }
 }

@@ -19,7 +19,7 @@ public sealed class ParityGateTests
     [Fact]
     public void Recall_ReportsAMissingDeclaration()
     {
-        var replacement = Path.Combine(ParityTestPaths.RepositoryRoot(), "tests", "Fixtures", "ParityGate", "Lib.NoGreet.cs");
+        var replacement = Path.Combine(TestRepoRoot.Find(), "tests", "Fixtures", "ParityGate", "Lib.NoGreet.cs");
         var result = RunGate("recall", ["-ReplaceFile", "App/Lib.cs=" + replacement], "--seed=1", "--sample=50");
         AssertExit(1, result);
         Assert.Contains("MISSING DECLARATION M:Smoke.App.Lib.Greet(System.String)", result.Stdout);
@@ -47,7 +47,7 @@ public sealed class ParityGateTests
             throw new InvalidOperationException("The parity gate tests require pwsh on PATH.", ex);
         }
 
-        var fixtures = Path.Combine(ParityTestPaths.RepositoryRoot(), "tests", "Fixtures");
+        var fixtures = Path.Combine(TestRepoRoot.Find(), "tests", "Fixtures");
         var copy = Path.Combine(Path.GetTempPath(), $"lurp-parity-gate-{Guid.NewGuid():N}");
         var solution = Path.Combine(copy, "Smoke.slnx");
         var wrapper = Path.Combine(fixtures, "ParityGate", "lurp-wrapper.ps1");

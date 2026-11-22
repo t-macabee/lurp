@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
 
@@ -5,12 +6,48 @@ namespace Lurp.Parity.Shared;
 
 public static class SnapshotComparison
 {
-    private static readonly HashSet<string> ComparedTables = new(StringComparer.Ordinal)
+    // Snapshot keys scope the reads. Other excluded IDs link rows or identify rows within one database.
+    private static readonly Dictionary<string, (string[] Compared, string[] Excluded)> ComparedTables = new(StringComparer.Ordinal)
     {
-        "snapshots", "snapshot_symbols", "symbols", "snapshot_documents", "documents", "document_versions",
-        "snapshot_declarations", "declarations", "edges", "edge_sites", "diagnostics", "binding_incompleteness",
-        "annotations", "source_fts", "symbol_fts", "snapshot_graph_nodes", "projects", "project_references",
-        "symbol_target_frameworks"
+        ["snapshots"] = (
+            ["status", "payload_pruned", "failure_reason_code", "tool_version", "database_schema_version",
+             "output_schema_version", "extractor_version", "sdk_version", "compiler_version", "skipped_adapters"],
+            ["snapshot_id", // The comparison checks the requested IDs separately.
+             "built_at_utc", "selected_at_utc", "build_strategy", "previous_snapshot_id", // Index history
+             "workspace_id", // Database identity
+             "failure_message"]), // The comparison uses the failure reason code.
+        ["snapshot_symbols"] = (["symbol_id", "fqn", "metadata_json", "bare_fqn"], ["snapshot_id"]),
+        ["symbols"] = (["symbol_id", "doc_comment_id", "assembly_identity", "kind"], []),
+        ["snapshot_documents"] = ([], ["snapshot_id", "document_version_id"]),
+        ["documents"] = (["relative_path"], ["document_id"]),
+        ["document_versions"] = (
+            ["content_hash", "is_generated", "line_starts", "encoding", "byte_count", "content"],
+            ["document_version_id", "document_id"]),
+        ["snapshot_declarations"] = ([], ["snapshot_id", "declaration_id"]),
+        ["declarations"] = (
+            ["symbol_id", "full_start", "full_end", "signature_start", "signature_end", "body_start", "body_end",
+             "name_start", "name_end", "is_partial", "is_generated", "generator_identity"],
+            ["declaration_id", "document_version_id"]),
+        ["edges"] = (
+            ["source_symbol_id", "target_symbol_id", "kind", "provenance", "extractor_version", "source_document_path",
+             "source_start_line", "source_start_column", "source_end_line", "source_end_column", "is_cross_generated",
+             "type_arguments_json", "receiver_type_constraints_json"],
+            ["edge_id", "snapshot_id"]),
+        ["edge_sites"] = (["provenance", "document_path", "start_line", "start_column", "end_line", "end_column", "extractor_version", "is_cross_generated"], ["edge_id"]),
+        ["diagnostics"] = (
+            ["project_name", "document_path", "severity", "id", "message", "start_line", "start_column", "end_line", "end_column"],
+            ["diagnostic_id", "snapshot_id"]),
+        ["binding_incompleteness"] = (
+            ["project_name", "document_path", "reason", "occurrence_count", "extractor_version"], ["snapshot_id"]),
+        ["annotations"] = (["symbol_id", "kind", "value", "document_path"], ["annotation_id", "snapshot_id"]),
+        ["source_fts"] = (["document_path", "content"], ["snapshot_id", "document_version_id"]),
+        ["symbol_fts"] = (["symbol_id", "fqn", "doc_comment_id", "kind"], ["snapshot_id"]),
+        ["snapshot_graph_nodes"] = (["node_id"], ["snapshot_id"]),
+        ["projects"] = (
+            ["name", "assembly_name", "target_framework", "metadata_reference_identities", "compilation_options_fingerprint",
+             "document_paths_json", "internals_visible_to", "project_path"], ["project_id", "snapshot_id"]),
+        ["project_references"] = (["referenced_project_name"], ["project_id"]),
+        ["symbol_target_frameworks"] = (["symbol_id", "tfm"], ["snapshot_id"])
     };
 
     private static readonly HashSet<string> ExcludedTables = new(StringComparer.Ordinal)
@@ -37,6 +74,7 @@ public static class SnapshotComparison
         storeA.OpenReadOnly();
         storeB.OpenReadOnly();
 
+        CompareRows("snapshots", ReadSnapshotRow(dbPathA, snapshotA), ReadSnapshotRow(dbPathB, snapshotB));
         CompareRows("symbols", ReadSymbolIdentities(dbPathA, snapshotA), ReadSymbolIdentities(dbPathB, snapshotB));
         CompareRows("snapshot_symbols", ReadSymbols(dbPathA, snapshotA), ReadSymbols(dbPathB, snapshotB));
         CompareRows("snapshot_documents", ReadDocuments(dbPathA, snapshotA), ReadDocuments(dbPathB, snapshotB));
@@ -56,7 +94,7 @@ public static class SnapshotComparison
         CompareRows("projects", ReadProjects(dbPathA, snapshotA), ReadProjects(dbPathB, snapshotB));
         CompareRows("project_references", ReadProjectReferences(dbPathA, snapshotA), ReadProjectReferences(dbPathB, snapshotB));
 
-        CheckTableCoverage(dbPathA, differences);
+        differences.AddRange(ReadCoverageDifferences(dbPathA).Union(ReadCoverageDifferences(dbPathB), StringComparer.Ordinal));
         return differences;
 
         void CompareRows<T>(string table, IReadOnlyList<T> a, IReadOnlyList<T> b)
@@ -81,21 +119,37 @@ public static class SnapshotComparison
             return text.Length > 500 ? text[..500] + "…" : text;
         }));
 
-    private static void CheckTableCoverage(string path, List<string> differences)
+    private static IEnumerable<string> ReadCoverageDifferences(string path)
     {
         using var connection = OpenConnection(path);
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name;";
+        command.CommandText = """
+            SELECT t.name, c.name
+            FROM sqlite_master t
+            LEFT JOIN pragma_table_info(t.name) c
+            WHERE t.type = 'table'
+            ORDER BY t.name, c.cid;
+            """;
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            var name = reader.GetString(0);
-            var compared = ComparedTables.Contains(name);
-            var excluded = ExcludedTables.Contains(name);
-            if (compared && excluded)
-                differences.Add($"table {name} is both compared and excluded");
-            else if (!compared && !excluded)
-                differences.Add($"table {name} is neither compared nor excluded");
+            var table = reader.GetString(0);
+            var comparedTable = ComparedTables.TryGetValue(table, out var columns);
+            var excludedTable = ExcludedTables.Contains(table);
+            if (comparedTable && excludedTable)
+                yield return $"table {table} is both compared and excluded";
+            else if (!comparedTable && !excludedTable)
+                yield return $"table {table} is neither compared nor excluded";
+            else if (comparedTable && !reader.IsDBNull(1))
+            {
+                var column = reader.GetString(1);
+                var compared = columns.Compared.Contains(column, StringComparer.Ordinal);
+                var excluded = columns.Excluded.Contains(column, StringComparer.Ordinal);
+                if (compared && excluded)
+                    yield return $"column {table}.{column} is both compared and excluded";
+                else if (!compared && !excluded)
+                    yield return $"column {table}.{column} is neither compared nor excluded";
+            }
         }
     }
 
@@ -145,13 +199,36 @@ public static class SnapshotComparison
             .ToArray();
     }
 
+    private static List<SnapshotMetadata> ReadSnapshotRow(string dbPath, string snapshotId)
+    {
+        using var connection = OpenConnection(dbPath);
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT status, payload_pruned, failure_reason_code, tool_version, database_schema_version,
+                   output_schema_version, extractor_version, sdk_version, compiler_version, skipped_adapters
+            FROM snapshots
+            WHERE snapshot_id = @snapshotId;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return [];
+
+        return [new SnapshotMetadata(
+            reader.GetString(0), reader.GetInt32(1) != 0, reader.IsDBNull(2) ? null : reader.GetString(2),
+            reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetInt32(4), reader.GetInt32(5),
+            reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8), reader.GetString(9))];
+    }
+
     public static List<DocumentSnapshot> ReadDocuments(string dbPath, string snapshotId)
     {
         using var connection = OpenConnection(dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT d.relative_path, dv.content_hash, dv.is_generated
+            SELECT d.relative_path, dv.content_hash, dv.is_generated, dv.line_starts, dv.encoding, dv.byte_count, dv.content
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents d ON d.document_id = dv.document_id
@@ -166,7 +243,11 @@ public static class SnapshotComparison
             result.Add(new DocumentSnapshot(
                 reader.GetString(0),
                 reader.GetString(1),
-                reader.GetInt32(2) != 0));
+                reader.GetInt32(2) != 0,
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                reader.IsDBNull(6) ? null : Convert.ToHexStringLower(SHA256.HashData((byte[])reader.GetValue(6)))));
 
         return result;
     }
@@ -202,7 +283,7 @@ public static class SnapshotComparison
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT symbol_id, fqn, metadata_json
+            SELECT symbol_id, fqn, metadata_json, bare_fqn
             FROM snapshot_symbols
             WHERE snapshot_id = @snapshotId
             ORDER BY symbol_id;
@@ -215,7 +296,8 @@ public static class SnapshotComparison
             result.Add(new SymbolSnapshot(
                 reader.GetString(0),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
-                reader.IsDBNull(2) ? null : reader.GetString(2)));
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3)));
 
         return result;
     }
@@ -271,11 +353,12 @@ public static class SnapshotComparison
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT e.source_symbol_id, e.target_symbol_id, e.kind,
-                   es.document_path, es.start_line, es.start_column, es.end_line, es.end_column
+                   es.document_path, es.start_line, es.start_column, es.end_line, es.end_column,
+                   es.provenance, es.extractor_version, es.is_cross_generated
             FROM edge_sites es
             JOIN edges e ON e.edge_id = es.edge_id
             WHERE e.snapshot_id = @snapshotId
-            ORDER BY e.source_symbol_id, e.target_symbol_id, e.kind,
+            ORDER BY e.source_symbol_id, e.target_symbol_id, e.kind, es.provenance,
                      es.document_path, es.start_line, es.start_column, es.end_line, es.end_column;
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -291,7 +374,10 @@ public static class SnapshotComparison
                 reader.GetInt32(4),
                 reader.GetInt32(5),
                 reader.GetInt32(6),
-                reader.GetInt32(7)));
+                reader.GetInt32(7),
+                reader.GetString(8),
+                reader.GetString(9),
+                reader.GetBoolean(10)));
         return result;
     }
 
@@ -565,11 +651,16 @@ public static class SnapshotComparison
         string ProjectName, string? DocumentPath, string Severity, string Id, string Message,
         int? StartLine, int? StartColumn, int? EndLine, int? EndColumn);
 
-    public sealed record DocumentSnapshot(string RelativePath, string ContentHash, bool IsGenerated);
+    private sealed record SnapshotMetadata(
+        string Status, bool PayloadPruned, string? FailureReasonCode, string? ToolVersion, int DatabaseSchemaVersion,
+        int OutputSchemaVersion, string? ExtractorVersion, string? SdkVersion, string? CompilerVersion, string SkippedAdapters);
+
+    public sealed record DocumentSnapshot(string RelativePath, string ContentHash, bool IsGenerated,
+        string? LineStarts, string? Encoding, long? ByteCount, string? ContentSha256);
 
     private sealed record SymbolIdentity(string SymbolId, string? DocCommentId, string? AssemblyIdentity, string? Kind);
 
-    public sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson);
+    public sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson, string? BareFqn);
 
     private sealed record SymbolTargetFrameworkSnapshot(string SymbolId, string Tfm);
 
@@ -604,7 +695,10 @@ public static class SnapshotComparison
         int StartLine,
         int StartColumn,
         int EndLine,
-        int EndColumn);
+        int EndColumn,
+        string Provenance,
+        string ExtractorVersion,
+        bool IsCrossGenerated);
 
     public sealed record ProjectSnapshot(
         string Name,

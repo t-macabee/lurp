@@ -143,10 +143,10 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_edges_snapshot_id', 'idx_edges_snapshot_target', 'idx_edges_document', 'ux_edges_relation');";
-        Assert.Equal(4L, (long)command.ExecuteScalar()!);
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_edges_snapshot_id', 'idx_edges_snapshot_target', 'ux_edges_relation');";
+        Assert.Equal(3L, (long)command.ExecuteScalar()!);
 
-        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_edges_source', 'idx_edges_target');";
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_edges_source', 'idx_edges_target', 'idx_edges_document');";
         Assert.Equal(0L, (long)command.ExecuteScalar()!);
     }
 
@@ -322,36 +322,41 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
     }
 
-    // This test re-runs the newest migration (048). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
-        new MigrationRunner(_dbPath).RunMigrations();
-        SqliteConnection.ClearAllPools();
+        var previousVersion = MigrationRunner.LatestVersion - 1;
+        CreateDatabaseAtVersion(previousVersion);
 
         using (var connection = TestDatabase.Open(_dbPath))
         {
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
-                DELETE FROM schema_metadata WHERE version = 48;
-                INSERT INTO documents (document_id, relative_path) VALUES ('fk-doc', 'src/Fk.cs');
-                INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts, is_generated)
-                VALUES ('fk-dv', 'fk-doc', 'fk-hash', X'610D620A', 'utf-8', 4, '[0]', 0);
                 INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
                 """;
             command.ExecuteNonQuery();
         }
-        SqliteConnection.ClearAllPools();
+        var schemaBefore = ReadSchema();
 
         var ex = Assert.Throws<InvalidOperationException>(() => new MigrationRunner(_dbPath).RunMigrations());
         Assert.Contains("snapshot_documents", ex.Message);
-        Assert.Equal(MigrationRunner.LatestVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+        Assert.Equal(previousVersion, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+        // The rollback also undoes the schema change of the last migration.
+        Assert.Equal(schemaBefore, ReadSchema());
+        return;
 
-        using var verify = TestDatabase.OpenReadOnly(_dbPath);
-        using var lineStartsCommand = verify.CreateCommand();
-        lineStartsCommand.CommandText = "SELECT line_starts FROM document_versions WHERE document_version_id = 'fk-dv';";
-        Assert.Equal("[0]", (string?)lineStartsCommand.ExecuteScalar());
+        List<(string Type, string Name, string? Sql)> ReadSchema()
+        {
+            using var connection = TestDatabase.OpenReadOnly(_dbPath);
+            using var query = connection.CreateCommand();
+            query.CommandText = "SELECT type, name, sql FROM sqlite_master ORDER BY type, name;";
+            var rows = new List<(string, string, string?)>();
+            using var reader = query.ExecuteReader();
+            while (reader.Read())
+                rows.Add((reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2)));
+            return rows;
+        }
     }
 
     [Fact]
@@ -1196,7 +1201,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
             var runner = new MigrationRunner(dbPath);
             runner.RunMigrations();
-            Assert.Equal(48, runner.GetCurrentSchemaVersion());
+            Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
 
             using var verify = TestDatabase.Open(dbPath);
             using (var readCmd = verify.CreateCommand())
@@ -1222,6 +1227,159 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         {
             TestDatabase.Delete(dbPath);
         }
+    }
+
+    [Fact]
+    public void RoundTrip_Migration049_IndexesSiteDocumentsAndKeepsExistingSites()
+    {
+        CreateDatabaseAtVersion(48);
+        using (var connection = TestDatabase.Open(_dbPath))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                VALUES ('w1', '/repo', '/repo/Test.slnx');
+
+                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc)
+                VALUES ('s1', 'w1', '2026-11-21T00:00:00Z');
+
+                INSERT INTO edges (edge_id, snapshot_id, source_symbol_id, target_symbol_id, kind, source_document_path,
+                                   source_start_line, source_start_column, source_end_line, source_end_column)
+                VALUES (1, 's1', 'src', 'tgt', 'Calls', 'a.cs', 1, 0, 1, 5);
+
+                INSERT INTO edge_sites (edge_id, document_path, start_line, start_column, end_line, end_column)
+                VALUES (1, 'a.cs', 1, 0, 1, 5), (1, 'b.cs', 2, 3, 4, 6);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var runner = new MigrationRunner(_dbPath);
+        Assert.Equal(48, runner.GetCurrentSchemaVersion());
+        runner.RunMigrations();
+        Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
+
+        using var verify = TestDatabase.OpenReadOnly(_dbPath);
+        using var query = verify.CreateCommand();
+        query.CommandText = "SELECT name FROM pragma_index_info('idx_edge_sites_document') ORDER BY seqno;";
+        using (var columns = query.ExecuteReader())
+        {
+            Assert.True(columns.Read());
+            Assert.Equal("document_path", columns.GetString(0));
+            Assert.False(columns.Read());
+        }
+
+        query.CommandText = """
+            SELECT e.source_document_path, s.document_path, s.start_line, s.start_column, s.end_line, s.end_column
+            FROM edges e JOIN edge_sites s ON s.edge_id = e.edge_id
+            WHERE e.snapshot_id = 's1' AND e.source_symbol_id = 'src' AND e.target_symbol_id = 'tgt' AND e.kind = 'Calls'
+            ORDER BY s.document_path;
+            """;
+        using var sites = query.ExecuteReader();
+        var rows = new List<(string Primary, string Site, int StartLine, int StartColumn, int EndLine, int EndColumn)>();
+        while (sites.Read())
+            rows.Add((sites.GetString(0), sites.GetString(1), sites.GetInt32(2), sites.GetInt32(3), sites.GetInt32(4), sites.GetInt32(5)));
+        Assert.Equal([("a.cs", "a.cs", 1, 0, 1, 5), ("a.cs", "b.cs", 2, 3, 4, 6)], rows);
+    }
+
+    [Fact]
+    public void RoundTrip_Migration050_GivesEachSiteTheEvidenceOfItsEdge()
+    {
+        CreateDatabaseAtVersion(49);
+        using (var connection = TestDatabase.Open(_dbPath))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                VALUES ('w1', '/repo', '/repo/Test.slnx');
+
+                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc)
+                VALUES ('s1', 'w1', '2026-11-22T00:00:00Z');
+
+                INSERT INTO edges (edge_id, snapshot_id, source_symbol_id, target_symbol_id, kind,
+                                   provenance, extractor_version, is_cross_generated)
+                VALUES (1, 's1', 'src', 'tgt', 'Calls', 'framework_derived', 'fw-1', 1),
+                       (2, 's1', 'src', 'other', 'Calls', NULL, NULL, 0);
+
+                INSERT INTO edge_sites (edge_id, document_path, start_line, start_column, end_line, end_column)
+                VALUES (1, 'a.cs', 1, 0, 1, 5), (1, 'b.cs', 2, 0, 2, 5), (2, 'c.cs', 3, 0, 3, 5);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+        Assert.Equal(50, runner.GetCurrentSchemaVersion());
+
+        using var verify = TestDatabase.Open(_dbPath);
+        using var query = verify.CreateCommand();
+        query.CommandText = """
+            SELECT edge_id, document_path, provenance, extractor_version, is_cross_generated
+            FROM edge_sites ORDER BY edge_id, document_path;
+            """;
+        var rows = new List<(long, string, string, string, bool)>();
+        using (var sites = query.ExecuteReader())
+        {
+            while (sites.Read())
+                rows.Add((sites.GetInt64(0), sites.GetString(1), sites.GetString(2), sites.GetString(3), sites.GetBoolean(4)));
+        }
+
+        Assert.Equal([(1L, "a.cs", "framework_derived", "fw-1", true),
+            (1L, "b.cs", "framework_derived", "fw-1", true), (2L, "c.cs", "", "", false)], rows);
+        Assert.Equal(["document_path"], ReadColumns("SELECT name FROM pragma_index_info('idx_edge_sites_document') ORDER BY seqno;"));
+        Assert.Equal(["edge_id", "provenance", "document_path", "start_line", "start_column", "end_line", "end_column"],
+            ReadColumns("SELECT name FROM pragma_table_info('edge_sites') WHERE pk > 0 ORDER BY pk;"));
+
+        query.CommandText = """
+            INSERT INTO edge_sites (edge_id, provenance, document_path, start_line, start_column, end_line, end_column,
+                                    extractor_version, is_cross_generated)
+            VALUES (1, 'convention', 'a.cs', 1, 0, 1, 5, 'cv-1', 0);
+            """;
+        Assert.Equal(1, query.ExecuteNonQuery());
+
+        query.CommandText = "PRAGMA foreign_keys = ON;";
+        query.ExecuteNonQuery();
+        query.CommandText = "DELETE FROM edges WHERE edge_id = 1;";
+        query.ExecuteNonQuery();
+        query.CommandText = "SELECT edge_id FROM edge_sites;";
+        using var remaining = query.ExecuteReader();
+        Assert.True(remaining.Read());
+        Assert.Equal(2, remaining.GetInt64(0));
+        Assert.False(remaining.Read());
+        return;
+
+        List<string> ReadColumns(string sql)
+        {
+            query.CommandText = sql;
+            var columns = new List<string>();
+            using var reader = query.ExecuteReader();
+            while (reader.Read())
+                columns.Add(reader.GetString(0));
+            return columns;
+        }
+    }
+
+    private void CreateDatabaseAtVersion(int version)
+    {
+        using var connection = TestDatabase.Open(_dbPath);
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA foreign_keys = OFF;";
+        command.ExecuteNonQuery();
+
+        var migrations = typeof(MigrationRunner).Assembly.GetTypes()
+            .Where(static type => !type.IsAbstract && typeof(IMigration).IsAssignableFrom(type))
+            .Select(static type => (IMigration)Activator.CreateInstance(type)!)
+            .Where(migration => migration.Version <= version)
+            .OrderBy(static migration => migration.Version);
+        foreach (var migration in migrations)
+            migration.Up(connection);
+
+        command.CommandText = """
+            INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+            VALUES (@version, '2026-11-22T00:00:00Z', @migration);
+            """;
+        command.Parameters.AddWithValue("@version", version);
+        command.Parameters.AddWithValue("@migration", migrations.Last().GetType().Name);
+        command.ExecuteNonQuery();
     }
 }
 

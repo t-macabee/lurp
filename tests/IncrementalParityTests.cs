@@ -1356,6 +1356,76 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ScenarioM3_SharedInheritedRoute_ChangeOfTheFirstSite_KeepsTheOtherSite()
+    {
+        await AssertSharedInheritedRouteParityAsync("A", "api-a", "B");
+    }
+
+    [Fact]
+    public async Task ScenarioM4_SharedInheritedRoute_ChangeOfASecondSite_RetiresItsSite()
+    {
+        await AssertSharedInheritedRouteParityAsync("B", "api-b", "A");
+    }
+
+    private async Task AssertSharedInheritedRouteParityAsync(string changed, string newRoute, string unchanged)
+    {
+        CreateProject("Shared", new Dictionary<string, string>
+        {
+            ["ApiBase.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                namespace Shared;
+                public abstract class ApiBase : ControllerBase
+                {
+                    [HttpGet("ping")]
+                    public int Ping() => 1;
+                }
+                """
+        }, frameworkReferences: ["Microsoft.AspNetCore.App"]);
+
+        foreach (var name in new[] { "A", "B" })
+        {
+            CreateProject(name, new Dictionary<string, string>
+            {
+                [$"{name}Controller.cs"] = ControllerSource(name, "api")
+            }, projectReferences: ["Shared"], frameworkReferences: ["Microsoft.AspNetCore.App"]);
+        }
+
+        RestoreSolution();
+        var before = await RunFullIndexAsync(DbPath);
+        var target = ResolveSymbolId(before, "global::Shared.ApiBase.Ping");
+
+        WriteFile(changed, $"{changed}Controller.cs", ControllerSource(changed, newRoute));
+        var incremental = await RunIncrementalIndexAsync();
+        var routes = QueryEdges(incremental, "RoutesTo", Provenance.FrameworkDerived);
+        var sites = SnapshotAssertions.ReadEdgeSites(DbPath, incremental);
+        Assert.Equal(2, routes.Count);
+        AssertRoute("api", unchanged);
+        AssertRoute(newRoute, changed);
+
+        var full = await RunFullIndexAsync(_cleanRebuildDbPath);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, incremental, _cleanRebuildDbPath, full);
+
+        void AssertRoute(string template, string project)
+        {
+            var routeId = $"route://GET /{template}/ping";
+            var path = $"src/{project}/{project}Controller.cs";
+            var edge = Assert.Single(routes, edge => edge.SourceSymbolId == routeId);
+            Assert.Equal(target, edge.TargetSymbolId);
+            Assert.Equal(path, edge.SourceDocumentPath);
+            var site = Assert.Single(sites, site => site.SourceSymbolId == routeId && site.Kind == "RoutesTo");
+            Assert.Equal(target, site.TargetSymbolId);
+            Assert.Equal(path, site.DocumentPath);
+        }
+
+        static string ControllerSource(string project, string template) => $$"""
+            using Microsoft.AspNetCore.Mvc;
+            namespace {{project}};
+            [Route("{{template}}")]
+            public class {{project}}Controller : Shared.ApiBase { }
+            """;
+    }
+
+    [Fact]
     public async Task ScenarioMediatR_UnmodeledAnnotation_IsNotDuplicatedByIncrementalRuns()
     {
         CreateProject("App",
@@ -2062,6 +2132,86 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             e.SourceSymbolId == serviceId &&
             e.TargetSymbolId == bId &&
             e.Provenance == Provenance.Convention);
+    }
+
+    [Fact]
+    public async Task ScenarioM5_ExplicitRegistrationRemoved_KeepsTheScannedRegistration()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["IService.cs"] = "namespace Lib;\n\npublic interface IService { }",
+            ["A.cs"] = "namespace Lib;\n\npublic class A : IService { }"
+        });
+
+        const string explicitSource = """
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace App;
+
+            public static class Explicit
+            {
+                public static void Register(IServiceCollection services)
+                {
+                    services.AddScoped<Lib.IService, Lib.A>();
+                }
+            }
+            """;
+
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Startup.cs"] = """
+                using Microsoft.Extensions.DependencyInjection;
+                using Scrutor;
+
+                namespace App;
+
+                public static class Startup
+                {
+                    public static void Configure(IServiceCollection services)
+                    {
+                        services.Scan(s => s.FromAssemblyOf<Lib.IService>().AddClasses().AsImplementedInterfaces());
+                    }
+                }
+                """,
+            ["Explicit.cs"] = explicitSource
+        },
+        packageReferences: ["Scrutor@4.2.2"],
+        projectReferences: ["Lib"]);
+
+        RestoreSolution();
+        var full = await RunFullIndexAsync(DbPath);
+        AssertRegistration(full, Provenance.FrameworkDerived, "src/App/Explicit.cs", 8);
+
+        WriteFile("App", "Explicit.cs", explicitSource.Replace(
+            "        services.AddScoped<Lib.IService, Lib.A>();", "", StringComparison.Ordinal));
+        var removed = await RunIncrementalIndexAsync();
+        AssertRegistration(removed, Provenance.Convention, "src/App/Startup.cs", 9);
+        var cleanAfterRemoval = await RunFullIndexAsync(_cleanRebuildDbPath);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, removed, _cleanRebuildDbPath, cleanAfterRemoval);
+
+        WriteFile("App", "Explicit.cs", explicitSource);
+        var restored = await RunIncrementalIndexAsync();
+        AssertRegistration(restored, Provenance.FrameworkDerived, "src/App/Explicit.cs", 8);
+        var restoredRebuildDbPath = Path.Combine(TestDir, "clean-restored.db");
+        var cleanAfterRestore = await RunFullIndexAsync(restoredRebuildDbPath);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, restored, restoredRebuildDbPath, cleanAfterRestore);
+        return;
+
+        void AssertRegistration(string snapshotId, string provenance, string path, int line)
+        {
+            var serviceId = ResolveSymbolId(snapshotId, "global::Lib.IService");
+            var implementationId = ResolveSymbolId(snapshotId, "global::Lib.A");
+            const string kind = nameof(EdgeKind.Registers);
+            using var store = OpenStore(DbPath);
+            var edge = Assert.Single(store.GetEdges(snapshotId), e =>
+                e.Kind == kind && e.SourceSymbolId == serviceId && e.TargetSymbolId == implementationId);
+            Assert.Equal(provenance, edge.Provenance);
+
+            var key = (serviceId, implementationId, kind);
+            var site = Assert.Single(store.GetEdgeSites(snapshotId, [key])[key]);
+            Assert.Equal(path, site.DocumentPath);
+            Assert.Equal(line, site.StartLine);
+        }
     }
 
     [Fact]

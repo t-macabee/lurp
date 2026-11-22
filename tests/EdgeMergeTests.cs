@@ -3,9 +3,8 @@ using Lurp.Storage;
 namespace Lurp.Tests;
 
 /// <summary>
-///     S01-F7: the batch collapse unions receiver-type constraints as the persisted-row merge
-///     does (<c>EdgeOperationsStore.WriteSplitEdges</c>). Expected values: the union of the
-///     variants, each variant once, in ordinal order.
+///     The batch and persisted-row merges use the same union rule for receiver-type constraints.
+///     The union contains each variant once, in ordinal order.
 /// </summary>
 public sealed class EdgeMergeTests
 {
@@ -78,7 +77,7 @@ public sealed class EdgeMergeTests
     }
 
     [Fact]
-    public void CollapseBatch_HigherRankReplacesSites_LowerRankAddsNone()
+    public void CollapseBatch_HigherRankReplacesTheShownSites()
     {
         var edge = Assert.Single(EdgeMerge.CollapseBatch(
         [
@@ -88,6 +87,23 @@ public sealed class EdgeMergeTests
         ]));
 
         Assert.Equal(Provenance.CompilerProved, edge.Provenance);
+        Assert.Equal([new EdgeSite("a.cs", 7, 0, 7, 5)], edge.Sites);
+    }
+
+    [Fact]
+    public void CollapseBatch_KeepsTheEvidenceOfEveryProvenance()
+    {
+        var edge = Assert.Single(EdgeMerge.CollapseBatch(
+        [
+            SiteCall(Provenance.NameCandidate, "a.cs", 1, 0, 1, 5),
+            SiteCall(Provenance.CompilerProved, "a.cs", 7, 0, 7, 5),
+            SiteCall(Provenance.Possible, "a.cs", 0, 0, 0, 5)
+        ]));
+
+        Assert.Equal(
+            new[] { (Provenance.CompilerProved, 7), (Provenance.NameCandidate, 1), (Provenance.Possible, 0) },
+            edge.Evidence.Select(evidence => (evidence.Provenance, evidence.Site.StartLine))
+                .OrderBy(item => item.Provenance, StringComparer.Ordinal));
         Assert.Equal([new EdgeSite("a.cs", 7, 0, 7, 5)], edge.Sites);
     }
 
@@ -109,7 +125,7 @@ public sealed class EdgeMergeTests
         var batch = new List<EdgeRecord>(siteCount + 10);
         for (var i = siteCount - 1; i >= 0; i--)
             batch.Add(SiteCall(Provenance.CompilerProved, "a.cs", i, 0, i, 5));
-        // Duplicate sites and a lower-rank edge should not add extra sites.
+        // Duplicate sites and lower-rank evidence add no shown sites.
         batch.Add(SiteCall(Provenance.CompilerProved, "a.cs", 0, 0, 0, 5));
         batch.Add(SiteCall(Provenance.NameCandidate, "z.cs", 1, 0, 1, 5));
 
@@ -164,23 +180,10 @@ public sealed class EdgeMergeTests
     }
 
     [Fact]
-    public void Merge_EqualAndLowerRank_UsesWithSitesAndPreservesWinnerWhenUnchanged()
+    public void WithSites_SameSites_ReturnsTheSameEdge()
     {
         var winner = SiteCall(Provenance.CompilerProved, "a.cs", 2, 0, 2, 5);
         var normalizedWinner = winner.WithSites([new EdgeSite("a.cs", 2, 0, 2, 5)]);
         Assert.Same(normalizedWinner, normalizedWinner.WithSites([new EdgeSite("a.cs", 2, 0, 2, 5)]));
-
-        var equal = SiteCall(Provenance.CompilerProved, "a.cs", 1, 0, 1, 5);
-        var merged = EdgeMerge.Merge(normalizedWinner, equal);
-        Assert.Equal(
-            [
-                new EdgeSite("a.cs", 1, 0, 1, 5),
-                new EdgeSite("a.cs", 2, 0, 2, 5)
-            ],
-            merged.Sites);
-        Assert.Equal(1, merged.SourceStartLine);
-
-        var lower = SiteCall(Provenance.NameCandidate, "a.cs", 0, 0, 0, 5);
-        Assert.Same(normalizedWinner, EdgeMerge.Merge(normalizedWinner, lower));
     }
 }

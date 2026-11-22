@@ -205,17 +205,25 @@ internal static class Program
 
         if (anchors == null)
         {
-            operations.Add(Skipped("search", null, SkipReasons.NoAnchors));
-            operations.Add(Skipped("grep", null, SkipReasons.NoAnchors));
-            operations.Add(Skipped("find_symbol", null, SkipReasons.NoAnchors));
+            AddMiddleReadSkips(operations, SkipReasons.NoAnchors);
         }
         else
         {
             var middleFqn = session.AnchorFqn("middle")!;
             var simpleName = middleFqn[(middleFqn.LastIndexOf('.') + 1)..];
-            operations.Add(session.Read("search", ["--mode=search", $"--query={simpleName}", "--output=json", "--quiet", $"--output-dir={primaryDir}"]));
-            operations.Add(session.Read("grep", ["--mode=grep", $"--query={simpleName}", "--output=json", "--quiet", $"--output-dir={primaryDir}"]));
-            operations.Add(session.Read("find_symbol", ["--mode=find-symbol", $"--symbol={middleFqn}", "--output=json", "--quiet", $"--output-dir={primaryDir}"]));
+            string[] readArgs = ["--quiet", $"--output-dir={primaryDir}"];
+            string[] jsonArgs = ["--output=json", .. readArgs];
+            string[] findSymbolArgs = ["--mode=find-symbol", $"--symbol={middleFqn}", .. jsonArgs];
+            var (document, line) = ReadMiddleAnchorLocation(toolArgv, findSymbolArgs, middleFqn);
+
+            operations.Add(session.Read("search", ["--mode=search", $"--query={simpleName}", .. jsonArgs]));
+            operations.Add(session.Read("grep", ["--mode=grep", $"--query={simpleName}", .. jsonArgs]));
+            operations.Add(session.Read("find_symbol", findSymbolArgs));
+            operations.Add(session.Read("outline", ["--mode=outline", $"--document={document}", .. jsonArgs]));
+            operations.Add(session.Read("navigate", ["--mode=navigate", $"--file={document}", $"--line={line.ToString(CultureInfo.InvariantCulture)}", .. readArgs]));
+            operations.Add(session.Read("get_symbol", ["--mode=get-symbol", $"--symbol={middleFqn}", "--view=metadata", .. readArgs]));
+            operations.Add(session.Read("get_annotations.document", ["--mode=get-annotations", $"--document={document}", .. jsonArgs]));
+            operations.Add(session.Read("grep.ignore_case", ["--mode=grep", $"--query={simpleName}", "--ignore-case", .. jsonArgs]));
         }
 
         if (fixtureRoot == null)
@@ -296,6 +304,23 @@ internal static class Program
         return true;
     }
 
+    private static (string Document, int Line) ReadMiddleAnchorLocation(string[] toolArgv, string[] findSymbolArgs, string middleFqn)
+    {
+        var outcome = ProcessRunner.Run(Session.BuildArgv(toolArgv, findSymbolArgs), 2 * 60 * 1000);
+        if (outcome.TimedOut)
+            throw new HarnessError($"The location lookup for middle anchor '{middleFqn}' timed out.");
+        if (outcome.ExitCode != 0)
+            throw new HarnessError($"The location lookup for middle anchor '{middleFqn}' exited with code {outcome.ExitCode}. {outcome.Stderr.Trim()}");
+
+        if (JsonTools.TryParseObject(outcome.Stdout)?["locations"] is JsonArray { Count: > 0 } locations
+            && locations[0] is JsonObject location
+            && JsonTools.GetString(location, "document_path") is { Length: > 0 } document
+            && JsonTools.GetInt(location, "start_line") is int line && line > 0)
+            return (document, line);
+
+        throw new HarnessError($"The middle anchor '{middleFqn}' has no readable declaration location.");
+    }
+
     private static bool TryPinSnapshot(string[] toolArgv, string primaryDir, string snapshotId)
     {
         var outcome = ProcessRunner.Run(
@@ -332,6 +357,13 @@ internal static class Program
         }
     }
 
+    private static void AddMiddleReadSkips(List<OperationRecord> operations, string reason)
+    {
+        foreach (var name in (string[])["search", "grep", "find_symbol", "outline", "navigate",
+                     "get_symbol", "get_annotations.document", "grep.ignore_case"])
+            operations.Add(Skipped(name, null, reason));
+    }
+
     private static void AddAllSkipped(List<OperationRecord> operations, AnchorSet? anchors, bool fixturePresent, string reason)
     {
         operations.Add(Skipped("noop_incremental", null, reason));
@@ -339,9 +371,7 @@ internal static class Program
         operations.Add(Skipped("incremental_1_file", null, editReason));
         operations.Add(Skipped("incremental_20_files", null, editReason));
         AddAnchorSkipped(operations, anchors == null ? SkipReasons.NoAnchorsPassAnchors : reason);
-        operations.Add(Skipped("search", null, anchors == null ? SkipReasons.NoAnchors : reason));
-        operations.Add(Skipped("grep", null, anchors == null ? SkipReasons.NoAnchors : reason));
-        operations.Add(Skipped("find_symbol", null, anchors == null ? SkipReasons.NoAnchors : reason));
+        AddMiddleReadSkips(operations, anchors == null ? SkipReasons.NoAnchors : reason);
         operations.Add(Skipped("diff", null, editReason));
         operations.Add(Skipped("find_symbol.freshness_auto_untouched", null, anchors == null ? SkipReasons.NoAnchors : reason));
         operations.Add(Skipped("find_symbol.freshness_hash_untouched", null, anchors == null ? SkipReasons.NoAnchors : reason));
