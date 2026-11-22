@@ -8,7 +8,7 @@ namespace Lurp.PerfHarness;
 
 internal static class Program
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const string WorkMarkerFileName = ".lurp-perf-work";
     private const string WorkMarkerContent = "lurp-perf-harness 1.0.0\n";
     private const string FixtureMarkerFileName = ".lurp-perf-gen";
@@ -532,16 +532,20 @@ internal static class Program
             var runs = new JsonArray();
             foreach (var run in op.Runs)
             {
+                // peak_working_set_mb is derived for display and old readers. The gates use
+                // peak_working_set_bytes, which keeps the polled value exact.
                 runs.Add(JsonSerializer.SerializeToNode(new
                 {
                     wall_ms = run.WallMs,
-                    peak_working_set_mb = run.PeakWorkingSetMb,
+                    peak_working_set_bytes = run.PeakWorkingSetBytes,
+                    peak_working_set_mb = ResultFile.CeilingMiB(run.PeakWorkingSetBytes),
                     exit_code = run.ExitCode,
                     db_bytes = run.DbBytes,
                     db_delta_bytes = run.DbDeltaBytes,
                     timings_total_ms = run.TimingsTotalMs,
                     timings_steps = run.TimingsSteps,
-                    metric_peak_working_set_mb = run.MetricPeakWorkingSetMb,
+                    metric_peak_working_set_bytes = run.MetricPeakWorkingSetBytes,
+                    metric_peak_working_set_exact = run.MetricPeakWorkingSetExact,
                     peak_cross_check = run.PeakCrossCheck,
                     error = run.Error
                 }));
@@ -550,10 +554,20 @@ internal static class Program
             var summary = Summarize(op.Runs);
             object? median = summary == null
                 ? null
-                : new { wall_ms = summary.MedianWallMs, peak_working_set_mb = summary.MedianPeakMb };
+                : new
+                {
+                    wall_ms = summary.MedianWallMs,
+                    peak_working_set_bytes = summary.MedianPeakBytes,
+                    peak_working_set_mb = ResultFile.CeilingMiB(summary.MedianPeakBytes)
+                };
             object? max = summary == null
                 ? null
-                : new { wall_ms = summary.MaxWallMs, peak_working_set_mb = summary.MaxPeakMb };
+                : new
+                {
+                    wall_ms = summary.MaxWallMs,
+                    peak_working_set_bytes = summary.MaxPeakBytes,
+                    peak_working_set_mb = ResultFile.CeilingMiB(summary.MaxPeakBytes)
+                };
             array.Add(JsonSerializer.SerializeToNode(new
             {
                 name = op.Name,
@@ -578,7 +592,7 @@ internal static class Program
     private static void PrintSummary(IReadOnlyList<OperationRecord> operations)
     {
         Console.WriteLine();
-        Console.WriteLine("| operation | anchor | runs | median wall_ms | max wall_ms | median peak_mb | max peak_mb | status |");
+        Console.WriteLine("| operation | anchor | runs | median wall_ms | max wall_ms | median peak MiB | max peak MiB | status |");
         Console.WriteLine("|---|---|---:|---:|---:|---:|---:|---|");
         foreach (var op in operations)
         {
@@ -597,12 +611,13 @@ internal static class Program
             }
 
             var medianWall = summary.MedianWallMs.ToString("F0", CultureInfo.InvariantCulture);
-            var medianPeak = summary.MedianPeakMb.ToString("F0", CultureInfo.InvariantCulture);
-            Console.WriteLine($"| {op.Name} | {op.Anchor ?? ""} | {op.Runs.Count} | {medianWall} | {summary.MaxWallMs} | {medianPeak} | {summary.MaxPeakMb} | {status} |");
+            var medianPeak = ResultFile.FormatPeak(ResultFile.PeakMeasurement.ExactBytes(summary.MedianPeakBytes));
+            var maxPeak = ResultFile.FormatPeak(ResultFile.PeakMeasurement.ExactBytes(summary.MaxPeakBytes));
+            Console.WriteLine($"| {op.Name} | {op.Anchor ?? ""} | {op.Runs.Count} | {medianWall} | {summary.MaxWallMs} | {medianPeak} | {maxPeak} | {status} |");
         }
 
         Console.WriteLine();
-        Console.WriteLine("| index run | polled peak_mb | step-1 metric peak_mb | cross-check |");
+        Console.WriteLine("| index run | polled peak MiB | step-1 metric peak MiB | cross-check |");
         Console.WriteLine("|---|---:|---:|---|");
         foreach (var op in operations)
         {
@@ -611,8 +626,11 @@ internal static class Program
                 var run = op.Runs[i];
                 if (run.PeakCrossCheck == null)
                     continue;
-                var metric = run.MetricPeakWorkingSetMb?.ToString(CultureInfo.InvariantCulture) ?? "";
-                Console.WriteLine($"| {op.Name}#{i + 1} | {run.PeakWorkingSetMb} | {metric} | {run.PeakCrossCheck} |");
+                var metric = run.MetricPeakWorkingSetBytes is { } metricBytes
+                    ? ResultFile.FormatPeak(new ResultFile.PeakMeasurement(metricBytes, run.MetricPeakWorkingSetExact == true))
+                    : "";
+                var polled = ResultFile.FormatPeak(ResultFile.PeakMeasurement.ExactBytes(run.PeakWorkingSetBytes));
+                Console.WriteLine($"| {op.Name}#{i + 1} | {polled} | {metric} | {run.PeakCrossCheck} |");
             }
         }
     }
@@ -624,9 +642,9 @@ internal static class Program
         return new Summary(
             ResultFile.Median(runs.Select(run => (double)run.WallMs)),
             runs.Max(run => run.WallMs),
-            ResultFile.Median(runs.Select(run => (double)run.PeakWorkingSetMb)),
-            runs.Max(run => run.PeakWorkingSetMb));
+            ResultFile.Median(runs.Select(run => (double)run.PeakWorkingSetBytes)),
+            runs.Max(run => run.PeakWorkingSetBytes));
     }
 
-    private sealed record Summary(double MedianWallMs, long MaxWallMs, double MedianPeakMb, long MaxPeakMb);
+    private sealed record Summary(double MedianWallMs, long MaxWallMs, double MedianPeakBytes, long MaxPeakBytes);
 }

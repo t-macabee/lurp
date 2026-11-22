@@ -1,6 +1,7 @@
 name: Real Parity
 
-# Real-solution parity gate on GitHub-hosted Windows and Linux runners.
+# Real-solution parity gate on the pinned GitHub-hosted Windows and Linux
+# runners (`windows-2025-vs2026` and `ubuntu-26.04`).
 #
 # Runs R1 (eleven-cycle incremental↔full convergence) on eNoteV2 at the commit
 # pinned in parity/targets.json, using the lurp-nupkg artifact that the push
@@ -19,6 +20,9 @@ name: Real Parity
 #
 # The status covers both legs: a release needs the `real-parity` status to be
 # `success`, which requires the matrix job to pass on Windows and on Linux.
+# The perf baseline step keys off ImageOS. A missing baseline runs the candidate
+# against itself as a cap self-check, writes that fact to the step summary, and
+# fails the release gate.
 # On success the run attests the nupkg and records a `real-parity` commit
 # status carrying the nupkg digest; on failure it records a `failure` status.
 #
@@ -69,8 +73,11 @@ jobs:
     needs: resolve
     strategy:
       fail-fast: false
+      # Pin the runner image family. The perf baseline key is ImageOS:
+      # windows-2025-vs2026 -> win25-vs2026, ubuntu-26.04 -> ubuntu26.
+      # A runner label move needs a reviewed baseline.
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-2025-vs2026, ubuntu-26.04]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     permissions:
@@ -227,13 +234,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the eNoteV2 perf run failed with exit code $LASTEXITCODE." }
 
       # ImageOS selects the baseline. A different ImageVersion only warns.
-      # If the baseline is missing, check the caps and fail with the commit instruction.
+      # If the baseline is missing, the harness checks the candidate against itself
+      # (the cap checks still run), and this job fails with the commit instruction.
       # See the baseline gate in scripts/perf/README.md.
       - name: Baseline perf gate on eNoteV2
         if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           if (-not $env:ImageOS) { throw "ImageOS is not set; cannot pick a perf baseline." }
+          $expectedImageOs = @{ 'ubuntu-26.04' = 'ubuntu26'; 'windows-2025-vs2026' = 'win25-vs2026' }
+          $pinned = $expectedImageOs['${{ matrix.os }}']
+          if (-not $pinned) { throw "the matrix OS '${{ matrix.os }}' has no pinned ImageOS mapping." }
+          if ($env:ImageOS -ne $pinned) { throw "the matrix OS '${{ matrix.os }}' reported ImageOS '$env:ImageOS', expected '$pinned'." }
           $candidate = "$env:RUNNER_TEMP/perf/enotev2.json"
           $summary = "$env:RUNNER_TEMP/perf/baseline-summary.md"
           $baseline = "perf/baselines/$env:ImageOS.json"
@@ -246,8 +258,11 @@ jobs:
           $code = $LASTEXITCODE
           if (Test-Path $summary) { Get-Content $summary -Raw | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY }
           if (-not $exists) {
-            "no perf baseline for runner OS '$env:ImageOS': review enotev2.json from the perf-enotev2-$env:RUNNER_OS artifact and commit it as perf/baselines/$env:ImageOS.json" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
-            throw "no perf baseline for runner OS '$env:ImageOS': review enotev2.json from the perf-enotev2-$env:RUNNER_OS artifact and commit it as perf/baselines/$env:ImageOS.json"
+            "perf baseline: MISSING perf/baselines/$env:ImageOS.json" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+            "the harness compared the candidate against itself; this is a self-check, not a release comparison." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+            "release gate: FAIL (no baseline for runner OS '$env:ImageOS')." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+            "to refresh: apply the review rules in perf/baselines/README.md to enotev2.json from the perf-enotev2-$env:RUNNER_OS artifact" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+            throw "release gate failed: no perf baseline for runner OS '$env:ImageOS'. The harness compared the candidate against itself. See perf/baselines/README.md."
           }
           if ($code -ne 0) { throw "the baseline perf gate failed with exit code $code." }
 

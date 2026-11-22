@@ -43,6 +43,17 @@ public sealed class BaselineEvaluatorTests : IDisposable
     }
 
     [Fact]
+    public void SameFile_IsASelfCheckNotAReleaseComparison()
+    {
+        var path = PerfHarnessResults.WriteResult(_tempDir, "same.json", Result());
+        var (code, stdout, _) = PerfHarnessResults.RunHarness([$"--baseline={path}", $"--candidate={path}"]);
+
+        Assert.Equal(1, code);
+        Assert.Contains("checked the candidate against itself", stdout);
+        Assert.Contains("release gate failed", stdout);
+    }
+
+    [Fact]
     public void MemoryAboveFactor_Fails()
     {
         var ops = DefaultOperations();
@@ -53,6 +64,42 @@ public sealed class BaselineEvaluatorTests : IDisposable
         Assert.Contains("FAIL", Row(stdout, "full_index"));
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(-1, false)]
+    [InlineData(0.5, false)]
+    [InlineData(0, true)]
+    [InlineData(0.5, true)]
+    public void InvalidPeakSample_FailsEvenWhenTheMedianIsBelowTheLimit(double sample, bool legacy)
+    {
+        var candidate = Result();
+        var operation = PerfHarnessResults.FindOperation(candidate, "context.default.middle");
+        // The median is 120 MiB against a 100 MiB baseline. The first reading is invalid.
+        operation["runs"] = new JsonArray(
+            PerfHarnessResults.Run(1000, 0), PerfHarnessResults.Run(1000, 120),
+            PerfHarnessResults.Run(1000, 120), PerfHarnessResults.Run(1000, 140),
+            PerfHarnessResults.Run(1000, 140));
+        operation["median"] = new JsonObject
+        {
+            ["wall_ms"] = 1000,
+            ["peak_working_set_bytes"] = 120 * PerfHarnessResults.MiB,
+            ["peak_working_set_mb"] = 120
+        };
+        if (legacy)
+            PerfHarnessResults.ToLegacy(candidate);
+        var field = legacy ? "peak_working_set_mb" : "peak_working_set_bytes";
+        var firstRun = operation["runs"]![0]!.AsObject();
+        firstRun[field] = sample;
+        if (!legacy)
+            firstRun["peak_working_set_mb"] = Math.Ceiling(sample / PerfHarnessResults.MiB);
+
+        var (code, stdout, _) = RunBaseline(Result(), candidate);
+
+        Assert.Equal(1, code);
+        Assert.Contains($"candidate result: run 1 {field} must be a positive whole number",
+            Row(stdout, "context.default.middle"));
+    }
+
     [Fact]
     public void MemoryAtFactor_Passes()
     {
@@ -61,6 +108,70 @@ public sealed class BaselineEvaluatorTests : IDisposable
         var (code, _, _) = RunBaseline(Result(), Result(operations: ops));
 
         Assert.Equal(0, code);
+    }
+
+    [Fact]
+    public void PeakBytes_AtTheMemoryFactorBoundary_Passes()
+    {
+        // The contract is inclusive: 125 MiB / 100 MiB is exactly 1.25.
+        var baselineOps = DefaultOperations();
+        PerfHarnessResults.WithPeakBytes(Find(baselineOps, "full_index"), 100 * PerfHarnessResults.MiB);
+        var candidateOps = DefaultOperations();
+        PerfHarnessResults.WithPeakBytes(Find(candidateOps, "full_index"), 125 * PerfHarnessResults.MiB);
+        var (code, stdout, _) = RunBaseline(Result(operations: baselineOps), Result(operations: candidateOps));
+
+        Assert.Equal(0, code);
+        Assert.Contains("| PASS |", Row(stdout, "full_index"));
+    }
+
+    [Fact]
+    public void PeakBytes_OneByteAboveTheMemoryFactor_Fails()
+    {
+        // 131072001 / 104857600 = 1.2500000095, so it is above the 1.25 contract.
+        var baselineOps = DefaultOperations();
+        PerfHarnessResults.WithPeakBytes(Find(baselineOps, "full_index"), 100 * PerfHarnessResults.MiB);
+        var candidateOps = DefaultOperations();
+        PerfHarnessResults.WithPeakBytes(Find(candidateOps, "full_index"), (125 * PerfHarnessResults.MiB) + 1);
+        var (code, stdout, _) = RunBaseline(Result(operations: baselineOps), Result(operations: candidateOps));
+
+        Assert.Equal(1, code);
+        Assert.Contains("memory ratio 1.2500 above limit 1.25", Row(stdout, "full_index"));
+    }
+
+    [Fact]
+    public void PeakBytes_UseTheExactCountsNotTheRoundedMiB()
+    {
+        // 106.9 MiB and 133.5 MiB pass at 1.24883. Rounded first to 107 and 134 MiB,
+        // the same samples fail at 1.25234. This is the precision defect of run 45028536212.
+        var baselineOps = DefaultOperations();
+        With(Find(baselineOps, "full_index"), peakMb: 106.9);
+        var candidateOps = DefaultOperations();
+        With(Find(candidateOps, "full_index"), peakMb: 133.5);
+        var (code, stdout, _) = RunBaseline(Result(operations: baselineOps), Result(operations: candidateOps));
+
+        Assert.Equal(0, code);
+        Assert.Contains("| PASS |", Row(stdout, "full_index"));
+        Assert.Contains("106.9", Row(stdout, "full_index"));
+        Assert.Contains("133.5", Row(stdout, "full_index"));
+    }
+
+    [Fact]
+    public void LegacyWholeMiBBaseline_DoesNotCertifyANearLimitPass()
+    {
+        // A stored 107 MiB means the true peak is in (106 MiB, 107 MiB]. With the exact
+        // candidate 133.5 MiB the ratio is between 1.2477 and 1.2594. The gate cannot
+        // prove a pass, so it stays closed until the baseline records bytes.
+        var baselineOps = DefaultOperations();
+        With(Find(baselineOps, "full_index"), peakMb: 106.9);
+        var candidateOps = DefaultOperations();
+        With(Find(candidateOps, "full_index"), peakMb: 133.5);
+        var baseline = PerfHarnessResults.ToLegacy(Result(operations: baselineOps));
+        var (code, stdout, _) = RunBaseline(baseline, Result(operations: candidateOps));
+
+        Assert.Equal(1, code);
+        Assert.Contains("cannot be proven at or below limit 1.25", Row(stdout, "full_index"));
+        Assert.Contains("refresh the baseline", stdout);
+        Assert.Contains("~", Row(stdout, "full_index"));
     }
 
     [Fact]
@@ -513,7 +624,7 @@ public sealed class BaselineEvaluatorTests : IDisposable
             array.Add(operation.DeepClone());
         return new JsonObject
         {
-            ["schema_version"] = 1,
+            ["schema_version"] = 2,
             ["tool_version"] = toolVersion,
             ["protocol"] = protocol,
             ["runs"] = runs,
@@ -548,7 +659,11 @@ public sealed class BaselineEvaluatorTests : IDisposable
             if (wallMs is double wall)
                 entry["wall_ms"] = wall;
             if (peakMb is double peak)
-                entry["peak_working_set_mb"] = peak;
+            {
+                var bytes = PerfHarnessResults.PeakBytes(peak);
+                entry["peak_working_set_bytes"] = bytes;
+                entry["peak_working_set_mb"] = PerfHarnessResults.CeilingMb(bytes);
+            }
         }
         return op;
     }

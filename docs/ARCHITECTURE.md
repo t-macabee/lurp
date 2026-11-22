@@ -74,8 +74,10 @@ facts; each snapshot links to its own rows. Schema migrations are
 sequential and managed by `MigrationRunner`.
 
 Per-snapshot index cost is recorded in `snapshot_timings` (step → elapsed ms)
-and `snapshot_metrics` (metric name → integer value). `peak_working_set_mb`
-covers the Lurp process only; MSBuild BuildHost child processes are not counted.
+and `snapshot_metrics` (metric name → integer value). `peak_working_set_bytes`
+is the exact peak working set of the Lurp process; `peak_working_set_mb` is the same
+value rounded up to a whole MiB for display. Both cover the Lurp process only; MSBuild
+BuildHost child processes are not counted.
 
 ## 4. Indexing Pipeline
 

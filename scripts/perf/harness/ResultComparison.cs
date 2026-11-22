@@ -4,26 +4,38 @@ using System.Text.Json.Nodes;
 
 namespace Lurp.PerfHarness;
 
-internal sealed record GateResult(string Label, JsonObject Root, Dictionary<string, JsonObject> Operations)
+internal sealed record GateResult(string Label, JsonObject Root, Dictionary<string, JsonObject> Operations, int SchemaVersion)
 {
     public static GateResult Read(string path, string label)
     {
         var root = ResultFile.ReadResult(path);
-        return new GateResult(label, root, ResultFile.ReadOperations(path, root));
+        return new GateResult(label, root, ResultFile.ReadOperations(path, root), JsonTools.GetInt(root, "schema_version") ?? 0);
     }
 }
 
-internal readonly record struct Measurements(double Wall, double Peak);
+internal readonly record struct Measurements(double Wall, ResultFile.PeakMeasurement Peak);
 
 internal readonly record struct ComparedOperation(
     string Name, string? Failure = null, bool Excluded = false,
     Measurements First = default, Measurements Second = default)
 {
     public double TimeRatio => Second.Wall / First.Wall;
-    public double MemoryRatio => Second.Peak / First.Peak;
+
+    public double MemoryRatioMin => Second.Peak.MinBytes / First.Peak.MaxBytes;
+
+    public double MemoryRatioMax => First.Peak.MinBytes <= 0
+        ? double.PositiveInfinity
+        : Second.Peak.MaxBytes / First.Peak.MinBytes;
+
+    public bool MemoryExact => First.Peak.Exact && Second.Peak.Exact;
+
+    public string FormatMemoryRatio()
+        => MemoryExact
+            ? ResultFile.FormatRatio(MemoryRatioMin)
+            : $"~{ResultFile.FormatRatio(MemoryRatioMin)}-{ResultFile.FormatRatio(MemoryRatioMax)}";
 
     public string FormatRow(string verdict)
-        => $"| {Name} | {ResultFile.Format(First.Wall)} | {ResultFile.Format(Second.Wall)} | {ResultFile.FormatRatio(TimeRatio)} | {ResultFile.Format(First.Peak)} | {ResultFile.Format(Second.Peak)} | {ResultFile.FormatRatio(MemoryRatio)} | {verdict} |";
+        => $"| {Name} | {ResultFile.Format(First.Wall)} | {ResultFile.Format(Second.Wall)} | {ResultFile.FormatRatio(TimeRatio)} | {ResultFile.FormatPeak(First.Peak)} | {ResultFile.FormatPeak(Second.Peak)} | {FormatMemoryRatio()} | {verdict} |";
 }
 
 internal sealed class ResultComparison
@@ -51,6 +63,9 @@ internal sealed class ResultComparison
 
     private void ValidateProtocol(GateResult result)
     {
+        if (result.SchemaVersion is not (1 or 2))
+            FileFailures.Add($"{result.Label} result: schema_version is {result.SchemaVersion.ToString(CultureInfo.InvariantCulture)}, expected 1 or 2");
+
         var protocol = JsonTools.GetString(result.Root, "protocol");
         if (protocol != GateProtocol.Name)
             FileFailures.Add($"{result.Label} result: protocol is '{protocol ?? "null"}', expected '{GateProtocol.Name}'");
@@ -90,20 +105,20 @@ internal sealed class ResultComparison
         if (rightSkipped)
             return new(name, $"skipped in {second.Label} result{only}: {rightReason}");
 
-        var failure = ValidateRuns(left, first.Label, out var firstMeasurements);
+        var failure = ValidateRuns(left, first.Label, first.SchemaVersion, out var firstMeasurements);
         if (failure != null)
             return new(name, failure);
-        failure = ValidateRuns(right, second.Label, out var secondMeasurements);
+        failure = ValidateRuns(right, second.Label, second.SchemaVersion, out var secondMeasurements);
         if (failure != null)
             return new(name, failure);
-        if (firstMeasurements.Wall <= 0 || firstMeasurements.Peak <= 0)
-            return new(name, $"median is {(firstMeasurements.Wall < 0 || firstMeasurements.Peak < 0 ? "negative" : "0")} in {first.Label} result");
-        if (secondMeasurements.Wall <= 0 || secondMeasurements.Peak <= 0)
-            return new(name, $"median is {(secondMeasurements.Wall < 0 || secondMeasurements.Peak < 0 ? "negative" : "0")} in {second.Label} result");
+        if (firstMeasurements.Wall <= 0 || firstMeasurements.Peak.Bytes <= 0)
+            return new(name, $"median is {(firstMeasurements.Wall < 0 || firstMeasurements.Peak.Bytes < 0 ? "negative" : "0")} in {first.Label} result");
+        if (secondMeasurements.Wall <= 0 || secondMeasurements.Peak.Bytes <= 0)
+            return new(name, $"median is {(secondMeasurements.Wall < 0 || secondMeasurements.Peak.Bytes < 0 ? "negative" : "0")} in {second.Label} result");
         return new(name, First: firstMeasurements, Second: secondMeasurements);
     }
 
-    private static string? ValidateRuns(JsonObject operation, string label, out Measurements measurements)
+    private static string? ValidateRuns(JsonObject operation, string label, int schemaVersion, out Measurements measurements)
     {
         measurements = default;
         var side = $"{label} result";
@@ -113,7 +128,7 @@ internal sealed class ResultComparison
             return $"{side}: {runs.Count} run records, expected {GateProtocol.Runs}";
 
         var walls = new double[runs.Count];
-        var peaks = new double[runs.Count];
+        var peaks = new ResultFile.PeakMeasurement[runs.Count];
         for (var i = 0; i < runs.Count; i++)
         {
             if (runs[i] is not JsonObject run)
@@ -121,21 +136,35 @@ internal sealed class ResultComparison
             var exitCode = JsonTools.GetInt(run, "exit_code");
             if (exitCode != 0)
                 return $"{side}: run {i + 1} has exit code {exitCode?.ToString(CultureInfo.InvariantCulture) ?? "missing or invalid"}";
-            if (!ResultFile.TryReadMeasurements(run, out walls[i], out peaks[i]))
-                return $"{side}: run {i + 1} lacks numeric wall_ms or peak_working_set_mb";
+            if (!ResultFile.TryReadMeasurements(run, schemaVersion, out walls[i], out peaks[i]))
+                return $"{side}: run {i + 1} lacks numeric wall_ms or {PeakFieldName(schemaVersion)}";
+            var sample = peaks[i];
+            var recordedPeak = sample.Exact ? sample.Bytes : sample.Bytes / ResultFile.BytesPerMiB;
+            if (!double.IsFinite(recordedPeak) || recordedPeak <= 0 || recordedPeak != Math.Truncate(recordedPeak))
+                return $"{side}: run {i + 1} {PeakFieldName(schemaVersion)} must be a positive whole number";
         }
 
-        if (!ResultFile.TryReadMedian(operation, out var wall, out var peak))
+        if (!ResultFile.TryReadMedian(operation, schemaVersion, out var wall, out var peak))
             return $"median missing or null in {side}";
         var wallMedian = ResultFile.Median(walls);
-        var peakMedian = ResultFile.Median(peaks);
+        var peakMedian = ResultFile.Median(peaks.Select(measurement => measurement.Bytes));
         if (wall != wallMedian)
             return FormattableString.Invariant($"{side}: stored median wall_ms {wall} is not the median of the runs ({wallMedian})");
-        if (peak != peakMedian)
-            return FormattableString.Invariant($"{side}: stored median peak_working_set_mb {peak} is not the median of the runs ({peakMedian})");
+        if (Math.Abs(peak.Bytes - peakMedian) > 1e-6)
+        {
+            var unit = ResultFile.BytesPerMiB;
+            var stored = schemaVersion >= 2 ? peak.Bytes : peak.Bytes / unit;
+            var median = schemaVersion >= 2 ? peakMedian : peakMedian / unit;
+            return FormattableString.Invariant(
+                $"{side}: stored median {PeakFieldName(schemaVersion)} {stored} is not the median of the runs ({median})");
+        }
+
         measurements = new Measurements(wall, peak);
         return null;
     }
+
+    private static string PeakFieldName(int schemaVersion)
+        => schemaVersion >= 2 ? "peak_working_set_bytes" : "peak_working_set_mb";
 
     public void AddRow(ComparedOperation operation, IReadOnlyList<string> failures, IReadOnlyList<string> warnings)
     {

@@ -192,6 +192,34 @@ public sealed class GateEvaluatorTests : IDisposable
     }
 
     [Fact]
+    public void PeakBytes_UseTheExactCountsAtTheGrowthLimit()
+    {
+        var small = StandardResult(4);
+        var large = StandardResult(16);
+        PerfHarnessResults.WithPeakBytes(PerfHarnessResults.FindOperation(small, "full_index"), 100 * PerfHarnessResults.MiB);
+        PerfHarnessResults.WithPeakBytes(PerfHarnessResults.FindOperation(large, "full_index"), 300 * PerfHarnessResults.MiB);
+        var (atBoundary, _, _) = RunEvaluate(small, large, "--max-ratio=3");
+        Assert.Equal(0, atBoundary);
+
+        PerfHarnessResults.WithPeakBytes(PerfHarnessResults.FindOperation(large, "full_index"), (300 * PerfHarnessResults.MiB) + 1);
+        var (aboveBoundary, stdout, _) = RunEvaluate(small, large, "--max-ratio=3");
+        Assert.Equal(1, aboveBoundary);
+        Assert.Contains("memory ratio 3.0000 above limit 3", Row(stdout, "full_index"));
+    }
+
+    [Fact]
+    public void LegacyWholeMiBResults_DoNotCertifyANearLimitGrowthPass()
+    {
+        var small = PerfHarnessResults.ToLegacy(StandardResult(4));
+        var large = PerfHarnessResults.ToLegacy(StandardResult(16));
+        var (code, stdout, _) = RunEvaluate(small, large, "--max-ratio=3");
+
+        Assert.Equal(1, code);
+        Assert.Contains("cannot be proven at or below limit 3", Row(stdout, "full_index"));
+        Assert.Contains("~", Row(stdout, "full_index"));
+    }
+
+    [Fact]
     public void MedianZero_Fails()
     {
         var ops4 = ComparedOperations.Select(name => name == "full_index" ? Op4(name, 0) : Op4(name));
@@ -387,7 +415,7 @@ public sealed class GateEvaluatorTests : IDisposable
             array.Add(operation);
         return new JsonObject
         {
-            ["schema_version"] = 1,
+            ["schema_version"] = 2,
             ["protocol"] = protocol,
             ["runs"] = runs,
             ["warmup"] = warmup,
@@ -403,4 +431,7 @@ public sealed class GateEvaluatorTests : IDisposable
 
     private static JsonObject Op16(string name, double wallMs = 300, double peakMb = 150, bool skipped = false, string? skipReason = null)
         => PerfHarnessResults.Operation(name, wallMs, peakMb, skipped: skipped, skipReason: skipReason);
+
+    private static string Row(string stdout, string name)
+        => stdout.Split('\n').First(line => line.StartsWith($"| {name} |", StringComparison.Ordinal));
 }

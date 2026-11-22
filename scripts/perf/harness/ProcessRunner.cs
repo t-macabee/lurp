@@ -6,7 +6,7 @@ namespace Lurp.PerfHarness;
 
 internal sealed record RunOutcome(
     long WallMs,
-    long PeakWorkingSetMb,
+    long PeakWorkingSetBytes,
     int ExitCode,
     bool TimedOut,
     string Stdout,
@@ -62,7 +62,7 @@ internal static class ProcessRunner
         var stdout = stdoutTask.GetAwaiter().GetResult();
         var stderr = stderrTask.GetAwaiter().GetResult();
         stopwatch.Stop();
-        return new RunOutcome(stopwatch.ElapsedMilliseconds, ToMegabytes(peakBytes), exitCode, timedOut, stdout, stderr);
+        return new RunOutcome(stopwatch.ElapsedMilliseconds, peakBytes, exitCode, timedOut, stdout, stderr);
     }
 
     private static Process Start(ProcessStartInfo info)
@@ -93,8 +93,6 @@ internal static class ProcessRunner
             return 0;
         }
     }
-
-    internal static long ToMegabytes(long bytes) => (bytes + (1024L * 1024L) - 1) / (1024L * 1024L);
 
     /// <summary>
     ///     Splits a command line on whitespace, honoring double quotes. Throws

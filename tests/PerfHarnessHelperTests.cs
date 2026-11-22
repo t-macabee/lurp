@@ -66,8 +66,19 @@ public sealed class PerfHarnessHelperTests
     [InlineData(1, 1)]
     [InlineData(1048576, 1)]
     [InlineData(1048577, 2)]
-    public void PeakRoundsUpToWholeMiB(long bytes, long expected)
-        => Assert.Equal(expected, ProcessRunner.ToMegabytes(bytes));
+    public void PeakDisplayRoundsUpToWholeMiB(long bytes, long expected)
+        => Assert.Equal(expected, ResultFile.CeilingMiB(bytes));
+
+    [Fact]
+    public void PeakBytesKeepExactPrecision()
+    {
+        // 106.9 MiB is 112092774 bytes. The stored measurement must not become 107 MiB.
+        var peak = ResultFile.PeakMeasurement.ExactBytes(112092774);
+
+        Assert.Equal(112092774, peak.Bytes);
+        Assert.True(peak.Exact);
+        Assert.Equal("106.9", ResultFile.FormatPeak(peak));
+    }
 
     [Theory]
     [InlineData(115, 100, "ok")]
@@ -139,7 +150,7 @@ public sealed class PerfHarnessHelperTests
                 : [$"--baseline={first}", $"--candidate={second}"]);
 
             Assert.True(code == 0, stdout + stderr);
-            Assert.Contains("| full_index | 300 | 900 | 3.00 | 100 | 100 | 1.00 |", stdout);
+            Assert.Contains("| full_index | 300 | 900 | 3.00 | 100.0 | 100.0 | 1.00 |", stdout);
         }
         finally
         {
@@ -162,7 +173,9 @@ public sealed class PerfHarnessHelperTests
         {
             var op = new OperationRecord { Name = name };
             op.Runs.AddRange(RunOrder.Select(n => new RunRecord(
-                fixture || name == "full_index" ? n * interval : 100, 100, 0)));
+                fixture || name == "full_index" ? n * interval : 100,
+                100 * PerfHarnessResults.MiB,
+                0)));
             operations.Add(op);
         }
 

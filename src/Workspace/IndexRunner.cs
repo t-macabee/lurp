@@ -327,10 +327,7 @@ public static class IndexRunner
             // Persist all timings
             try
             {
-                store.SaveMetrics(snapshotIdStr, new Dictionary<string, long>
-                {
-                    [SnapshotMetricNames.PeakWorkingSetMb] = ProcessMetrics.PeakWorkingSetMb()
-                });
+                store.SaveMetrics(snapshotIdStr, ProcessMetrics.PeakWorkingSetSnapshotMetrics());
                 store.SaveTimings(snapshotIdStr, timings);
             }
             catch (Exception ex)
@@ -362,10 +359,7 @@ public static class IndexRunner
             // Try to save whatever timings we have
             try
             {
-                store.SaveMetrics(snapshotIdStr, new Dictionary<string, long>
-                {
-                    [SnapshotMetricNames.PeakWorkingSetMb] = ProcessMetrics.PeakWorkingSetMb()
-                });
+                store.SaveMetrics(snapshotIdStr, ProcessMetrics.PeakWorkingSetSnapshotMetrics());
                 store.SaveTimings(snapshotIdStr, timings);
             }
             catch (Exception tex)

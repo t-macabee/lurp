@@ -21,10 +21,11 @@ internal sealed record AnchorSet(string UpstreamWide, string DownstreamWide, str
 
 internal sealed record RunRecord(
     long WallMs,
-    long PeakWorkingSetMb,
+    long PeakWorkingSetBytes,
     int ExitCode,
     long? DbBytes = null,
-    long? MetricPeakWorkingSetMb = null,
+    long? MetricPeakWorkingSetBytes = null,
+    bool? MetricPeakWorkingSetExact = null,
     string? PeakCrossCheck = null,
     string? Error = null,
     long? DbDeltaBytes = null,

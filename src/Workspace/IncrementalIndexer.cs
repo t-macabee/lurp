@@ -249,10 +249,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // Persist all timings
         try
         {
-            _store.SaveMetrics(newSnapshotIdStr, new Dictionary<string, long>
-            {
-                [SnapshotMetricNames.PeakWorkingSetMb] = ProcessMetrics.PeakWorkingSetMb()
-            });
+            _store.SaveMetrics(newSnapshotIdStr, ProcessMetrics.PeakWorkingSetSnapshotMetrics());
             _store.SaveTimings(newSnapshotIdStr, timings);
         }
         catch (Exception ex)

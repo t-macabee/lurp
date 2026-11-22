@@ -49,8 +49,12 @@ internal static class GateEvaluator
 
             var failures = new List<string>();
             var warnings = new List<string>();
-            if (operation.MemoryRatio > options.MaxRatio)
-                failures.Add(ResultFile.FormatRatioReason("memory", operation.MemoryRatio, options.MaxRatio));
+            if (!operation.MemoryExact)
+                warnings.Add("memory values are approximate: a result stores whole MiB only");
+            if (operation.MemoryRatioMin > options.MaxRatio)
+                failures.Add(ResultFile.FormatRatioReason("memory", operation.MemoryRatioMin, options.MaxRatio));
+            else if (operation.MemoryRatioMax > options.MaxRatio)
+                failures.Add(ResultFile.FormatPrecisionReason("memory", operation.MemoryRatioMin, operation.MemoryRatioMax, options.MaxRatio));
             if (operation.TimeRatio > options.MaxRatio)
             {
                 var reasons = TimeFailTrackOperations.Contains(operation.Name) ? failures : warnings;
@@ -60,7 +64,7 @@ internal static class GateEvaluator
         }
 
         return comparison.WriteReport(
-            "| operation | time 4x | time 16x | time ratio | memory 4x | memory 16x | memory ratio | verdict |",
+            "| operation | time 4x | time 16x | time ratio | memory 4x MiB | memory 16x MiB | memory ratio | verdict |",
             options.Summary);
     }
 

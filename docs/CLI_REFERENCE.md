@@ -593,7 +593,7 @@ line on stderr.
 | `--json` | No | Emit structured JSON instead of plain text. |
 <!-- /generated:flags:timings -->
 
-`--json` always prints `snapshot_id`, `total_ms`, `steps` and `metrics`; with no timing rows `total_ms` is 0 and `steps` is empty. `total_ms` and `percent` are computed from timing rows only. `peak_working_set_mb` covers the Lurp process only; MSBuild BuildHost child processes are not counted. Text output prints a Metrics section below the table. The MCP `lurp_timings` tool returns the same `metrics` object for the session-pinned snapshot.
+`--json` always prints `snapshot_id`, `total_ms`, `steps` and `metrics`; with no timing rows `total_ms` is 0 and `steps` is empty. `total_ms` and `percent` are computed from timing rows only. `peak_working_set_bytes` is the exact peak working set of the Lurp process; `peak_working_set_mb` is the same value rounded up to a whole MiB. Both cover the Lurp process only; MSBuild BuildHost child processes are not counted. Text output prints a Metrics section below the table. The MCP `lurp_timings` tool returns the same `metrics` object for the session-pinned snapshot.
 
 ---
 

@@ -1199,6 +1199,7 @@ cli:status:json $.timing_summary[].step string
 cli:status:json $.timing_total_ms null|number
 cli:timings:json $ object
 cli:timings:json $.metrics object
+cli:timings:json $.metrics.peak_working_set_bytes number
 cli:timings:json $.metrics.peak_working_set_mb number
 cli:timings:json $.snapshot_id string
 cli:timings:json $.steps array
@@ -2120,6 +2121,7 @@ mcp:timings $.freshness.scope string
 mcp:timings $.freshness.snapshot_id string
 mcp:timings $.freshness.state string
 mcp:timings $.metrics object
+mcp:timings $.metrics.peak_working_set_bytes number
 mcp:timings $.metrics.peak_working_set_mb number
 mcp:timings $.pinned boolean
 mcp:timings $.snapshot_id string

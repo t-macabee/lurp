@@ -16,7 +16,9 @@ internal sealed class Session(
     string primaryDir,
     AnchorSet? anchors)
 {
-    public const string SnapshotMetricPeak = "peak_working_set_mb";
+    public const string SnapshotMetricPeakBytes = "peak_working_set_bytes";
+    public const string SnapshotMetricPeakMb = "peak_working_set_mb";
+    private const long BytesPerMiB = 1024 * 1024;
 
     private const int ToolTimeoutMs = 30 * 60 * 1000;
     private const int McpStartupTimeoutMs = 120 * 1000;
@@ -103,7 +105,7 @@ internal sealed class Session(
             var error = outcome.TimedOut
                 ? $"timed out after {ToolTimeoutMs} ms"
                 : outcome.ExitCode != 0 ? LastErrorLine(outcome.Stderr, outcome.Stdout) : null;
-            AddRun(op, new RunRecord(outcome.WallMs, outcome.PeakWorkingSetMb, outcome.ExitCode, Error: error));
+            AddRun(op, new RunRecord(outcome.WallMs, outcome.PeakWorkingSetBytes, outcome.ExitCode, Error: error));
             if (error == null && checkOutput?.Invoke(outcome.Stdout) is { } failure)
                 MarkFailed(op, failure);
         }
@@ -134,7 +136,7 @@ internal sealed class Session(
             var error = outcome.TimedOut
                 ? $"timed out after {ToolTimeoutMs} ms"
                 : outcome.ExitCode != 0 ? LastErrorLine(outcome.Stderr, outcome.Stdout) : null;
-            AddRun(op, new RunRecord(outcome.WallMs, outcome.PeakWorkingSetMb, outcome.ExitCode, Error: error));
+            AddRun(op, new RunRecord(outcome.WallMs, outcome.PeakWorkingSetBytes, outcome.ExitCode, Error: error));
             if (error != null)
                 continue;
 
@@ -276,11 +278,11 @@ internal sealed class Session(
             server.Client.InitializeAsync("lurp-perf-harness", TimeSpan.FromMilliseconds(McpStartupTimeoutMs)).GetAwaiter().GetResult();
             for (var i = 1; i <= options.Warmup + options.Runs; i++)
             {
-                var (latencyMs, peakMb, error) = TimeToolCall(server, "lurp_status", arguments, ToolTimeoutMs);
+                var (latencyMs, peakBytes, error) = TimeToolCall(server, "lurp_status", arguments, ToolTimeoutMs);
                 if (i <= options.Warmup)
                     continue;
 
-                AddRun(op, new RunRecord(latencyMs, peakMb, error == null ? 0 : 1, Error: error));
+                AddRun(op, new RunRecord(latencyMs, peakBytes, error == null ? 0 : 1, Error: error));
             }
 
             op.ServerExitCode = server.Close(60000);
@@ -307,7 +309,7 @@ internal sealed class Session(
         return op;
     }
 
-    private static (long LatencyMs, long PeakWorkingSetMb, string? Error) TimeToolCall(
+    private static (long LatencyMs, long PeakWorkingSetBytes, string? Error) TimeToolCall(
         McpServeProcess server, string tool, JsonObject arguments, int timeoutMs)
     {
         var sampler = new PeakSampler(server.Process);
@@ -346,7 +348,7 @@ internal sealed class Session(
             sampler.Stop();
         }
 
-        return (stopwatch.ElapsedMilliseconds, sampler.PeakMb, error);
+        return (stopwatch.ElapsedMilliseconds, sampler.PeakBytes, error);
     }
 
     private static string Truncate(string? text, int maxLength)
@@ -365,15 +367,15 @@ internal sealed class Session(
         return JsonTools.GetString(json, "selected_latest_snapshot_id");
     }
 
-    public (long? TotalMs, JsonArray? Steps, long? PeakWorkingSetMb) GetTimingsSnapshot(string dbDir, string snapshotId)
+    public (long? TotalMs, JsonArray? Steps, long? PeakWorkingSetBytes, bool PeakExact) GetTimingsSnapshot(string dbDir, string snapshotId)
     {
         var outcome = RunTool(["--mode=timings", "--json", $"--snapshot={snapshotId}", $"--output-dir={dbDir}"], 2 * 60 * 1000);
         if (outcome.ExitCode != 0 || outcome.TimedOut)
-            return (null, null, null);
+            return (null, null, null, false);
 
         var json = JsonTools.TryParseObject(outcome.Stdout);
         if (json == null)
-            return (null, null, null);
+            return (null, null, null, false);
 
         long? totalMs = null;
         if (json["total_ms"] is JsonValue totalValue && totalValue.TryGetValue<long>(out var total))
@@ -395,13 +397,24 @@ internal sealed class Session(
             }
         }
 
-        long? peak = null;
-        if (json["metrics"] is JsonObject metrics &&
-            metrics[SnapshotMetricPeak] is JsonValue peakValue &&
-            peakValue.TryGetValue<long>(out var peakValueMb))
-            peak = peakValueMb;
+        long? peakBytes = null;
+        var peakExact = false;
+        if (json["metrics"] is JsonObject metrics)
+        {
+            if (metrics[SnapshotMetricPeakBytes] is JsonValue peakBytesValue &&
+                peakBytesValue.TryGetValue<long>(out var peakValueBytes))
+            {
+                peakBytes = peakValueBytes;
+                peakExact = true;
+            }
+            else if (metrics[SnapshotMetricPeakMb] is JsonValue peakMbValue &&
+                     peakMbValue.TryGetValue<long>(out var peakValueMb))
+            {
+                peakBytes = peakValueMb * BytesPerMiB;
+            }
+        }
 
-        return (totalMs, steps, peak);
+        return (totalMs, steps, peakBytes, peakExact);
     }
 
     private RunOutcome RunTool(IReadOnlyList<string> args, int timeoutMs = ToolTimeoutMs)
@@ -418,11 +431,12 @@ internal sealed class Session(
             ? $"timed out after {ToolTimeoutMs} ms"
             : outcome.ExitCode != 0 ? LastErrorLine(outcome.Stderr, outcome.Stdout) : null;
         if (error != null)
-            return (new RunRecord(outcome.WallMs, outcome.PeakWorkingSetMb, outcome.ExitCode, dbBytes, Error: error), null);
+            return (new RunRecord(outcome.WallMs, outcome.PeakWorkingSetBytes, outcome.ExitCode, dbBytes, Error: error), null);
 
         var after = GetLatestSnapshotId(dbDir);
         var wroteNewSnapshot = after != null && (freshDatabase || !string.Equals(after, before, StringComparison.Ordinal));
         long? metric = null;
+        bool? metricExact = null;
         long? timingsTotalMs = null;
         JsonArray? timingsSteps = null;
         string crossCheck;
@@ -432,11 +446,12 @@ internal sealed class Session(
         }
         else
         {
-            (timingsTotalMs, timingsSteps, metric) = GetTimingsSnapshot(dbDir, after!);
-            crossCheck = metric.HasValue ? CrossCheck(outcome.PeakWorkingSetMb, metric.Value) : "no-metric";
+            (timingsTotalMs, timingsSteps, metric, var exact) = GetTimingsSnapshot(dbDir, after!);
+            metricExact = exact;
+            crossCheck = metric.HasValue ? CrossCheck(outcome.PeakWorkingSetBytes, metric.Value) : "no-metric";
         }
 
-        return (new RunRecord(outcome.WallMs, outcome.PeakWorkingSetMb, outcome.ExitCode, dbBytes, metric, crossCheck, null, TimingsTotalMs: timingsTotalMs, TimingsSteps: timingsSteps), after);
+        return (new RunRecord(outcome.WallMs, outcome.PeakWorkingSetBytes, outcome.ExitCode, dbBytes, metric, metricExact, crossCheck, null, TimingsTotalMs: timingsTotalMs, TimingsSteps: timingsSteps), after);
     }
 
     private void AddRun(OperationRecord op, RunRecord record)
@@ -519,13 +534,13 @@ internal sealed class Session(
         return text.Insert(brace, block);
     }
 
-    internal static string CrossCheck(long polledMb, long metricMb)
+    internal static string CrossCheck(long polledBytes, long metricBytes)
     {
-        if (metricMb <= 0)
+        if (metricBytes <= 0)
             return "mismatch";
 
-        var delta = Math.Abs(polledMb - metricMb);
-        var tolerance = (long)Math.Ceiling(metricMb * CrossCheckPercent / 100.0);
+        var delta = Math.Abs(polledBytes - metricBytes);
+        var tolerance = (long)Math.Ceiling(metricBytes * CrossCheckPercent / 100.0);
         return delta <= tolerance ? "ok" : "mismatch";
     }
 

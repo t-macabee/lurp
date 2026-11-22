@@ -42,12 +42,12 @@ internal sealed class PeakSampler
         }
     }
 
-    public long PeakMb
+    public long PeakBytes
     {
         get
         {
             lock (_sync)
-                return ProcessRunner.ToMegabytes(_peakBytes);
+                return _peakBytes;
         }
     }
 }

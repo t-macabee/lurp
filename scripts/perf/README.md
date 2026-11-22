@@ -105,13 +105,17 @@ dotnet run --project scripts/perf/harness -c Release -- --fixture=$HOME/perf/1x 
 ## Growth gate
 
 The gate compares a 4x and a 16x result file. For each operation it divides the 16x
-median by the 4x median, for `wall_ms` and for `peak_working_set_mb`. The limit is 5
-and it is inclusive: a ratio of 5.0 passes.
+median by the 4x median, for `wall_ms` and for `peak_working_set_bytes`. The limit is 5
+and it is inclusive: a ratio of 5.0 passes. The report shows memory in MiB.
 
 The CI workflow runs by hand and nightly on main, not on pull requests. It takes about
 60 to 80 minutes.
 
 - A memory ratio above 5 fails the gate for every operation.
+- If a result stores whole MiB only, the gate compares the possible byte range. A
+  range that can pass gives a WARN. A range that crosses the limit fails the gate,
+  because the file cannot prove a pass. Regenerate the result with the current
+  harness to record bytes.
 - A time ratio above 5 fails the gate for `full_index`, `incremental_1_file`,
   `incremental_20_files`, `diff` and `dead_candidates`. For every other operation it
   only warns.
@@ -156,12 +160,13 @@ dotnet run --project scripts/perf/harness -c Release -- --baseline=perf\baseline
 ```
 
 ```bash
-dotnet run --project scripts/perf/harness -c Release -- --baseline=perf/baselines/ubuntu24.json --candidate=$HOME/perf/results/enotev2.json --summary=$HOME/perf/results/baseline-summary.md
+dotnet run --project scripts/perf/harness -c Release -- --baseline=perf/baselines/ubuntu26.json --candidate=$HOME/perf/results/enotev2.json --summary=$HOME/perf/results/baseline-summary.md
 ```
 
 A value equal to its limit passes.
 
-- A candidate peak above 1.25 times the baseline peak fails for every operation.
+- A candidate peak above 1.25 times the baseline peak fails for every operation. Both
+  values are exact bytes when both files record `peak_working_set_bytes`.
 - A candidate peak above 300 MB fails for `impact.*`, `context.*`, `search`, `grep`,
   `find_symbol`, `outline`, `navigate`, `get_symbol`, `get_annotations.document`
   and `grep.ignore_case`.
@@ -181,18 +186,30 @@ A value equal to its limit passes.
 The report shows both tool versions. It warns when a version is unreadable, the major
 versions differ, or the minor versions differ by more than one.
 
-The baseline key is the runner OS only (`ImageOS`, for example `win25-vs2026`), so
-`perf/baselines/win25-vs2026.json`. `ImageVersion` changes about once a week on hosted runners; a
-different image only warns. A new runner OS (for example a move from `win25-vs2026` to a later image) has no
-baseline and fails until one is committed.
+The baseline key is the runner OS only (`ImageOS`). `real-parity.yml` pins these labels:
+
+| Matrix label | `ImageOS` | Baseline file |
+|---|---|---|
+| `windows-2025-vs2026` | `win25-vs2026` | `perf/baselines/win25-vs2026.json` |
+| `ubuntu-26.04` | `ubuntu26` | perf/baselines/ubuntu26.json (not yet committed) |
+
+`ImageVersion` changes about once a week on hosted runners; a different image only warns.
+The workflow checks that `ImageOS` matches the pinned label, so a runner change fails
+closed. A new runner OS has no baseline and fails until one is committed.
 
 When `perf/baselines/<ImageOS>.json` does not exist, the gate runs the candidate as its own
-baseline (memory ratios are 1.00, so only the 300 MB cap and the time caps can show), prints
-the result, and then fails with the commit instruction.
+baseline (memory ratios are 1.00, so only the 300 MB cap and the time caps can show). The
+harness then reports that the candidate was checked against itself, and it exits 1. The
+workflow summary states that this is a self-check and that the release gate failed.
 
-To take a new baseline: download the `perf-enotev2-<OS>` artifact from a `real-parity.yml` run,
-review the `enotev2.json` it holds, and commit it as `perf/baselines/<ImageOS>.json` in its own
-commit.
+A schema 1 result stores whole MiB only. Its true peak is in `(mb - 1, mb]` MiB. The gate
+uses that range for the memory comparison and shows it with `~`. If the whole range is at
+or below the limit, the gate reports WARN and asks for a refreshed baseline. If the range
+extends above the limit, the gate fails. A schema 1 result never supplies an exact byte value.
+
+Download `enotev2.json` from the `perf-enotev2-<OS>` artifact. Apply the [baseline review
+rules](../../perf/baselines/README.md) before you commit the file. Those rules list the expected
+comparison failures for the 4.0.0 migration and the checks that each artifact must pass.
 
 Exit codes are 0 for pass, 1 for a failed gate, 2 for a usage or data error, and 3 for a
 harness defect. A file-system error on a given path or a tool that cannot start returns 2.
@@ -201,7 +218,7 @@ harness defect. A file-system error on a given path or a tool that cannot start 
 
 ```jsonc
 {
-  "schema_version": 1,                 // bump when a field changes meaning
+  "schema_version": 2,                 // 2 records peak_working_set_bytes; 1 recorded whole MiB only
   "tool_cmd": "dotnet C:\\...\\Lurp.dll",
   "tool_version": "lurp 2.0.0",        // first line of `--version`
   "repo_commit": "27b5c3e",            // `git log --oneline -1`, null when not a repo
@@ -229,19 +246,21 @@ harness defect. A file-system error on a given path or a tool that cannot start 
       "runs": [
         {
           "wall_ms": 15443,            // CLI: process start to exit. MCP: tools/call latency
-          "peak_working_set_mb": 232,  // polled PeakWorkingSet64, see below
+          "peak_working_set_bytes": 243269632,  // polled PeakWorkingSet64, exact
+          "peak_working_set_mb": 232,  // derived: ceil(bytes / 1 MiB), display only
           "exit_code": 0,              // MCP: 0 = call returned a result, 1 = call error
           "db_bytes": 35401728,        // index.db size after index runs, else null
           "db_delta_bytes": 4096,      // db_bytes minus the previous measured run of this operation; null on the first
           "timings_total_ms": 15443,   // --mode=timings total_ms; null when the run wrote no new snapshot
           "timings_steps": [ { "step": "load_workspace", "elapsed_ms": 1234 } ],  // from the same call; null with timings_total_ms
-          "metric_peak_working_set_mb": 232,  // step-1 snapshot metric, index runs only
+          "metric_peak_working_set_bytes": 243269632,  // step-1 CLI/MCP metric, index runs only
+          "metric_peak_working_set_exact": true,       // false when derived from an old whole-MiB metric
           "peak_cross_check": "ok",    // ok | mismatch | no-new-snapshot | no-metric
           "error": null
         }
       ],
-      "median": { "wall_ms": 15443, "peak_working_set_mb": 232 },  // average of the two middle values
-      "max": { "wall_ms": 15443, "peak_working_set_mb": 232 }
+      "median": { "wall_ms": 15443, "peak_working_set_bytes": 243269632, "peak_working_set_mb": 232 },
+      "max": { "wall_ms": 15443, "peak_working_set_bytes": 243269632, "peak_working_set_mb": 232 }
     }
   ]
 }
@@ -269,10 +288,16 @@ previous snapshot (a no-op) records both as null.
 
 ## Peak working set
 
-The harness records `peak_working_set_mb` in MiB and rounds up to a whole MiB.
-One MiB is 1,048,576 bytes. For `mcp_status.*`, each value is the peak of the server
-process up to that call. The five values share one server lifetime. Their median
-represents the post-start peak.
+The harness records `peak_working_set_bytes` as the exact value. It also writes
+`peak_working_set_mb`, the byte value rounded up to a whole MiB, for display and for old
+readers. The gates use the byte value. One MiB is 1,048,576 bytes. For `mcp_status.*`,
+each value is the peak of the server process up to that call. The five values share one
+server lifetime. Their median represents the post-start peak.
+
+A schema 1 result has no `peak_working_set_bytes`. Treat its whole-MiB values as
+approximate and regenerate the result before you use it for a precision comparison.
+Both gates require a positive whole peak value for each measured run. A zero value
+means that the run has no memory reading.
 
 The harness polls `Process.PeakWorkingSet64` every 50 ms while the child runs (calling
 `Process.Refresh()` first; without it the value is cached and stays at its first sample).
@@ -280,7 +305,7 @@ The harness polls `Process.PeakWorkingSet64` every 50 ms while the child runs (c
 before exit is the true peak unless the process grew inside the final 50 ms window. A read that
 finishes faster than 50 ms can therefore under-report; the index runs are long enough that the
 polled value should match the step-1 in-process metric, and the harness reports both
-(`peak_working_set_mb`, `metric_peak_working_set_mb`) plus `peak_cross_check` ("ok" when they
+(`peak_working_set_bytes`, `metric_peak_working_set_bytes`) plus `peak_cross_check` ("ok" when they
 agree within 15%). A no-op incremental that reuses the previous snapshot has no new metric:
 `peak_cross_check` is `no-new-snapshot`, and `timings_total_ms`/`timings_steps` are null,
 because `--mode=timings` is keyed by snapshot id and the run created no new snapshot.

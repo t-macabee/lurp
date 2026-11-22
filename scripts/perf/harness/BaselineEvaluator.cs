@@ -18,6 +18,7 @@ internal static class BaselineEvaluator
 
     // Peak working set above this fails for an interactive read (impact, context, search, grep, find_symbol only).
     private const double InteractiveReadPeakCapMb = 300;
+    private const double InteractiveReadPeakCapBytes = InteractiveReadPeakCapMb * ResultFile.BytesPerMiB;
 
     // Median wall above this warns for an impact operation at depth 6 (the audit's interactive cap).
     private const double ImpactDepth6CapMs = 2000;
@@ -52,7 +53,13 @@ internal static class BaselineEvaluator
     {
         var baseline = GateResult.Read(options.Baseline!, "baseline");
         var candidate = GateResult.Read(options.Candidate!, "candidate");
+        var selfCheck = string.Equals(
+            Path.GetFullPath(options.Baseline!), Path.GetFullPath(options.Candidate!), StringComparison.Ordinal);
         var comparison = new ResultComparison(baseline, candidate, RequiredOperations, AllowedSkipReasons.Contains);
+
+        if (selfCheck)
+            comparison.FileFailures.Add(
+                "baseline and candidate are the same file: the harness checked the candidate against itself, not against a committed baseline; the release gate failed");
 
         foreach (var result in new[] { baseline, candidate })
         {
@@ -76,6 +83,7 @@ internal static class BaselineEvaluator
         var candidateVersion = JsonTools.GetString(candidate.Root, "tool_version") ?? "null";
         var details = new List<string> { $"tool versions: baseline {baselineVersion}, candidate {candidateVersion}" };
         AddVersionWarnings(details, baselineVersion, candidateVersion);
+        AddPrecisionWarnings(details, baseline, candidate);
 
         var baselineImage = JsonTools.GetString(baseline.Root, "runner_image");
         var candidateImage = JsonTools.GetString(candidate.Root, "runner_image");
@@ -100,10 +108,14 @@ internal static class BaselineEvaluator
             var warnings = new List<string>();
             var wall = operation.Second.Wall;
             var peak = operation.Second.Peak;
-            if (operation.MemoryRatio > MemoryFactor)
-                failures.Add(ResultFile.FormatRatioReason("memory", operation.MemoryRatio, MemoryFactor));
-            if (IsInteractiveRead(name) && peak > InteractiveReadPeakCapMb)
-                failures.Add(FormatCap("interactive read peak", peak, InteractiveReadPeakCapMb, "MB"));
+            if (!operation.MemoryExact)
+                warnings.Add("memory values are approximate: a result stores whole MiB only");
+            if (operation.MemoryRatioMin > MemoryFactor)
+                failures.Add(ResultFile.FormatRatioReason("memory", operation.MemoryRatioMin, MemoryFactor));
+            else if (operation.MemoryRatioMax > MemoryFactor)
+                failures.Add(ResultFile.FormatPrecisionReason("memory", operation.MemoryRatioMin, operation.MemoryRatioMax, MemoryFactor));
+            if (IsInteractiveRead(name) && peak.MaxBytes > InteractiveReadPeakCapBytes)
+                failures.Add(FormatCap("interactive read peak", peak.MaxBytes / ResultFile.BytesPerMiB, InteractiveReadPeakCapMb, "MB"));
             if (operation.First.Wall >= TimeNoiseFloorMs && operation.TimeRatio > TimeFactor)
                 warnings.Add(ResultFile.FormatRatioReason("time", operation.TimeRatio, TimeFactor));
             if (IsImpactDepth6(name) && wall > ImpactDepth6CapMs)
@@ -121,8 +133,18 @@ internal static class BaselineEvaluator
             comparison.FileFailures.Add("no measured context.* operation");
 
         return comparison.WriteReport(
-            "| operation | time baseline | time candidate | time ratio | memory baseline | memory candidate | memory ratio | verdict |",
+            "| operation | time baseline | time candidate | time ratio | memory baseline MiB | memory candidate MiB | memory ratio | verdict |",
             options.Summary, details, reportWarnings: details.Count - 1);
+    }
+
+    private static void AddPrecisionWarnings(List<string> details, GateResult baseline, GateResult candidate)
+    {
+        if (baseline.SchemaVersion < 2)
+            details.Add(
+                "warning: baseline result stores peak_working_set_mb only (whole MiB); its memory values are approximate. Refresh the baseline with peak_working_set_bytes.");
+        if (candidate.SchemaVersion < 2)
+            details.Add(
+                "warning: candidate result stores peak_working_set_mb only (whole MiB); its memory values are approximate. Regenerate the candidate with the current harness to record peak_working_set_bytes.");
     }
 
     private static void AddVersionWarnings(List<string> details, string baseline, string candidate)
@@ -149,7 +171,7 @@ internal static class BaselineEvaluator
     }
 
     private static string FormatCap(string name, double value, double limit, string unit)
-        => FormattableString.Invariant($"{name} {value:0.#} {unit} above limit {limit:G} {unit}");
+        => FormattableString.Invariant($"{name} {value:0.######} {unit} above limit {limit:G} {unit}");
 
     // The 300 MB cap covers interactive reads only. See the baseline gate in the perf README.
     private static bool IsInteractiveRead(string name)

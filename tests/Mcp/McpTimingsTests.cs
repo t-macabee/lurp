@@ -56,6 +56,8 @@ public sealed class McpTimingsTests : IntegrationTestBase
         Assert.Equal(JsonValueKind.Object, metricsEl.ValueKind);
 
         var directMetrics = store.GetMetrics(snapshotId);
+        Assert.True(directMetrics.ContainsKey(SnapshotMetricNames.PeakWorkingSetBytes),
+            $"Expected {SnapshotMetricNames.PeakWorkingSetBytes} in snapshot metrics.");
         Assert.True(directMetrics.ContainsKey(SnapshotMetricNames.PeakWorkingSetMb),
             $"Expected {SnapshotMetricNames.PeakWorkingSetMb} in snapshot metrics.");
         Assert.Equal(directMetrics.Count, metricsEl.EnumerateObject().Count());

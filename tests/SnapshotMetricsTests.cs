@@ -7,7 +7,8 @@ namespace Lurp.Tests;
 /// <summary>
 ///     Phase 8 (item 16) snapshot metrics: migration 033 creates
 ///     <c>snapshot_metrics</c>, the store round-trips it, both index strategies
-///     record <c>peak_working_set_mb</c> and a <c>solution_load</c> timing row,
+///     record exact <c>peak_working_set_bytes</c> with a derived
+///     <c>peak_working_set_mb</c> and a <c>solution_load</c> timing row,
 ///     and snapshot deletion removes the metrics.
 /// </summary>
 public sealed class SnapshotMetricsTests : IntegrationTestBase
@@ -51,11 +52,13 @@ public sealed class SnapshotMetricsTests : IntegrationTestBase
 
         store.SaveMetrics("snap-metrics", new Dictionary<string, long>
         {
+            [SnapshotMetricNames.PeakWorkingSetBytes] = 128974848,
             [SnapshotMetricNames.PeakWorkingSetMb] = 123
         });
 
         var metrics = store.GetMetrics("snap-metrics");
-        Assert.Single(metrics);
+        Assert.Equal(2, metrics.Count);
+        Assert.Equal(128974848, metrics[SnapshotMetricNames.PeakWorkingSetBytes]);
         Assert.Equal(123, metrics[SnapshotMetricNames.PeakWorkingSetMb]);
     }
 
@@ -105,9 +108,12 @@ public sealed class SnapshotMetricsTests : IntegrationTestBase
         foreach (var snapshotId in new[] { fullSnapshot, latest.SnapshotId })
         {
             var metrics = reopened.GetMetrics(snapshotId);
+            Assert.True(metrics.TryGetValue(SnapshotMetricNames.PeakWorkingSetBytes, out var peakWorkingSetBytes),
+                $"Snapshot {snapshotId} has no {SnapshotMetricNames.PeakWorkingSetBytes} metric.");
+            Assert.True(peakWorkingSetBytes > 0);
             Assert.True(metrics.TryGetValue(SnapshotMetricNames.PeakWorkingSetMb, out var peakWorkingSetMb),
                 $"Snapshot {snapshotId} has no {SnapshotMetricNames.PeakWorkingSetMb} metric.");
-            Assert.True(peakWorkingSetMb > 0);
+            Assert.Equal((peakWorkingSetBytes + (1024 * 1024 - 1)) / (1024 * 1024), peakWorkingSetMb);
 
             Assert.Contains(reopened.GetTimings(snapshotId), t => t.StepName == "solution_load");
         }

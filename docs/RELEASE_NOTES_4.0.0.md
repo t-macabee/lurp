@@ -462,6 +462,10 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 - `tools/list` declares required parameters for the ten tools with mandatory
   inputs. Omitting one returns a tool error that names the missing parameter.
 - MCP `lurp_context` rejects a half `file`+`line` pair, as the CLI does. MCP and CLI error texts for impact and context use one wording.
+- `--mode=timings` and `lurp_timings` include `peak_working_set_bytes`, the exact
+  peak working set of the Lurp process. `peak_working_set_mb` stays as the value
+  rounded up to a whole MiB for display. The perf baseline gate compares exact
+  bytes.
 
 ## Versions
 
