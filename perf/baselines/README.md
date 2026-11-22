@@ -40,9 +40,5 @@ Expect exit 1 with the self-check as the only failure. Review the time warnings.
 other failure. Run real parity again with the reviewed baselines. The release still requires
 a passing gate on that commit.
 
-The tree still holds `ubuntu24.json` from the old Linux runner. The pinned `ubuntu-26.04`
-runner reports `ubuntu26`, so the Linux gate fails closed until a reviewed `ubuntu26.json`
-exists.
-
 See [scripts/perf/README.md](../../scripts/perf/README.md#baseline-gate) for the gate behaviour
 and the limits.

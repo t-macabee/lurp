@@ -191,7 +191,7 @@ The baseline key is the runner OS only (`ImageOS`). `real-parity.yml` pins these
 | Matrix label | `ImageOS` | Baseline file |
 |---|---|---|
 | `windows-2025-vs2026` | `win25-vs2026` | `perf/baselines/win25-vs2026.json` |
-| `ubuntu-26.04` | `ubuntu26` | perf/baselines/ubuntu26.json (not yet committed) |
+| `ubuntu-26.04` | `ubuntu26` | `perf/baselines/ubuntu26.json` |
 
 `ImageVersion` changes about once a week on hosted runners; a different image only warns.
 The workflow checks that `ImageOS` matches the pinned label, so a runner change fails
