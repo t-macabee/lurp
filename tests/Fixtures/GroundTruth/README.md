@@ -53,7 +53,8 @@ are committed. Index output belongs outside the fixture tree.
 - `ExtractorGate/` — Fixture 3: the corpus of the extractor version gate
   (`ExtractorVersionGateTests`). `ExtractorGate.App` holds one shape for
   each framework adapter (controller, DI registration and Scrutor scan, MediatR
-  handler, EF Core `DbContext` with a query filter, `[JsonPropertyName]`) and for
+  handler, EF Core `DbContext` with a query filter and a context that inherits
+  a generic `DbSet<T>`, `[JsonPropertyName]`) and for
   the `Hides` and `Reflection` extractors; `ExtractorGate.Tests` is an xUnit
   project for the test adapter. It references MediatR, EF Core, Scrutor and
   xUnit, so a restore needs those packages.
