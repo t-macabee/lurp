@@ -16,7 +16,8 @@ internal sealed class DeadCandidatesTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_dead_candidates", Title = "Lurp Dead Candidates", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_dead_candidates", Title = "Lurp Dead Candidates", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(DeadCandidatePayload.McpResponse))]
     [Description(DeadCandidateLadder.ToolDescription)]
     public string LurpDeadCandidates(
         int? limit = null,
@@ -64,22 +65,7 @@ internal sealed class DeadCandidatesTool
 
             var freshness = _session.GetFreshnessJson();
             var filters = DeadCandidatePayload.Filters(projectFilter, normalizedDocument, kindFilter, includePublic, includeGenerated, includeTests);
-            var shared = DeadCandidatePayload.Envelope(page, filters, snapshotId, freshness);
-
-            // Preserve the MCP key order (freshness and pinned right after snapshot_id) while
-            // sourcing every shared field from DeadCandidatePayload.Envelope.
-            var envelope = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["snapshot_id"] = shared["snapshot_id"],
-                ["freshness"] = shared["freshness"],
-                ["pinned"] = true
-            };
-            foreach (var (key, value) in shared)
-            {
-                if (key is "snapshot_id" or "freshness")
-                    continue;
-                envelope[key] = value;
-            }
+            var envelope = DeadCandidatePayload.PinnedEnvelope(page, filters, snapshotId, freshness);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);

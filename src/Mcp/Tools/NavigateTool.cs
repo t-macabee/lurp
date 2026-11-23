@@ -16,7 +16,8 @@ internal sealed class NavigateTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_navigate", Title = "Lurp Navigate", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_navigate", Title = "Lurp Navigate", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(NavigateResponse))]
     [Description("Navigate to the declaration containing a file+line in the pinned snapshot. Null target is success, not an error.")]
     public string LurpNavigate(
         [McpRequired] string? file = null,
@@ -39,14 +40,11 @@ internal sealed class NavigateTool
 
             var freshness = _session.GetFreshnessJson();
 
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                target
-            };
+            var envelope = new NavigateResponse(snapshotId, freshness, pinned: true, target);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);
 }
+
+internal sealed record NavigateResponse(
+    string snapshot_id, object freshness, bool pinned, NavigationTarget? target);

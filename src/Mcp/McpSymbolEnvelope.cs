@@ -1,27 +1,35 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Lurp.Handlers;
 
 namespace Lurp.Mcp;
 
 internal static class McpSymbolEnvelope
 {
-    internal static JsonObject Build(string snapshotId, object freshness, IndexedSymbolInfo info,
-        IReadOnlyList<DeclarationLocation> locations)
+    internal static McpSymbolResponse Build(string snapshotId, object freshness, IndexedSymbolInfo info,
+        IReadOnlyList<DeclarationLocation> locations) =>
+        new(snapshotId, freshness, pinned: true, info.SymbolId.Value, info.SymbolId.DocCommentId,
+            info.SymbolId.AssemblyIdentity, info.Kind.ToString(), info.FullyQualifiedName,
+            SymbolMetadata.Parse(info.MetadataJson, info.SymbolId.Value), info.DeclarationCount, info.IsPartial, locations);
+}
+
+internal record McpSymbolResponse(
+    string snapshot_id, object freshness, bool pinned, string symbol_id, string doc_comment_id,
+    string assembly_identity, string kind, string? fully_qualified_name, JsonElement? metadata,
+    int declaration_count, bool is_partial, IReadOnlyList<DeclarationLocation> locations);
+
+internal sealed record McpGetSymbolResponse : McpSymbolResponse
+{
+    internal McpGetSymbolResponse(McpSymbolResponse symbol, string? source,
+        IReadOnlyList<SurfacePayloads.AnnotationPayload> annotations) : base(symbol)
     {
-        return new JsonObject
-        {
-            ["snapshot_id"] = snapshotId,
-            ["freshness"] = JsonSerializer.SerializeToNode(freshness, LurpJsonOptions.Indented),
-            ["pinned"] = true,
-            ["symbol_id"] = info.SymbolId.Value,
-            ["doc_comment_id"] = info.SymbolId.DocCommentId,
-            ["assembly_identity"] = info.SymbolId.AssemblyIdentity,
-            ["kind"] = info.Kind.ToString(),
-            ["fully_qualified_name"] = info.FullyQualifiedName,
-            ["metadata"] = JsonSerializer.SerializeToNode(SymbolMetadata.Parse(info.MetadataJson, info.SymbolId.Value), LurpJsonOptions.Indented),
-            ["declaration_count"] = info.DeclarationCount,
-            ["is_partial"] = info.IsPartial,
-            ["locations"] = JsonSerializer.SerializeToNode(locations, LurpJsonOptions.Indented)
-        };
+        this.source = source;
+        this.annotations = annotations;
     }
+
+    [JsonPropertyOrder(1)]
+    public string? source { get; }
+
+    [JsonPropertyOrder(1)]
+    public IReadOnlyList<SurfacePayloads.AnnotationPayload> annotations { get; }
 }

@@ -16,7 +16,8 @@ internal sealed class GetSymbolTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_get_symbol", Title = "Lurp Get Symbol", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_get_symbol", Title = "Lurp Get Symbol", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(McpGetSymbolResponse))]
     [Description("Get symbol metadata and optional source. " + HandlerBootstrap.AcceptedSymbolFormsText + " More than one match is an error. View summary|source|all controls payload.")]
     public string LurpGetSymbol(
         [McpRequired] string? symbol = null,
@@ -61,9 +62,9 @@ internal sealed class GetSymbolTool
                 }
             }
 
-            var envelope = McpSymbolEnvelope.Build(snapshotId, freshness, info, locations);
-            envelope["source"] = source;
-            envelope["annotations"] = JsonSerializer.SerializeToNode(annotations.Select(SurfacePayloads.AnnotationRow).ToList(), LurpJsonOptions.Indented);
+            var symbolResponse = McpSymbolEnvelope.Build(snapshotId, freshness, info, locations);
+            var envelope = new McpGetSymbolResponse(symbolResponse, source,
+                annotations.Select(SurfacePayloads.AnnotationRow).ToList());
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);

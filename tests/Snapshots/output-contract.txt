@@ -2110,6 +2110,12 @@ mcp:status $.freshness.state string
 mcp:status $.pinned boolean
 mcp:status $.snapshot_id string
 mcp:status $.truncated boolean
+mcp:success $ object
+mcp:success $.content array
+mcp:success $.content[] object
+mcp:success $.content[].text string
+mcp:success $.content[].type string
+mcp:success $.structuredContent object
 mcp:timings $ object
 mcp:timings $.freshness object
 mcp:timings $.freshness.changed_document_count number

@@ -21,7 +21,8 @@ internal sealed class RetractAnnotationTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_retract_annotation", Title = "Lurp Retract Annotation", ReadOnly = false, Destructive = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_retract_annotation", Title = "Lurp Retract Annotation", ReadOnly = false, Destructive = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(RetractAnnotationResponse))]
     [Description("Retract (hard-delete) one annotation by annotation_id, scoped to the pinned snapshot — any provenance, not limited to user-authored (`--mode=annotate`) rows; extractor-derived rows can be removed the same way. The annotation_id is the surrogate PK from lurp_get_annotations. The delete is WHERE snapshot_id=@pinned AND annotation_id=@id — one row only, no cross-snapshot effect. Copy-forward clones allocate fresh ids, so retracting in snapshot A does not affect snapshot B's clone.")]
     public string LurpRetractAnnotation(
         [McpRequired] long? annotation_id = null,
@@ -58,15 +59,8 @@ internal sealed class RetractAnnotationTool
                     throw new McpProtocolException($"annotation_id {annotationId} not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
 
                 var freshness = _session.GetFreshnessJson();
-                var envelope = new
-                {
-                    status = "ok",
-                    snapshot_id = snapshotId,
-                    annotation_id = annotationId,
-                    retracted = true,
-                    freshness,
-                    pinned = true
-                };
+                var envelope = new RetractAnnotationResponse("ok", snapshotId, annotationId,
+                    retracted: true, freshness, pinned: true);
                 return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
             finally
@@ -75,3 +69,6 @@ internal sealed class RetractAnnotationTool
             }
         }, cancellationToken);
 }
+
+internal sealed record RetractAnnotationResponse(
+    string status, string snapshot_id, long annotation_id, bool retracted, object freshness, bool pinned);

@@ -204,7 +204,7 @@ Measured on 2026-11-21 with Lurp 4.0.0 (Release build from `f683ccf` with the P2
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.13.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.13.0, CLI/MCP contract v8, output schema v7<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit

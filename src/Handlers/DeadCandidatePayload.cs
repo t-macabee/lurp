@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Lurp.Handlers;
 
 /// <summary>
@@ -22,47 +24,64 @@ internal static class DeadCandidatePayload
         include_tests = includeTests
     };
 
-    internal static Dictionary<string, object?> Envelope(
-        DeadCandidatePage page,
-        object filters,
-        string snapshotId,
-        object? freshness,
-        List<object>? candidates = null) =>
-        Build(page, filters, snapshotId, freshness, candidates ?? Candidates(page), includeCandidates: true);
-
-    internal static Dictionary<string, object?> Meta(
+    internal static CliResponse Envelope(
         DeadCandidatePage page,
         object filters,
         string snapshotId,
         object? freshness) =>
-        Build(page, filters, snapshotId, freshness, candidates: null, includeCandidates: false);
+        new(Build(page, filters, snapshotId, Candidates(page)), freshness);
 
-    private static Dictionary<string, object?> Build(
+    internal static CliResponse Meta(
         DeadCandidatePage page,
         object filters,
         string snapshotId,
-        object? freshness,
-        List<object>? candidates,
-        bool includeCandidates)
+        object? freshness) =>
+        new(Build(page, filters, snapshotId, candidates: null), freshness);
+
+    internal static McpResponse PinnedEnvelope(
+        DeadCandidatePage page,
+        object filters,
+        string snapshotId,
+        object freshness) =>
+        new(Build(page, filters, snapshotId, Candidates(page)), freshness);
+
+    private static PageResponse Build(
+        DeadCandidatePage page,
+        object filters,
+        string snapshotId,
+        IReadOnlyList<object>? candidates) =>
+        new(snapshotId, filters, DeadCandidateLiveness.LiveEdgeKinds, DeadCandidateLiveness.TypeUseEdgeKinds,
+            DeadCandidateLiveness.StrongProvenance, DeadCandidateLiveness.UncertainProvenance,
+            page.CandidateCount, page.DeadCount, page.UncertainCount, page.UnresolvedCount, candidates, page.NextCursor);
+
+    internal record PageResponse(
+        [property: JsonPropertyOrder(-2)] string snapshot_id,
+        object filters,
+        IReadOnlyList<string> incoming_edge_kinds_checked,
+        IReadOnlyList<string> type_use_edge_kinds_checked,
+        IReadOnlyList<string> live_provenance_rank,
+        IReadOnlyList<string> uncertain_provenance,
+        int candidate_count, int dead_count, int uncertain_count, int unresolved_count,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<object>? candidates,
+        string? next_cursor);
+
+    internal sealed record CliResponse : PageResponse
     {
-        var envelope = new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["snapshot_id"] = snapshotId,
-            ["filters"] = filters,
-            ["incoming_edge_kinds_checked"] = DeadCandidateLiveness.LiveEdgeKinds,
-            ["type_use_edge_kinds_checked"] = DeadCandidateLiveness.TypeUseEdgeKinds,
-            ["live_provenance_rank"] = DeadCandidateLiveness.StrongProvenance,
-            ["uncertain_provenance"] = DeadCandidateLiveness.UncertainProvenance,
-            ["candidate_count"] = page.CandidateCount,
-            ["dead_count"] = page.DeadCount,
-            ["uncertain_count"] = page.UncertainCount,
-            ["unresolved_count"] = page.UnresolvedCount
-        };
-        if (includeCandidates)
-            envelope["candidates"] = candidates;
-        envelope["next_cursor"] = page.NextCursor;
-        envelope["freshness"] = freshness;
-        return envelope;
+        internal CliResponse(PageResponse page, object? freshness) : base(page) => this.freshness = freshness;
+
+        [JsonPropertyOrder(1)]
+        public object? freshness { get; }
+    }
+
+    internal sealed record McpResponse : PageResponse
+    {
+        internal McpResponse(PageResponse page, object freshness) : base(page) => this.freshness = freshness;
+
+        [JsonPropertyOrder(-1)]
+        public object freshness { get; }
+
+        [JsonPropertyOrder(-1)]
+        public bool pinned { get; } = true;
     }
 
     internal static List<object> Candidates(DeadCandidatePage page)

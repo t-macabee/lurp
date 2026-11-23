@@ -16,7 +16,8 @@ internal sealed class DiffTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_diff", Title = "Lurp Diff", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_diff", Title = "Lurp Diff", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(DiffResponse))]
     [Description("Compute semantic diff between two snapshots. Both from_snapshot and to_snapshot are required.")]
     public string LurpDiff(
         [McpRequired] string? from_snapshot = null,
@@ -44,24 +45,11 @@ internal sealed class DiffTool
             var freshness = FreshnessJson.Cheap(freshnessStamp);
             var isPinned = string.Equals(toSnapshotId, pinnedSnapshotId, StringComparison.Ordinal);
 
-            var envelope = new
-            {
-                snapshot_id = toSnapshotId,
-                freshness,
-                pinned = isPinned,
-                from_snapshot = fromSnapshotId,
-                to_snapshot = toSnapshotId,
-                change_count = changes.Count,
-                skipped_comparisons = skippedComparisons,
-                changes = changes.Select(static c => new
-                {
-                    change_id = c.ChangeId,
-                    change_type = c.ChangeType,
-                    symbol_id = c.SymbolId,
-                    detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null,
-                    created_at_utc = c.CreatedAtUtc
-                }).ToList()
-            };
+            var rows = changes.Select(static c => new DiffChange(c.ChangeId, c.ChangeType, c.SymbolId,
+                c.DetailJson != null ? JsonSerializer.Deserialize<JsonElement>(c.DetailJson) : null,
+                c.CreatedAtUtc)).ToList();
+            var envelope = new DiffResponse(toSnapshotId, freshness, isPinned, fromSnapshotId, toSnapshotId,
+                changes.Count, skippedComparisons, rows);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);
@@ -73,3 +61,10 @@ internal sealed class DiffTool
             throw new McpProtocolException($"snapshot '{snapshotId}' not found.", McpErrorCode.InvalidParams);
     }
 }
+
+internal sealed record DiffResponse(
+    string snapshot_id, object freshness, bool pinned, string from_snapshot, string to_snapshot,
+    int change_count, int skipped_comparisons, IReadOnlyList<DiffChange> changes);
+
+internal sealed record DiffChange(
+    string change_id, string change_type, string symbol_id, JsonElement? detail, DateTime created_at_utc);

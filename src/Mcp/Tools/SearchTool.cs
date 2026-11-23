@@ -16,7 +16,8 @@ internal sealed class SearchTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_search", Title = "Lurp Search", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_search", Title = "Lurp Search", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(SearchResponse))]
     [Description("Search source or symbols in the pinned snapshot. Type picks the store: source, symbol, or all. Uses FTS5 phrase quoting verbatim and cursor pagination for symbol search. Source snippets keep the whole first match, even if it exceeds snippet_tokens.")]
     public string LurpSearch(
         [McpRequired] string? query = null,
@@ -86,17 +87,12 @@ internal sealed class SearchTool
                     nextCursor = page.NextCursor;
             }
 
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                query,
-                type = typeArg,
-                results,
-                next_cursor = nextCursor
-            };
+            var envelope = new SearchResponse(snapshotId, freshness, pinned: true, query, typeArg, results, nextCursor);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);
 }
+
+internal sealed record SearchResponse(
+    string snapshot_id, object freshness, bool pinned, string query, string type,
+    IReadOnlyList<object> results, string? next_cursor);

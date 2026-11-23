@@ -16,7 +16,8 @@ internal sealed class TimingsTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_timings", Title = "Lurp Timings", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_timings", Title = "Lurp Timings", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(TimingsResponse))]
     [Description("Show step-by-step timing data and snapshot metrics for the pinned snapshot.")]
     public string LurpTimings(
         string? snapshot_id = null,
@@ -26,16 +27,12 @@ internal sealed class TimingsTool
             var built = TimingsPayload.Build(store, snapshotId);
             var freshness = _session.GetFreshnessJson();
 
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                total_ms = built.TotalMs,
-                steps = built.Steps,
-                metrics = built.Metrics
-            };
+            var envelope = new TimingsResponse(snapshotId, freshness, pinned: true, built.TotalMs, built.Steps, built.Metrics);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);
 }
+
+internal sealed record TimingsResponse(
+    string snapshot_id, object freshness, bool pinned, long total_ms,
+    IReadOnlyList<TimingsPayload.StepEntry> steps, IReadOnlyDictionary<string, long> metrics);

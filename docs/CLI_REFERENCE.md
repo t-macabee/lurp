@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. A database location is otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)): pass `--output-dir=` for a specific database, or `--solution=` (or `LURP_SOLUTION_PATH`) to use the default cache location described under [`--mode=index`](#--modeindex). Only `--solution=` and `--output-dir=` have an environment variable; every other required flag has none.
 
-**This document describes the CLI as of <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.13.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.13.0, CLI/MCP contract v8, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -790,6 +790,10 @@ Annotation *creation* remains CLI-only (`--mode=annotate`); *retraction* is
 available from both surfaces (`--mode=retract-annotation` and
 `lurp_retract_annotation`).
 
+Each tool lists its payload properties in `outputSchema`. A successful call
+returns the payload object in `structuredContent` and the same payload as JSON
+text in `content[0].text`. A tool error returns `isError: true` and a text message.
+
 The `required` array in `inputSchema` lists the parameters each tool always needs. If a caller omits one, the tool returns a named error. Tool descriptions state conditional requirements such as the anchor rules for `lurp_context`. The table derives types, defaults and required markers from the tool attributes.
 
 <!-- generated:mcp-tools:table -->
@@ -856,8 +860,7 @@ the tool summarizes or omits the largest manifest parts first.
 `truncated` is true only when this happens, and `detail.manifest.omitted_fields`
 lists each affected part with the reason `summarized` or `budget_exhausted`.
 Freshness and document freshness are returned in full within their own input
-limits. The payload appears in both `structuredContent` and `content[0].text`,
-and client size limits apply to both copies.
+limits. Client size limits apply to both copies of the payload.
 
 `documents` accepts an array of document paths for the per-document freshness
 map. An empty array produces a `null` map. Every entry must be a nonblank string.

@@ -59,7 +59,9 @@ public static class JsonShape
                 {
                     foreach (var prop in element.EnumerateObject())
                     {
-                        if (!FixedKey.IsMatch(prop.Name) && !(surface == "mcp:error" && path == "$" && prop.Name == "isError"))
+                        var isMcpResultKey = path == "$" && (surface, prop.Name) is
+                            ("mcp:error", "isError") or ("mcp:success", "structuredContent");
+                        if (!FixedKey.IsMatch(prop.Name) && !isMcpResultKey)
                         {
                             violations.Add($"{surface} {path}: key '{prop.Name}'");
                             continue; // do not descend into a value with a schema-invalid key

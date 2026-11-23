@@ -16,7 +16,8 @@ internal sealed class DiagnosticsTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_diagnostics", Title = "Lurp Diagnostics", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_diagnostics", Title = "Lurp Diagnostics", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(DiagnosticsResponse))]
     [Description("List diagnostics captured at index time for the pinned snapshot: compiler diagnostics plus any diagnostics from analyzers referenced by the target project (e.g. built-in SDK analyzers like CA1822). IDE-only code-style rules (e.g. IDE0005) are not included even when the target project's own build enables them (e.g. EnforceCodeStyleInBuild plus an .editorconfig severity) — Roslyn's build-time compilation additionally gates IDE0005 behind GenerateDocumentationFile=true, independent of anything Lurp does. For unused-using-directive detection, query the compiler diagnostic instead: severity=hidden, id=CS8019 (\"Unnecessary using directive\") — Lurp always captures this regardless of the target's analyzer/code-style configuration. Filters: document (solution-relative path, not git-relative), project, severity (Hidden, Info, Warning, Error case-insensitive, or \"all\" for every severity including Hidden; default excludes Hidden), id (diagnostic code, e.g. CS8933), include_generated (default false: excludes diagnostics located in obj/**, *.g.cs, *.generated.cs, *.Designer.cs, *ModelSnapshot.cs — the same generated-file patterns every other read tool's include_generated excludes by default). Unknown severity values are rejected with an error instead of returning empty. Keyset pagination via limit/cursor, ordered by diagnostic_id. diagnostic_count is the total match count across all pages, not the page size. start_column/end_column are 0-based (unlike the 1-based start_line/end_line). Reports what the compiler and analyzers said at index time — not re-evaluated, ranked, or deduplicated.")]
     public string LurpDiagnostics(
         string? document = null,
@@ -63,21 +64,15 @@ internal sealed class DiagnosticsTool
 
             var diagnostics = page.Items.Select(SurfacePayloads.DiagnosticRow).ToList();
 
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                document = normalizedDocument,
-                project = projectFilter,
-                severity = severityFilter,
-                id = idFilter,
-                include_generated,
-                diagnostics,
-                diagnostic_count = page.TotalCount,
-                next_cursor = page.NextCursor
-            };
+            var envelope = new DiagnosticsResponse(snapshotId, freshness, pinned: true,
+                normalizedDocument, projectFilter, severityFilter, idFilter, include_generated,
+                diagnostics, page.TotalCount, page.NextCursor);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);
 }
+
+internal sealed record DiagnosticsResponse(
+    string snapshot_id, object freshness, bool pinned, string? document, string? project, string? severity,
+    string? id, bool? include_generated, IReadOnlyList<SurfacePayloads.DiagnosticPayload> diagnostics,
+    int diagnostic_count, string? next_cursor);

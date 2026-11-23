@@ -59,6 +59,7 @@ internal static class McpServeHandler
             .WithStdioServerTransport()
             .WithRequestFilters(filters => filters
                 .AddCallToolFilter(McpArgumentGuard.Filter)
+                .AddCallToolFilter(McpToolResult.Filter)
                 .AddListToolsFilter(McpToolSchema.ListToolsFilter))
             // The cast selects WithTools(IEnumerable<Type>). Without it the generic
             // WithTools<TTool>(TTool target) overload binds the array as one tool instance

@@ -23,7 +23,8 @@ internal sealed class StatusTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_status", Title = "Lurp Status", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_status", Title = "Lurp Status", ReadOnly = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(StatusResponse))]
     [Description("Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). max_bytes (default 40000) bounds the manifest parts only. Over the target, the largest manifest parts are summarized or left out, truncated is true, and detail.manifest.omitted_fields names them. Freshness and document_freshness are returned in full. The payload appears twice on the wire (content[0].text and structuredContent), and client size limits apply to both copies. Pass projects to narrow the manifest to named projects.")]
     public Task<string> LurpStatus(
         string? snapshot_id = null,

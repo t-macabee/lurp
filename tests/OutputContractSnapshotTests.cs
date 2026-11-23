@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
 using Lurp.Parity.Shared;
@@ -458,9 +459,12 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
             TestDatabase.DeleteSolutionCache(unreadableSolution);
         }
 
-        using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", $"--output-dir={fixture.OutputDir}"));
+        var wireAnnotationId = await Annotate("retract-over-stdio");
+        using var server = McpServeProcess.Start(LurpTool.Argv("--mode=serve", "--enable-write-tools",
+            $"--solution={fixture.SolutionPath}", $"--output-dir={fixture.OutputDir}"));
         var timeout = TimeSpan.FromSeconds(30);
         await server.Client.InitializeAsync("output-contract", timeout);
+        await CheckToolResultsOverStdio(server.Client, wireAnnotationId, timeout);
         var missingSymbol = await server.Client.SendAsync("tools/call",
             new { name = "lurp_find_symbol", arguments = new { symbol = "T:Does.Not.Exist|Nope" } }, timeout);
         var unknownArgument = await server.Client.SendAsync("tools/call",
@@ -470,6 +474,61 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
 
         // --- compare with snapshot ---
         EnforceCompletenessThenCompare();
+    }
+
+    private async Task CheckToolResultsOverStdio(McpStdioClient client, long annotationId, TimeSpan timeout)
+    {
+        var calls = new (string Name, object? Arguments)[]
+        {
+            ("lurp_context", new { symbol = fixture.CallerSymbolId }),
+            ("lurp_get_source", new { document = fixture.DocPath, outline = true }),
+            ("lurp_outline", new { document = fixture.DocPath }),
+            ("lurp_navigate", new { file = fixture.NavDocPath, line = fixture.NavLine }),
+            ("lurp_find_symbol", new { symbol = fixture.CallerSymbolId }),
+            ("lurp_search", new { query = "CoreApi" }),
+            ("lurp_impact", new { symbol = fixture.DiffSymbolId }),
+            ("lurp_diff", new { from_snapshot = fixture.SnapshotA, to_snapshot = fixture.SnapshotB }),
+            ("lurp_get_symbol", new { symbol = fixture.CallerSymbolId, view = "all" }),
+            ("lurp_get_annotations", new { symbol = fixture.MethodGroupSymbolId }),
+            ("lurp_diagnostics", new { document = fixture.DocPath }),
+            ("lurp_grep", new { query = "CoreApi." }),
+            ("lurp_status", new { sections = "all" }),
+            ("lurp_timings", null),
+            ("lurp_refresh", null),
+            ("lurp_dead_candidates", null),
+            ("lurp_retract_annotation", new { annotation_id = annotationId }),
+            ("lurp_index", new { strategy = "full" })
+        };
+        var list = await client.SendAsync("tools/list", null, timeout);
+        var schemas = list.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .ToDictionary(tool => tool.GetProperty("name").GetString()!, tool => tool.GetProperty("outputSchema"));
+        Assert.Equal(schemas.Keys.Order(StringComparer.Ordinal), calls.Select(call => call.Name).Order(StringComparer.Ordinal));
+
+        var problems = new List<string>();
+        foreach (var (name, arguments) in calls)
+        {
+            var result = await client.CallToolAsync(name, arguments, timeout);
+            var content = Assert.Single(result.GetProperty("content").EnumerateArray());
+            Assert.Equal("text", content.GetProperty("type").GetString());
+            using var text = JsonDocument.Parse(content.GetProperty("text").GetString()!);
+            var payload = text.RootElement;
+            var schema = schemas[name];
+            var structured = result.GetProperty("structuredContent");
+            var samePayload = structured.ValueKind == JsonValueKind.Object && JsonElement.DeepEquals(payload, structured);
+            if (!samePayload)
+                problems.Add($"{name}: structuredContent must be the same object as the JSON text.");
+
+            if (schema.GetProperty("type").GetString() != "object"
+                || !schema.GetProperty("properties").EnumerateObject().Select(property => property.Name)
+                    .ToHashSet(StringComparer.Ordinal).SetEquals(payload.EnumerateObject().Select(property => property.Name)))
+                problems.Add($"{name}: outputSchema must declare the payload's top-level properties.");
+
+            // The tool snapshots already record the payload fields.
+            var envelope = JsonNode.Parse(result.GetRawText())!.AsObject();
+            envelope["structuredContent"] = new JsonObject();
+            ExtractJsonShape("mcp:success", envelope.ToJsonString());
+        }
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
     // --- helpers ---

@@ -20,7 +20,8 @@ internal sealed class IndexTool
         _storeFactory = storeFactory ?? (static path => new SqliteIndexStore(path));
     }
 
-    [McpServerTool(Name = "lurp_index", Title = "Lurp Index", ReadOnly = false, Destructive = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_index", Title = "Lurp Index", ReadOnly = false, Destructive = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(IndexOperationResponse))]
     [Description("Index or re-index the solution the serve session was started with (`--solution=`). Starts a background run (`strategy` full|incremental, `force` to re-extract identical snapshot). Returns at once with {operation_id,status:running}. Progress is buffered; poll lurp_index with {operation_id} to read it. Cancel by calling lurp_index with {operation_id,cancel:true} (sets cancel_requested:true on a running operation). If cancellation stops the run, later polls report cancelled. Reports the snapshot id the run built or reused, whatever database pin is set. On completion do not auto-pin — use lurp_refresh to advance. While running, other tools keep answering from the old pin.")]
     public string LurpIndex(
         string? strategy = null,

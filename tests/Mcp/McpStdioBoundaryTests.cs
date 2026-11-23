@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Lurp.Shared;
 using Lurp.Parity.Shared;
 
 namespace Lurp.Tests.Mcp;
@@ -12,6 +14,34 @@ public sealed class McpStdioBoundaryTests : IntegrationTestBase
 {
     private void SeedSnapshot() =>
         IndexedDirFixture.Create(1, stalePin: false, out _, out _, outputDir: TestDir);
+
+    [Fact]
+    public async Task Serve_Status_ReportsThePayloadObjectAndKeepsItsJsonText()
+    {
+        SeedSnapshot();
+        var args = new[] { "--mode=serve", $"--output-dir={TestDir}" };
+        using var server = McpServeProcess.Start(LurpTool.Argv(args));
+        var timeout = TimeSpan.FromSeconds(30);
+        await server.Client.InitializeAsync("test", timeout);
+
+        var list = await server.Client.SendAsync("tools/list", null, timeout);
+        var status = list.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .Single(tool => tool.GetProperty("name").GetString() == "lurp_status");
+        var result = await server.Client.CallToolAsync("lurp_status", null, timeout);
+        var content = Assert.Single(result.GetProperty("content").EnumerateArray());
+        var text = content.GetProperty("text").GetString()!;
+        using var payload = JsonDocument.Parse(text);
+
+        var schema = status.GetProperty("outputSchema");
+        var structured = result.GetProperty("structuredContent");
+        Assert.True(schema.GetProperty("properties").TryGetProperty("snapshot_id", out _)
+            && structured.TryGetProperty("snapshot_id", out _),
+            $"Expected snapshot_id in both schema and structured content. Schema: {schema}. Structured content: {structured}");
+        Assert.Equal("object", schema.GetProperty("type").GetString());
+        Assert.Equal("text", content.GetProperty("type").GetString());
+        Assert.True(JsonElement.DeepEquals(payload.RootElement, structured));
+        Assert.Equal(JsonSerializer.Serialize(structured, LurpJsonOptions.Indented), text);
+    }
 
     [Fact]
     public async Task Serve_WithoutWriteTools_ExposesReadToolsOnly_AndSurvivesMalformedInput()

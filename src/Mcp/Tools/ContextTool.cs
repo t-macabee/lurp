@@ -18,7 +18,8 @@ internal sealed class ContextTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_context", Title = "Lurp Context Capsule", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_context", Title = "Lurp Context Capsule", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(ContextToolResponse))]
     [Description("Assemble a context capsule for a symbol or file location. Exactly one of symbol or file+line is required. Intent: inspect | modify | diagnose (default: inspect). Supports tier continuation via tier/cursor. Passing file without line, or line without file, is an error, also when symbol is given.")]
     public string LurpContext(
         string? symbol = null,

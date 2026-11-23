@@ -16,7 +16,8 @@ internal sealed class OutlineTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_outline", Title = "Lurp Outline", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_outline", Title = "Lurp Outline", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(OutlineResponse))]
     [Description("List declarations in a document with 1-based line spans. Ordered by full_start. Supports pagination via limit/cursor and filtering generated declarations. declaration_count is the total match count across all pages, not the page size — use next_cursor for pagination. Compiler-generated members (record Equals, ToString and similar) are not listed.")]
     public string LurpOutline(
         [McpRequired] string? document = null,
@@ -53,17 +54,13 @@ internal sealed class OutlineTool
 
             var declarations = page.Items.Select(SurfacePayloads.OutlineDeclaration).ToList();
 
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                document = normalized,
-                declarations,
-                declaration_count = page.TotalCount,
-                next_cursor = page.NextCursor
-            };
+            var envelope = new OutlineResponse(snapshotId, freshness, pinned: true, normalized,
+                declarations, page.TotalCount, page.NextCursor);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);
 }
+
+internal sealed record OutlineResponse(
+    string snapshot_id, object freshness, bool pinned, string document,
+    IReadOnlyList<SurfacePayloads.OutlineDeclarationPayload> declarations, int declaration_count, string? next_cursor);

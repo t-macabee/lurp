@@ -16,7 +16,8 @@ internal sealed class FindSymbolTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_find_symbol", Title = "Lurp Find Symbol", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_find_symbol", Title = "Lurp Find Symbol", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(McpSymbolResponse))]
     [Description("Resolve a symbol in the pinned snapshot. " + HandlerBootstrap.AcceptedSymbolFormsText + " More than one match is an error.")]
     public string LurpFindSymbol(
         [McpRequired] string? symbol = null,

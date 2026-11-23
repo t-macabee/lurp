@@ -16,7 +16,8 @@ internal sealed class GetSourceTool
         _session = session;
     }
 
-    [McpServerTool(Name = "lurp_get_source", Title = "Lurp Get Source", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "lurp_get_source", Title = "Lurp Get Source", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
+        OutputSchemaType = typeof(GetSourceResponse))]
     [Description("Fetch source text for a document in the pinned snapshot. Supports line windowing: start_line/end_line are 1-based inclusive; context_lines expands symmetrically. When no window is given the whole file is returned. Pass outline=true to include the declaration outline in the same response; compiler-generated members (record Equals, ToString and similar) are not listed.")]
     public string LurpGetSource(
         [McpRequired] string? document = null,
@@ -60,7 +61,7 @@ internal sealed class GetSourceTool
 
             var freshness = _session.GetFreshnessJson();
 
-            object? outlinePayload = null;
+            IReadOnlyList<SurfacePayloads.OutlineDeclarationPayload>? outlinePayload = null;
             string? outlineNextCursor = null;
             int? outlineCount = null;
             if (outline == true)
@@ -81,22 +82,16 @@ internal sealed class GetSourceTool
                 }
             }
 
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                source = slice.Source,
-                document = normalized,
-                start_line = slice.StartLine,
-                end_line = slice.EndLine,
-                total_lines = slice.TotalLines,
-                truncated = slice.Truncated,
-                outline = outlinePayload,
-                outline_next_cursor = outlineNextCursor,
-                outline_declaration_count = outlineCount
-            };
+            var envelope = new GetSourceResponse(snapshotId, freshness, pinned: true,
+                slice.Source, normalized, slice.StartLine, slice.EndLine, slice.TotalLines, slice.Truncated,
+                outlinePayload, outlineNextCursor, outlineCount);
 
             return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }, cancellationToken);
 }
+
+internal sealed record GetSourceResponse(
+    string snapshot_id, object freshness, bool pinned, string source, string document,
+    int start_line, int end_line, int total_lines, bool truncated,
+    IReadOnlyList<SurfacePayloads.OutlineDeclarationPayload>? outline,
+    string? outline_next_cursor, int? outline_declaration_count);
