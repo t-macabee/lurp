@@ -306,7 +306,7 @@ entry, not a new extractor.
 | `di_options` | Options-pattern registration Configure<T>/AddOptions<T> is not fully modeled: the options type is resolved but the configuration-binding semantics are not captured. |
 | `di_external_extension` | An external IServiceCollection extension method was detected but could not be analyzed: the method lives outside the compilation so its registration semantics are unknown. |
 | `masstransit_consumer` | MassTransit consumer registration is not modeled: no adapter exists to emit consumer-wiring edges for AddConsumer or endpoint configuration. |
-| `ef_convention` | The index does not model all EF Core conventions. EF Core can use fields, properties, property accessors and instance constructors of mapped entities by reflection. |
+| `ef_convention` | The index does not model all EF Core conventions. EF Core can use fields, properties and property accessors of an EF-mapped entity or a base class of one by reflection. Instance constructors must belong to the entity type itself. |
 | `shape_similarity` | Semantic sibling similarity is not modeled: consistency audits requiring comparison against 'similar' implementations are unsupported. Use the proved neighborhood instead — implementations of a shared interface, shared base types and overrides, callers/callees, and containing-declaration siblings. |
 | `mediatr_stream_handler` | MediatR stream handler pattern (IStreamRequestHandler or IAsyncStreamHandler) is not modeled: the implementing type was detected but no Handles edge was emitted. |
 | `mediatr_pipeline_behavior` | MediatR pipeline behavior (IPipelineBehavior) is not modeled: the implementing type was detected but no edge was emitted. Pipeline behaviors affect all requests passing through the pipeline. |

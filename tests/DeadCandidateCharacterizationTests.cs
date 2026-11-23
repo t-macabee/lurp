@@ -2738,6 +2738,79 @@ internal sealed class Serialized
         }
     }
 
+    [Theory]
+    [InlineData("M:TestProject.PaymentBase.set_Version(System.Int32)", DeadCandidateStatus.UncertainDead, DeadCandidateReason.EfConvention)]
+    [InlineData("F:TestProject.PaymentBase._secret", DeadCandidateStatus.UncertainDead, DeadCandidateReason.EfConvention)]
+    [InlineData("M:TestProject.RootPayment.set_Revision(System.Int32)", DeadCandidateStatus.UncertainDead, DeadCandidateReason.EfConvention)]
+    [InlineData("M:TestProject.PaymentBase.#ctor(System.Int32)", DeadCandidateStatus.ProvedDead, DeadCandidateReason.NoIncomingLiveEdges)]
+    [InlineData("M:TestProject.Unmapped.set_Version(System.Int32)", DeadCandidateStatus.ProvedDead, DeadCandidateReason.NoIncomingLiveEdges)]
+    public async Task EfConvention_ChecksMembersOnUnmappedBaseClasses(
+        string member, string expectedStatus, string expectedReason)
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Entities.cs"] = """
+                              using Microsoft.EntityFrameworkCore;
+
+                              namespace TestProject;
+
+                              public abstract class RootPayment
+                              {
+                                  public int Revision { get; private set; }
+                              }
+
+                              public abstract class PaymentBase : RootPayment
+                              {
+                                  protected PaymentBase() { }
+                                  private PaymentBase(int unused) { }
+                                  private int _secret;
+                                  public int Version { get; private set; }
+                              }
+
+                              public sealed class Payment : PaymentBase
+                              {
+                                  public int Id { get; set; }
+                              }
+
+                              public class Unmapped
+                              {
+                                  public int Version { get; private set; }
+                              }
+
+                              internal class AppDbContext : DbContext
+                              {
+                                  protected override void OnModelCreating(ModelBuilder mb)
+                                  {
+                                      mb.Entity<Payment>();
+                                  }
+                              }
+                              """
+        }, packageReferences: ["Microsoft.EntityFrameworkCore@10.0.1"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var paymentId = ResolveSymbolId(snapshotId, "global::TestProject.Payment");
+            Assert.Contains(store.GetIncomingEdges(snapshotId, paymentId), e => e.Kind == nameof(EdgeKind.MapsTo));
+            foreach (var type in new[] { "PaymentBase", "RootPayment", "Unmapped" })
+            {
+                var typeId = ResolveSymbolId(snapshotId, $"global::TestProject.{type}");
+                Assert.DoesNotContain(store.GetIncomingEdges(snapshotId, typeId), e => e.Kind == nameof(EdgeKind.MapsTo));
+            }
+
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+            var candidate = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == member);
+            Assert.Equal((expectedStatus, expectedReason), (candidate.Status, candidate.Reason));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     [Fact]
     public async Task TypeUsedOnlyInBodyOrSignature_IsLive()
     {

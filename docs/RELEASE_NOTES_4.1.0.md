@@ -4,7 +4,7 @@ Run a full index after the upgrade.
 
 ## EF Core property accessors
 
-Lurp gives non-public property accessors of mapped EF Core entities convention protection. This prevents a `proved_dead` verdict when EF Core can use the accessor.
+Lurp gives non-public property accessors of mapped EF Core entities convention protection. This prevents a `proved_dead` verdict when EF Core can use the accessor. This protection also covers fields, properties and accessors that a mapped entity inherits from a class that is not mapped.
 
 ## Inherited EF Core entity sets
 

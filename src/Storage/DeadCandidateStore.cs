@@ -92,7 +92,7 @@ internal sealed class DeadCandidateStore
         var allCandidates = FetchCandidateRows(snapshotId);
 
         // Fetch auxiliary persisted facts once
-        var mapsToTargets = FetchMapsToTargets(snapshotId);
+        var efTypes = FetchEfConventionTypes(snapshotId);
         var serializationOptInTargets = FetchSerializationOptInTargets(snapshotId);
         var assemblyScanOwners = FetchAssemblyScanOwners(snapshotId);
         var bindingRecords = FetchBindingIncompleteness(snapshotId);
@@ -251,7 +251,7 @@ internal sealed class DeadCandidateStore
             var verdict = ClassifyCandidate(
                 cand, decl, incoming, includePublic, includeGenerated, includeTests,
                 overlapsBinding, bindingRecords, projectFacts,
-                factsById, subtreeByType, mapsToTargets, serializationOptInTargets, assemblyScanOwners);
+                factsById, subtreeByType, efTypes, serializationOptInTargets, assemblyScanOwners);
             if (verdict is null)
                 continue;
 
@@ -337,7 +337,7 @@ internal sealed class DeadCandidateStore
         ProjectFacts projectFacts,
         Dictionary<string, CandidateFacts> factsById,
         Dictionary<string, TypeSubtree> subtreeByType,
-        HashSet<string> mapsToTargets,
+        EfConventionTypes efTypes,
         HashSet<string> serializationOptInTargets,
         Dictionary<string, List<string>>? assemblyScanOwners = null)
     {
@@ -433,7 +433,7 @@ internal sealed class DeadCandidateStore
         {
             // B34: the candidate's own EF or serialization verdict comes first, then the
             // verdict inherited from its associated symbol or descendants.
-            if (TryConventionVerdict(cand, factsById, subtreeByType, mapsToTargets, serializationOptInTargets, out var conventionReason, out var conventionSymbolId))
+            if (TryConventionVerdict(cand, factsById, subtreeByType, efTypes, serializationOptInTargets, out var conventionReason, out var conventionSymbolId))
             {
                 status = DeadCandidateStatus.UncertainDead;
                 reason = conventionReason;
@@ -450,16 +450,43 @@ internal sealed class DeadCandidateStore
         return new CandidateVerdict(status, reason, uncertainties);
     }
 
-    private HashSet<string> FetchMapsToTargets(string snapshotId)
+    internal sealed record EfConventionTypes(HashSet<string> DirectTargets, HashSet<string> MemberTypes);
+
+    private EfConventionTypes FetchEfConventionTypes(string snapshotId)
     {
         using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT DISTINCT target_symbol_id FROM edges WHERE snapshot_id = @snapshotId AND kind = @kind;";
+        cmd.CommandText = """
+            WITH RECURSIVE
+                direct_targets(symbol_id) AS MATERIALIZED (
+                    SELECT DISTINCT target_symbol_id
+                    FROM edges
+                    WHERE snapshot_id = @snapshotId AND kind = @mapsTo
+                ),
+                member_types(symbol_id) AS (
+                    SELECT symbol_id FROM direct_targets
+                    UNION
+                    SELECT e.target_symbol_id
+                    FROM member_types m
+                    JOIN edges e ON e.source_symbol_id = m.symbol_id
+                    WHERE e.snapshot_id = @snapshotId AND e.kind = @inherits
+                )
+            SELECT symbol_id, symbol_id IN (SELECT symbol_id FROM direct_targets)
+            FROM member_types;
+            """;
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-        cmd.Parameters.AddWithValue("@kind", nameof(EdgeKind.MapsTo));
-        var set = new HashSet<string>(StringComparer.Ordinal);
+        cmd.Parameters.AddWithValue("@mapsTo", nameof(EdgeKind.MapsTo));
+        cmd.Parameters.AddWithValue("@inherits", nameof(EdgeKind.Inherits));
+        var directTargets = new HashSet<string>(StringComparer.Ordinal);
+        var memberTypes = new HashSet<string>(StringComparer.Ordinal);
         using var reader = cmd.ExecuteReader();
-        while (reader.Read()) set.Add(reader.GetString(0));
-        return set;
+        while (reader.Read())
+        {
+            var symbolId = reader.GetString(0);
+            memberTypes.Add(symbolId);
+            if (reader.GetBoolean(1))
+                directTargets.Add(symbolId);
+        }
+        return new EfConventionTypes(directTargets, memberTypes);
     }
 
     private HashSet<string> FetchSerializationOptInTargets(string snapshotId)
@@ -961,10 +988,11 @@ internal sealed class DeadCandidateStore
         return false;
     }
 
-    private static bool IsEfPrivateMember(CandidateFacts cand, HashSet<string> mapsToTargets)
+    private static bool IsEfPrivateMember(CandidateFacts cand, EfConventionTypes efTypes)
     {
         // EF Core can use a property accessor by reflection even if the property is public.
         var isPropertyAccessor = cand.AccessorKind is "get" or "set" or "init";
+        var isInstanceConstructor = PublicSurface.IsInstanceConstructor(cand.Kind, cand.Row.DocCommentId);
         if (isPropertyAccessor)
         {
             if (cand.Accessibility is not ("Private" or "PrivateProtected" or "ProtectedAndInternal" or "Internal"))
@@ -973,7 +1001,7 @@ internal sealed class DeadCandidateStore
         else
         {
             if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)) &&
-                !PublicSurface.IsInstanceConstructor(cand.Kind, cand.Row.DocCommentId))
+                !isInstanceConstructor)
                 return false;
             if (cand.Accessibility is not ("Private" or "PrivateProtected"))
                 return false;
@@ -982,7 +1010,8 @@ internal sealed class DeadCandidateStore
         var memberId = isPropertyAccessor ? cand.AssociatedSymbolId ?? cand.SymbolId : cand.SymbolId;
         var enclosing = SymbolId.DeriveContainingTypeSymbolId(memberId);
         if (enclosing == null) return false;
-        return mapsToTargets.Contains(enclosing);
+        var eligibleTypes = isInstanceConstructor ? efTypes.DirectTargets : efTypes.MemberTypes;
+        return eligibleTypes.Contains(enclosing);
     }
 
     private static bool IsSerializationConvention(CandidateFacts cand, HashSet<string> serializationOptInTargets)
@@ -1004,7 +1033,7 @@ internal sealed class DeadCandidateStore
         CandidateFacts cand,
         Dictionary<string, CandidateFacts> factsById,
         Dictionary<string, TypeSubtree> subtreeByType,
-        HashSet<string> mapsToTargets,
+        EfConventionTypes efTypes,
         HashSet<string> serializationOptInTargets,
         out string reason,
         out string symbolId)
@@ -1012,7 +1041,7 @@ internal sealed class DeadCandidateStore
         if (cand.AssociatedSymbolId != null)
         {
             if (factsById.TryGetValue(cand.AssociatedSymbolId, out var associated) &&
-                TryConvention(associated, mapsToTargets, serializationOptInTargets, out reason))
+                TryConvention(associated, efTypes, serializationOptInTargets, out reason))
             {
                 symbolId = cand.AssociatedSymbolId;
                 return true;
@@ -1025,7 +1054,7 @@ internal sealed class DeadCandidateStore
             foreach (var memberId in subtree.Descendants)
             {
                 if (factsById.TryGetValue(memberId, out var member) &&
-                    TryConvention(member, mapsToTargets, serializationOptInTargets, out reason))
+                    TryConvention(member, efTypes, serializationOptInTargets, out reason))
                 {
                     symbolId = memberId;
                     return true;
@@ -1045,27 +1074,27 @@ internal sealed class DeadCandidateStore
         CandidateFacts cand,
         Dictionary<string, CandidateFacts> factsById,
         Dictionary<string, TypeSubtree> subtreeByType,
-        HashSet<string> mapsToTargets,
+        EfConventionTypes efTypes,
         HashSet<string> serializationOptInTargets,
         out string reason,
         out string symbolId)
     {
-        if (TryConvention(cand, mapsToTargets, serializationOptInTargets, out reason))
+        if (TryConvention(cand, efTypes, serializationOptInTargets, out reason))
         {
             symbolId = cand.SymbolId;
             return true;
         }
 
-        return TryInheritedConvention(cand, factsById, subtreeByType, mapsToTargets, serializationOptInTargets, out reason, out symbolId);
+        return TryInheritedConvention(cand, factsById, subtreeByType, efTypes, serializationOptInTargets, out reason, out symbolId);
     }
 
     private static bool TryConvention(
         CandidateFacts cand,
-        HashSet<string> mapsToTargets,
+        EfConventionTypes efTypes,
         HashSet<string> serializationOptInTargets,
         out string reason)
     {
-        if (IsEfPrivateMember(cand, mapsToTargets))
+        if (IsEfPrivateMember(cand, efTypes))
         {
             reason = DeadCandidateReason.EfConvention;
             return true;
@@ -1192,7 +1221,7 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakeEfConventionUncertainty(string symbolId)
     {
-        return new DeadCandidateUncertainty([symbolId], "ef_convention", "The containing type is an EF-mapped entity (a MapsTo target). EF Core can use its fields, properties, property accessors and instance constructors by reflection. The index does not track all of these uses. See DeclaredBoundaries.ef_convention.", "ef_convention");
+        return new DeadCandidateUncertainty([symbolId], "ef_convention", "EF Core can use fields, properties and property accessors of an EF-mapped entity or a base class of one by reflection. Instance constructors must belong to the entity type itself. The index does not track all of these uses. See DeclaredBoundaries.ef_convention.", "ef_convention");
     }
 
     private static DeadCandidateUncertainty MakeSerializationConventionUncertainty(string symbolId)
