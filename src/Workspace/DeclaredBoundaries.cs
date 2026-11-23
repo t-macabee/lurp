@@ -26,8 +26,8 @@ internal static class DeclaredBoundaries
         ),
         new(
             "ef_convention",
-            "EF Core model conventions beyond query filters and unique indexes (e.g. IsRequired, HasMaxLength, " +
-            "HasDefaultSchema) are not modeled."
+            "The index does not model all EF Core conventions. EF Core can use fields, properties, " +
+            "property accessors and instance constructors of mapped entities by reflection."
         ),
         new(
             "shape_similarity",

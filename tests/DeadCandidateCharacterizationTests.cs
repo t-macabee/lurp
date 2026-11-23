@@ -2631,6 +2631,7 @@ internal sealed class Serialized
                                   private int Hidden { get; set; }
                                   private void Hook() { }
                                   internal int Id { get; set; }
+                                  public int ProtectedValue { get; protected set; }
                               }
 
                               internal class AppDbContext : DbContext
@@ -2670,6 +2671,66 @@ internal sealed class Serialized
             var hook = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Order.Hook");
             Assert.Equal(DeadCandidateStatus.ProvedDead, hook.Status);
             Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, hook.Reason);
+
+            // Step 5 checks declared accessibility before step 9 checks EF conventions.
+            const string protectedSetter = "M:TestProject.Order.set_ProtectedValue(System.Int32)";
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == protectedSetter);
+            var publicMethods = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", true, false, false, 200, null);
+            var setter = Assert.Single(publicMethods.Candidates, c => c.SymbolId.Split('|')[0] == protectedSetter);
+            Assert.Equal(DeadCandidateStatus.UncertainDead, setter.Status);
+            Assert.Equal(DeadCandidateReason.PublicSurface, setter.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Theory]
+    [InlineData("set_Id(System.Int32)")]
+    [InlineData("set_Quantity(System.Int32)")]
+    [InlineData("get_ReadOnlyInCode")]
+    [InlineData("set_InternalValue(System.Int32)")]
+    public async Task EfConvention_CoversNonPublicPropertyAccessors(string member)
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Entities.cs"] = """
+                              using Microsoft.EntityFrameworkCore;
+
+                              namespace TestProject;
+
+                              public class Order
+                              {
+                                  public int Id { get; private set; }
+                                  public int Quantity { get; private init; }
+                                  public int ReadOnlyInCode { private get; set; }
+                                  public int InternalValue { get; internal set; }
+                              }
+
+                              internal class AppDbContext : DbContext
+                              {
+                                  protected override void OnModelCreating(ModelBuilder mb)
+                                  {
+                                      mb.Entity<Order>();
+                                  }
+                              }
+                              """
+        }, packageReferences: ["Microsoft.EntityFrameworkCore@10.0.1"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var orderId = ResolveSymbolId(snapshotId, "global::TestProject.Order");
+            Assert.Contains(store.GetIncomingEdges(snapshotId, orderId), e => e.Kind == nameof(EdgeKind.MapsTo));
+
+            var methods = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+            var accessor = Assert.Single(methods.Candidates, c => c.SymbolId.Split('|')[0] == $"M:TestProject.Order.{member}");
+            Assert.Equal((DeadCandidateStatus.UncertainDead, DeadCandidateReason.EfConvention), (accessor.Status, accessor.Reason));
+            Assert.Equal(accessor.SymbolId, Assert.Single(Assert.Single(accessor.Uncertainties).SymbolIds));
         }
         finally
         {

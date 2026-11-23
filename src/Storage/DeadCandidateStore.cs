@@ -963,13 +963,24 @@ internal sealed class DeadCandidateStore
 
     private static bool IsEfPrivateMember(CandidateFacts cand, HashSet<string> mapsToTargets)
     {
-        // D52: EF Core binds/materializes fields, properties and instance constructors by reflection;
-        // ordinary methods follow the normal ladder.
-        if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)) && !PublicSurface.IsInstanceConstructor(cand.Kind, cand.Row.DocCommentId))
-            return false;
-        if (cand.Accessibility is not ("Private" or "PrivateProtected"))
-            return false;
-        var enclosing = SymbolId.DeriveContainingTypeSymbolId(cand.SymbolId);
+        // EF Core can use a property accessor by reflection even if the property is public.
+        var isPropertyAccessor = cand.AccessorKind is "get" or "set" or "init";
+        if (isPropertyAccessor)
+        {
+            if (cand.Accessibility is not ("Private" or "PrivateProtected" or "ProtectedAndInternal" or "Internal"))
+                return false;
+        }
+        else
+        {
+            if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)) &&
+                !PublicSurface.IsInstanceConstructor(cand.Kind, cand.Row.DocCommentId))
+                return false;
+            if (cand.Accessibility is not ("Private" or "PrivateProtected"))
+                return false;
+        }
+
+        var memberId = isPropertyAccessor ? cand.AssociatedSymbolId ?? cand.SymbolId : cand.SymbolId;
+        var enclosing = SymbolId.DeriveContainingTypeSymbolId(memberId);
         if (enclosing == null) return false;
         return mapsToTargets.Contains(enclosing);
     }
@@ -1181,7 +1192,7 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakeEfConventionUncertainty(string symbolId)
     {
-        return new DeadCandidateUncertainty([symbolId], "ef_convention", "EF Core model conventions beyond query filters and indexes are not modeled: the containing type is an EF-mapped entity (MapsTo target) and the member is a field, property or constructor that EF Core can bind or materialize by reflection with no Writes edge. See DeclaredBoundaries.ef_convention.", "ef_convention");
+        return new DeadCandidateUncertainty([symbolId], "ef_convention", "The containing type is an EF-mapped entity (a MapsTo target). EF Core can use its fields, properties, property accessors and instance constructors by reflection. The index does not track all of these uses. See DeclaredBoundaries.ef_convention.", "ef_convention");
     }
 
     private static DeadCandidateUncertainty MakeSerializationConventionUncertainty(string symbolId)
