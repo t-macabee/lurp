@@ -15,7 +15,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     private const string IndexBuilderGenericMetadataName = "Microsoft.EntityFrameworkCore.Metadata.Builders.IndexBuilder`1";
 
     public string Name => "EF Core";
-    public string Version => "efcore-v2";
+    public string Version => "efcore-v3";
     public string Description => "Entity Framework Core edges (DbSets, entity mappings)";
 
     /// <remarks>
@@ -58,9 +58,9 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (dbContextId == null)
                 continue;
 
-            ExtractDbSetProperties(type, dbContextId, ctx);
-
             var anchorLocation = ctx.Adapter.LocationResolver.Resolve(type);
+            ExtractDbSetProperties(type, dbContextId, anchorLocation, ctx);
+
             foreach (var method in type.GetMembers().OfType<IMethodSymbol>())
             {
                 if (!OverridesOnModelCreating(method))
@@ -82,24 +82,34 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         return false;
     }
 
-    private static void ExtractDbSetProperties(INamedTypeSymbol type, string dbContextId, EfEmitContext ctx)
+    private static void ExtractDbSetProperties(
+        INamedTypeSymbol type,
+        string dbContextId,
+        (string? path, int? sl, int? sc, int? el, int? ec) anchorLocation,
+        EfEmitContext ctx)
     {
-        foreach (var member in type.GetMembers())
+        for (var current = type;
+             current != null && !FrameworkTypes.Is(current, DbContextMetadataName);
+             current = current.BaseType)
         {
-            if (member is not IPropertySymbol prop ||
-                prop.Type is not INamedTypeSymbol propType ||
-                !FrameworkTypes.Is(propType, DbSetMetadataName) ||
-                propType.TypeArguments is not [INamedTypeSymbol entityType])
-                continue;
+            var inherited = !SymbolEqualityComparer.Default.Equals(current, type);
+            foreach (var prop in current.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (prop.IsStatic || prop.IsIndexer ||
+                    (inherited && prop.DeclaredAccessibility == Accessibility.Private) ||
+                    prop.Type is not INamedTypeSymbol propType ||
+                    !FrameworkTypes.Is(propType, DbSetMetadataName) ||
+                    propType.TypeArguments is not [INamedTypeSymbol entityType])
+                    continue;
 
-            var entityTypeId = ctx.Adapter.MakeSymbolId(entityType);
-            if (entityTypeId == null)
-                continue;
+                var entityTypeId = ctx.Adapter.MakeSymbolId(entityType);
+                if (entityTypeId == null)
+                    continue;
 
-            var propId = ctx.Adapter.MakeSymbolId(prop);
-            var sourceId = propId ?? dbContextId;
-
-            AddMapsToEdge(sourceId, entityTypeId, ctx, ctx.Adapter.LocationResolver.Resolve(prop));
+                var propId = inherited ? null : ctx.Adapter.MakeSymbolId(prop);
+                var location = propId == null ? anchorLocation : ctx.Adapter.LocationResolver.Resolve(prop);
+                AddMapsToEdge(propId ?? dbContextId, entityTypeId, ctx, location);
+            }
         }
     }
 

@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.13.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -185,7 +185,7 @@ is the executable form of these rules for the kinds that the golden compares.
 | `RoutesTo` | An ASP.NET Core route (`route://<METHOD> /<template>`, tokens and overrides resolved, `ANY` without a method constraint) reaches a controller action. | route node → action method | `framework_derived` |
 | `Registers` | A dependency-injection registration binds a service to an implementation. A registration without an implementation registers the service type itself. | registering member or service type → implementation type; interface → class for a Scrutor scan; or the runtime-unknown node or an assembly-scan placeholder | `framework_derived`; `convention` for a Scrutor scan; `runtime_unknown` for a registration that Lurp cannot read |
 | `Handles` | A MediatR handler handles a request or a notification; target = the method that implements the interface's `Handle` (explicit, inherited and overloaded implementations included). | request type → handler method | `framework_derived` |
-| `MapsTo` | EF Core maps an entity type (a `DbSet`, a configuration, a model builder call). | context, property or configuration → entity type | `framework_derived` |
+| `MapsTo` | EF Core maps an entity type through a declared or inherited `DbSet`, a configuration or a model builder call. | context, property or configuration → entity type | `framework_derived` |
 | `TestedBy` | A test method covers a production type; the test reaches the type through its body, the helpers of the test assembly, its class constructor, initializers and setup methods. | production type → test method | `framework_derived` |
 | `ReflectionTypeRef` | A `typeof(T)` names a type. | owner → type | `compiler_proved` |
 | `ReflectionMemberRef` | A `nameof` names a member, and each member of its receiver chain. | owner → member | `compiler_proved` |

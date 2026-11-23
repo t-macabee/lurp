@@ -724,6 +724,49 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task EfCoreAdapter_InheritedGenericDbSetsMapOnlySolutionEntities()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["BaseContext.cs"] = """
+                                     using Microsoft.EntityFrameworkCore;
+
+                                     namespace App;
+
+                                     public class BaseContext<T> : DbContext where T : class
+                                     {
+                                         public DbSet<T> Items { get; set; } = null!;
+                                         public DbSet<System.Tuple<int>> ExternalItems { get; set; } = null!;
+                                         private DbSet<HiddenWidget> PrivateItems { get; set; } = null!;
+                                         public static DbSet<HiddenWidget> StaticItems { get; set; } = null!;
+                                     }
+
+                                     public class IntermediateContext<T> : BaseContext<T> where T : class;
+                                     public class HiddenWidget;
+                                     """,
+                ["AppContext.cs"] = """
+                                    namespace App;
+
+                                    public class AppContext : IntermediateContext<Widget>;
+                                    public class Widget;
+                                    """
+            },
+            ["Microsoft.EntityFrameworkCore@10.0.1"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var contextId = ResolveSymbolId(snapshotId, "global::App.AppContext");
+        var mapsTo = QueryEdges(snapshotId, "MapsTo", Provenance.FrameworkDerived);
+        var edge = Assert.Single(mapsTo, e => e.SourceSymbolId == contextId);
+        Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Widget"), edge.TargetSymbolId);
+        Assert.EndsWith("AppContext.cs", edge.SourceDocumentPath, StringComparison.Ordinal);
+        Assert.Equal(2, edge.SourceStartLine);
+        Assert.DoesNotContain(mapsTo, e => e.TargetSymbolId.Contains("System.Tuple", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task EfCoreAdapter_HasQueryFilterProducesQueryFilterAnnotation()
     {
         CreateProject("App",

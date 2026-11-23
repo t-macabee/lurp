@@ -8,7 +8,7 @@ internal static class VersionConstants
     // Move this value when any extraction output changes, and move the string of each extractor
     // whose rows change (ExtractorConstants, an adapter's Version). ExtractorVersionGateTests and
     // tests/Snapshots/extractor-versions.txt enforce the rule (VERSIONING.md, D103).
-    internal const string ExtractorVersion = "1.12.0";
+    internal const string ExtractorVersion = "1.13.0";
 
     // The csproj <Version> is the one literal of the tool version (D105). The SDK copies it into
     // AssemblyInformationalVersionAttribute and appends "+<commit>" when it builds a git checkout.

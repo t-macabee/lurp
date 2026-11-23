@@ -33,3 +33,10 @@ public class BlogConfiguration : IEntityTypeConfiguration<Blog>
         builder.HasMany(b => b.Posts).WithOne(p => p.Blog);
     }
 }
+
+public class BaseDbContext<TEntity> : DbContext where TEntity : class
+{
+    public DbSet<TEntity> Entities { get; set; } = null!;
+}
+
+public class PostsContext : BaseDbContext<Post>;
