@@ -51,10 +51,12 @@ public abstract class IntegrationTestBase : IDisposable
         string[]? projectReferences = null,
         string[]? frameworkReferences = null,
         IReadOnlyDictionary<string, string>? msbuildProperties = null,
-        string? targetFramework = "net10.0")
+        string? targetFramework = "net10.0",
+        IReadOnlyList<string>? metadataReferences = null)
     {
         WriteSolution(TestDir, projectName, sourceFiles,
-            packageReferences, projectReferences, frameworkReferences, msbuildProperties, targetFramework);
+            packageReferences, projectReferences, frameworkReferences, msbuildProperties, targetFramework,
+            metadataReferences);
     }
 
     /// <summary>
@@ -71,7 +73,8 @@ public abstract class IntegrationTestBase : IDisposable
         string[]? projectReferences = null,
         string[]? frameworkReferences = null,
         IReadOnlyDictionary<string, string>? msbuildProperties = null,
-        string? targetFramework = "net10.0")
+        string? targetFramework = "net10.0",
+        IReadOnlyList<string>? metadataReferences = null)
     {
         var solutionPath = Path.Combine(solutionDir, "Test.slnx");
         var projDir = Path.Combine(solutionDir, "src", projectName);
@@ -118,6 +121,19 @@ public abstract class IntegrationTestBase : IDisposable
             sb.AppendLine("  <ItemGroup>");
             foreach (var reference in projectReferences)
                 sb.AppendLine(CultureInfo.InvariantCulture, $"    <ProjectReference Include=\"..\\{reference}\\{reference}.csproj\" />");
+            sb.AppendLine("  </ItemGroup>");
+        }
+
+        if (metadataReferences is { Count: > 0 })
+        {
+            sb.AppendLine("  <ItemGroup>");
+            foreach (var reference in metadataReferences)
+            {
+                sb.AppendLine(CultureInfo.InvariantCulture, $"    <Reference Include=\"{Path.GetFileNameWithoutExtension(reference)}\">");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"      <HintPath>{reference}</HintPath>");
+                sb.AppendLine("    </Reference>");
+            }
+
             sb.AppendLine("  </ItemGroup>");
         }
 

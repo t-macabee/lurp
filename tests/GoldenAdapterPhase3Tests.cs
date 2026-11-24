@@ -1,5 +1,7 @@
 using Lurp.Adapters;
 using Lurp.Storage;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Lurp.Tests;
 
@@ -10,7 +12,12 @@ public sealed partial class GoldenAdapterTests
     {
         const string entities = """
             using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
             namespace App;
+            public static class BuilderExtensions
+            {
+                public static EntityTypeBuilder Mapped(this EntityTypeBuilder builder, string table) => builder;
+            }
             public class Root
             {
                 public int Id { get; set; }
@@ -19,6 +26,9 @@ public sealed partial class GoldenAdapterTests
                 public List<Tag> Tags { get; set; } = [];
                 public Money Price { get; set; } = null!;
                 public OwnedDetail Detail { get; set; } = null!;
+                public ReadOnlyDetail ReadOnlyOwned { get; } = new();
+                public LambdaOwned LambdaOwned { get; } = new();
+                public LambdaHidden LambdaIgnored { get; set; } = null!;
                 [System.ComponentModel.DataAnnotations.Schema.NotMapped]
                 public Hidden Skipped { get; set; } = null!;
                 public Ignored IgnoreMe { get; set; } = null!;
@@ -29,6 +39,9 @@ public sealed partial class GoldenAdapterTests
             public class Tag;
             public class Money;
             [Owned] public class OwnedDetail;
+            [Owned] public class ReadOnlyDetail;
+            public class LambdaOwned;
+            public class LambdaHidden;
             public class Hidden;
             public class Ignored;
             public class TypeOfEntity;
@@ -51,6 +64,11 @@ public sealed partial class GoldenAdapterTests
                         root.OwnsMany<Tag>(nameof(Root.Tags));
                         root.ComplexProperty(x => x.Price);
                         root.Ignore(x => x.IgnoreMe);
+                        model.Entity(typeof(Root), e =>
+                        {
+                            e.Mapped("Roots").Ignore(nameof(Root.LambdaIgnored));
+                            e.Mapped("Roots").OwnsOne(nameof(LambdaOwned), nameof(Root.LambdaOwned));
+                        });
                     }
                 }
                 """,
@@ -73,7 +91,7 @@ public sealed partial class GoldenAdapterTests
         var initial = await RunFullIndexAsync(DbPath);
         var mappings = QueryEdges(initial, "MapsTo", Provenance.FrameworkDerived);
         var context = ResolveSymbolId(initial, "global::App.AppContext");
-        foreach (var name in new[] { "Root", "Nav", "Leaf", "Address", "Tag", "Money", "OwnedDetail", "TypeOfEntity" })
+        foreach (var name in new[] { "Root", "Nav", "Leaf", "Address", "Tag", "Money", "OwnedDetail", "ReadOnlyDetail", "LambdaOwned", "TypeOfEntity" })
         {
             var id = ResolveSymbolId(initial, "global::App." + name);
             Assert.Contains(mappings, e => e.SourceSymbolId == context && e.TargetSymbolId == id &&
@@ -92,6 +110,8 @@ public sealed partial class GoldenAdapterTests
         Assert.DoesNotContain(mappings, e => e.TargetSymbolId.Contains(":App.Hidden|", StringComparison.Ordinal));
         Assert.DoesNotContain(mappings, e => (e.SourceSymbolId == context || e.SourceSymbolId == caller) &&
             e.TargetSymbolId.Contains(":App.Ignored|", StringComparison.Ordinal));
+        Assert.DoesNotContain(mappings, e => (e.SourceSymbolId == context || e.SourceSymbolId == caller) &&
+            e.TargetSymbolId.Contains(":App.LambdaHidden|", StringComparison.Ordinal));
 
         WriteFile("App", "Entities.cs",
             entities.Replace("public Leaf Child { get; set; } = null!;", "public Replacement Child { get; set; } = null!;")
@@ -191,6 +211,84 @@ public sealed partial class GoldenAdapterTests
     }
 
     [Fact]
+    public async Task Phase3_AspNetCore_ExternalHttpVerbAttribute_ReadsArrayConstructorArguments()
+    {
+        var externalAssembly = EmitExternalHttpVerbAssembly();
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Web.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                using External;
+                namespace App;
+                [Route("api/[controller]")]
+                public class DemoController : ControllerBase
+                {
+                    [CustomVerb(new[] { "PURGE" }, "cache/{id}")]
+                    public int Purge(int id) => id;
+                }
+                """
+        }, frameworkReferences: [AspNetCoreFramework], metadataReferences: [externalAssembly]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var purge = ResolveSymbolId(snapshot, "global::App.DemoController.Purge");
+        var route = Assert.Single(QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived),
+            e => e.TargetSymbolId == purge);
+        Assert.Equal("route://PURGE /api/Demo/cache/{id}", route.SourceSymbolId);
+    }
+
+    /// <summary>
+    ///     Emits a metadata-only assembly whose custom verb attribute chains an array
+    ///     constructor argument into <c>HttpMethodAttribute</c>. The adapter cannot read the
+    ///     base initializer (there is no syntax for it), so the fallback must inspect the
+    ///     attribute's constructor constants instead of dereferencing an array constant.
+    /// </summary>
+    private string EmitExternalHttpVerbAssembly()
+    {
+        var references = PlatformReferencePaths()
+            .Concat(AspNetCoreReferenceAssemblyPaths())
+            .Select(path => MetadataReference.CreateFromFile(path))
+            .ToArray();
+        var compilation = CSharpCompilation.Create(
+            "ExternalVerbs",
+            [CSharpSyntaxTree.ParseText("""
+                using Microsoft.AspNetCore.Mvc.Routing;
+                namespace External;
+                public sealed class CustomVerbAttribute(string[] verbs, string template) : HttpMethodAttribute(verbs, template);
+                """)],
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = compilation.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+        Assert.Empty(errors);
+        var path = Path.Combine(TestDir, "ExternalVerbs.dll");
+        var result = compilation.Emit(path);
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        return path;
+    }
+
+    private static string[] PlatformReferencePaths()
+    {
+        return ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    private static IEnumerable<string> AspNetCoreReferenceAssemblyPaths()
+    {
+        var runtimeRoot = Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(typeof(object).Assembly.Location)!, "..", "..", ".."));
+        var packRoot = Path.Combine(runtimeRoot, "packs", "Microsoft.AspNetCore.App.Ref");
+        Assert.True(Directory.Exists(packRoot), $"ASP.NET Core targeting pack not found at {packRoot}.");
+        var version = Directory.EnumerateDirectories(packRoot)
+            .OrderByDescending(directory => Version.TryParse(Path.GetFileName(directory), out var parsed)
+                ? parsed
+                : new Version())
+            .First();
+        var targetFramework = Directory.EnumerateDirectories(Path.Combine(version, "ref")).First();
+        return Directory.EnumerateFiles(targetFramework, "*.dll");
+    }
+
+    [Fact]
     public async Task Phase3_DI_SeparatesAssemblyScansFromTypeClaimsAndOptions()
     {
         CreateProject("App", new Dictionary<string, string>
@@ -207,6 +305,8 @@ public sealed partial class GoldenAdapterTests
                         => services.AddValidatorsFromAssembly(typeof(Options).Assembly);
                     public static void ScanGeneric(IServiceCollection services)
                         => services.AddValidatorsFromAssemblyContaining<Options>();
+                    public static void ScanNonGeneric(IServiceCollection services)
+                        => services.AddValidatorsFromAssemblyContaining(typeof(Options), includeInternalTypes: true);
                     public static void Single(IServiceCollection services) => services.AddHttpClient<Client>();
                     public static void Bind(IServiceCollection services) => services.Configure<Options>(_ => { });
                     public static void Add(IServiceCollection services) => services.AddOptions<Client>();
@@ -216,7 +316,7 @@ public sealed partial class GoldenAdapterTests
         RestoreSolution();
         var snapshot = await RunFullIndexAsync(DbPath);
         var edges = QueryEdges(snapshot, "Registers", Provenance.RuntimeUnknown);
-        foreach (var method in new[] { "Scan", "ScanGeneric" })
+        foreach (var method in new[] { "Scan", "ScanGeneric", "ScanNonGeneric" })
         {
             var owner = ResolveSymbolId(snapshot, "global::App.Services." + method);
             Assert.Contains(QueryEdges(snapshot, "Registers", Provenance.Convention), e =>

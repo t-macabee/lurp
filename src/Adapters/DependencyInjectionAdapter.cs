@@ -132,7 +132,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                     assemblies.Add(assembly);
             }
 
-            foreach (var argument in scan.Arguments.Where(a => a.Parameter != null && IsAssemblySelector(a.Parameter)))
+            foreach (var argument in scan.Arguments.Where(a =>
+                         a.Parameter != null && IsScanSelector(scan.TargetMethod, a.Parameter)))
             {
                 foreach (var value in argument.Value.DescendantsAndSelf())
                 {
@@ -175,6 +176,35 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                type is IArrayTypeSymbol array && IsAssembly(array.ElementType) ||
                type is INamedTypeSymbol { TypeArguments: [var element] } named &&
                    FrameworkTypes.Is(named, "System.Collections.Generic.IEnumerable`1") && IsAssembly(element);
+    }
+
+    /// <summary>
+    ///     A scan method named after assemblies can also take a <see cref="System.Type" /> whose
+    ///     assembly is scanned (<c>AddValidatorsFromAssemblyContaining(typeof(T))</c>).
+    /// </summary>
+    private static bool IsTypeSelector(IParameterSymbol parameter)
+    {
+        var type = parameter.Type;
+        return IsType(type) ||
+               type is IArrayTypeSymbol array && IsType(array.ElementType) ||
+               type is INamedTypeSymbol { TypeArguments: [var element] } named &&
+                   FrameworkTypes.Is(named, "System.Collections.Generic.IEnumerable`1") && IsType(element);
+    }
+
+    private static bool IsType(ITypeSymbol type)
+    {
+        return FrameworkTypes.Is(type, "System.Type");
+    }
+
+    /// <summary>One argument of a scan call that names the scanned assembly.</summary>
+    private static bool IsScanSelector(IMethodSymbol method, IParameterSymbol parameter)
+    {
+        // The receiver of an extension method is the service collection, never a scan target.
+        if (method.IsExtensionMethod && parameter.Ordinal == 0 &&
+            FrameworkTypes.Is(parameter.Type, ServiceCollectionType))
+            return false;
+
+        return IsAssemblySelector(parameter) || (NamesAssembly(method.Name) && IsTypeSelector(parameter));
     }
 
     private static bool NamesAssembly(string name)

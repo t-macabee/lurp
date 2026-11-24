@@ -343,7 +343,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (TryReadHttpMethodConstructor(attr, context, out var constructorTemplate, out var verbs))
                 template = constructorTemplate;
             else
-                template = attr.ConstructorArguments.FirstOrDefault().Value as string;
+                TryReadFallbackConstructorArguments(attr, out template, out verbs);
 
             if (fixedMethod != null)
                 methods.Add(fixedMethod);
@@ -357,6 +357,42 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         }
 
         return false;
+    }
+
+    /// <summary>
+    ///     Reads the constructor constants of an <c>HttpMethodAttribute</c> subclass whose base
+    ///     initializer is not available (a metadata-only attribute type). The first constant is
+    ///     either the template or the verbs array; an array constant must never be dereferenced.
+    /// </summary>
+    private static void TryReadFallbackConstructorArguments(
+        AttributeData attr, out string? template, out string[]? verbs)
+    {
+        template = null;
+        verbs = null;
+        if (attr.ConstructorArguments.Length == 0)
+            return;
+
+        var first = attr.ConstructorArguments[0];
+        if (first.Kind == TypedConstantKind.Array)
+        {
+            if (!first.IsNull)
+            {
+                verbs = first.Values
+                    .Select(value => value.Value as string)
+                    .Where(verb => !string.IsNullOrEmpty(verb))
+                    .Select(verb => verb!.ToUpperInvariant())
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+            }
+
+            if (attr.ConstructorArguments.Length > 1 &&
+                attr.ConstructorArguments[1].Kind == TypedConstantKind.Primitive)
+                template = attr.ConstructorArguments[1].Value as string;
+        }
+        else if (first.Kind == TypedConstantKind.Primitive)
+        {
+            template = first.Value as string;
+        }
     }
 
     private static bool TryReadHttpMethodConstructor(

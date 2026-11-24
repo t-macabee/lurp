@@ -167,7 +167,7 @@ internal sealed class SearchIndexMaintenance
         var isTestByAssembly = new Dictionary<string, bool>(StringComparer.Ordinal);
         using var select = connection.CreateCommand();
         select.CommandText = """
-            SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, s.assembly_identity
+            SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, s.assembly_identity, ss.metadata_json
             FROM snapshot_symbols ss
             JOIN symbols s ON s.symbol_id = ss.symbol_id
             WHERE ss.snapshot_id = @snapshotId AND ss.fqn IS NOT NULL
@@ -206,6 +206,7 @@ internal sealed class SearchIndexMaintenance
             var commentId = reader.GetString(2);
             var kindName = reader.GetString(3);
             var assembly = reader.GetString(4);
+            var metadataJson = reader.IsDBNull(5) ? null : reader.GetString(5);
             if (!isTestByAssembly.TryGetValue(assembly, out var isTestAssembly))
                 isTestByAssembly[assembly] = isTestAssembly = projects.IsTestProject(MetadataReferenceIdentity.SimpleName(assembly));
             var (name, container) = SymbolSearchNames.FromDocCommentId(commentId, qualifiedName);
@@ -215,10 +216,13 @@ internal sealed class SearchIndexMaintenance
             fqn.Value = qualifiedName;
             docId.Value = commentId;
             kind.Value = kindName;
-            kindRank.Value = SymbolSearchNames.KindRank(kindName);
+            kindRank.Value = SymbolSearchNames.KindRank(kindName, IsAccessor(metadataJson, id));
             isTest.Value = isTestAssembly ? 1 : 0;
             symbolId.Value = id;
             insert.ExecuteNonQuery();
         }
     }
+
+    private static bool IsAccessor(string? metadataJson, string symbolId) =>
+        SymbolMetadata.GetString(SymbolMetadata.Parse(metadataJson, symbolId), SymbolMetadataKeys.AccessorKind) != null;
 }

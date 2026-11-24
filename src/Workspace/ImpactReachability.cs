@@ -137,6 +137,7 @@ public sealed class ImpactReachability
         var symbols = new List<ImpactReachedSymbol>();
         var witnesses = new Dictionary<string, Visit>(StringComparer.Ordinal);
         foreach (var visits in parents.Keys.OrderBy(visit => depth[visit]).ThenBy(visit => visit.SymbolId, StringComparer.Ordinal)
+                     .ThenBy(visit => visit.Access)
                      .GroupBy(visit => visit.SymbolId, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -145,7 +146,9 @@ public sealed class ImpactReachability
             var count = visits.TakeWhile(candidate => depth[candidate] == shortest)
                 .Aggregate(0L, (total, candidate) => SaturatingAdd(total, pathCounts[candidate]));
             var isFrontier = shortest == maxDepth &&
-                             HasFilteredEdgeOffWitnessPath(visit, direction, seeds, parents, allowedEdgeKinds, allowedProvenance);
+                             visits.TakeWhile(candidate => depth[candidate] == shortest)
+                                 .Any(candidate => HasFilteredEdgeOffWitnessPath(candidate, direction, seeds, parents,
+                                     allowedEdgeKinds, allowedProvenance));
             symbols.Add(new ImpactReachedSymbol(visit.SymbolId, shortest, count, isFrontier, parents[visit].Hop));
             witnesses.Add(visit.SymbolId, visit);
         }
@@ -156,12 +159,13 @@ public sealed class ImpactReachability
     private HashSet<string> GetSeeds(string symbolId, ImpactDirection direction, IReadOnlySet<string>? allowedEdgeKinds)
     {
         var seeds = new HashSet<string>(StringComparer.Ordinal) { symbolId };
-        if (direction != ImpactDirection.Downstream || allowedEdgeKinds == null || allowedEdgeKinds.Contains(nameof(EdgeKind.Declares)))
+        if (direction != ImpactDirection.Downstream)
             return seeds;
 
         switch (SymbolId.DocCommentIdOf(symbolId))
         {
-            case ['T', ':', ..]:
+            case ['T', ':', ..] when allowedEdgeKinds != null &&
+                                     !allowedEdgeKinds.Contains(nameof(EdgeKind.Declares)):
                 seeds.UnionWith(GetEdges(symbolId, direction)
                     .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
                     .Select(edge => edge.TargetSymbolId));

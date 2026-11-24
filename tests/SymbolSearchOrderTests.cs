@@ -155,6 +155,115 @@ public sealed class SymbolSearchOrderTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Search_RanksPropertyAboveItsAccessors()
+    {
+        CreateProject("Ranked", new Dictionary<string, string>
+        {
+            ["Holder.cs"] = """
+                namespace Ranked;
+                public class Holder
+                {
+                    public int SearchRankTarget { get; set; }
+                }
+                """
+        });
+        await RunFullIndexAsync(DbPath);
+
+        using var doc = await RunSearchAsync("--type=symbol", "--query=SearchRank", "--limit=100");
+        Assert.Equal(
+            [
+                "global::Ranked.Holder.SearchRankTarget",
+                "global::Ranked.Holder.SearchRankTarget.get",
+                "global::Ranked.Holder.SearchRankTarget.set"
+            ],
+            SymbolFqns(doc));
+    }
+
+    [Fact]
+    public async Task Search_ExactCamelCaseNames_AreTierOne_AbovePrefixMatches()
+    {
+        CreateProject("Exact", new Dictionary<string, string>
+        {
+            ["Names.cs"] = """
+                namespace Exact;
+                public class AlphaBeta { }
+                public class alphabetaHelper { }
+                public class SearchSymbolStore { }
+                public class SearchsymbolstoreFixture { }
+                """
+        });
+        await RunFullIndexAsync(DbPath);
+
+        using var alphaBeta = await RunSearchAsync("--type=symbol", "--query=AlphaBeta", "--limit=100");
+        Assert.Equal(
+            ["global::Exact.AlphaBeta", "global::Exact.alphabetaHelper"],
+            SymbolFqns(alphaBeta));
+
+        using var searchSymbolStore = await RunSearchAsync("--type=symbol", "--query=searchsymbolstore", "--limit=100");
+        Assert.Equal(
+            ["global::Exact.SearchSymbolStore", "global::Exact.SearchsymbolstoreFixture"],
+            SymbolFqns(searchSymbolStore));
+    }
+
+    [Fact]
+    public async Task Search_TierThreeOrdersAlphabetically_NotByContainerMatch()
+    {
+        CreateProject("Tiered", new Dictionary<string, string>
+        {
+            ["Names.cs"] = """
+                namespace Anthology { public class Prealpha { } }
+                namespace Containers.Alpha { public class Prealpha { } }
+                """
+        });
+        await RunFullIndexAsync(DbPath);
+
+        using var doc = await RunSearchAsync("--type=symbol", "--query=alpha", "--kind=Type", "--limit=100");
+        Assert.Equal(
+            ["global::Anthology.Prealpha", "global::Containers.Alpha.Prealpha"],
+            SymbolFqns(doc));
+    }
+
+    [Fact]
+    public async Task Search_PagesLosslesslyAcrossLimits_ForIdentifierAndNonIdentifierQueries()
+    {
+        CreateProject("Paged", new Dictionary<string, string>
+        {
+            ["Paged.cs"] = """
+                namespace Paged;
+                public class Alpha { public int AlphaValue { get; set; } }
+                public class AlphaBeta { }
+                public class AlphaBetaGamma { }
+                public class Prealpha { }
+                """
+        });
+        await RunFullIndexAsync(DbPath);
+
+        foreach (var query in new[] { "Alpha", "Alpha Beta" })
+        {
+            using var all = await RunSearchAsync("--type=symbol", $"--query={query}", "--limit=100");
+            var expected = SymbolFqns(all);
+            Assert.NotEmpty(expected);
+
+            foreach (var limit in new[] { 1, 2, 3, 4 })
+            {
+                var collected = new List<string>();
+                string? cursor = null;
+                do
+                {
+                    string[] args = ["--type=symbol", $"--query={query}", $"--limit={limit}",
+                        .. (cursor == null ? Array.Empty<string>() : new[] { $"--cursor={cursor}" })];
+                    using var page = await RunSearchAsync(args);
+                    collected.AddRange(SymbolFqns(page));
+                    Assert.True(collected.Count <= expected.Length);
+                    cursor = page.RootElement.GetProperty("next_cursor").GetString();
+                } while (cursor != null);
+
+                Assert.Equal(expected, collected);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Search_TypeAll_HasTheSymbolPageOfTypeSymbol()
     {
         await IndexOrderFixtureAsync();

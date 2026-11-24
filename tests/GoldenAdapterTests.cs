@@ -1253,7 +1253,7 @@ public sealed partial class GoldenAdapterTests : IntegrationTestBase
                                                      public void UsesFullyQualifiedName()
                                                      {
                                                          System.Linq.Enumerable.Range(0, 1);
-                                                         Xunit.Assert.True(true);
+                                                         Xunit.Assert.NotNull("external");
                                                      }
                                                  }
                                                  """

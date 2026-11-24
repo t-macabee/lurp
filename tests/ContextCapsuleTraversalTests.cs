@@ -136,6 +136,79 @@ public sealed class ContextCapsuleTraversalTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task PropertyAndEventAnchors_SeedAccessorBodiesWithAnyKindFilter()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Members.cs"] = """
+                namespace App;
+                public class Members
+                {
+                    public int Value { get => OnGet(); set => OnSet(); }
+                    public event System.Action Changed { add => OnAdd(); remove => OnRemove(); }
+                    private static int OnGet() => 1;
+                    private static void OnSet() { }
+                    private static void OnAdd() { }
+                    private static void OnRemove() { }
+                }
+                """
+        });
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        var reachability = new ImpactReachability(store, snapshot);
+        IReadOnlySet<string>?[] filters =
+        [
+            null,
+            new HashSet<string>(StringComparer.Ordinal) { nameof(EdgeKind.Declares), nameof(EdgeKind.Calls) }
+        ];
+
+        foreach (var allowedEdgeKinds in filters)
+        {
+            var value = reachability.Trace(Id("Value"), ImpactDirection.Downstream, 2, allowedEdgeKinds);
+            Assert.Equal([Id("OnGet"), Id("OnSet")],
+                value.Symbols.Select(item => item.SymbolId).OrderBy(id => id, StringComparer.Ordinal));
+
+            var changed = reachability.Trace(Id("Changed"), ImpactDirection.Downstream, 2, allowedEdgeKinds);
+            Assert.Equal([Id("OnAdd"), Id("OnRemove")],
+                changed.Symbols.Select(item => item.SymbolId).OrderBy(id => id, StringComparer.Ordinal));
+        }
+
+        string Id(string name) => ResolveSymbolId(snapshot, $"global::App.Members.{name}");
+    }
+
+    [Fact]
+    public async Task DualAccessFrontier_IsTrueWhenEitherAccessorLeavesTheWitnessPath()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Flow.cs"] = """
+                namespace App;
+                public class Flow
+                {
+                    public void Start() { DoRead(); DoWrite(); }
+                    public int DoRead() => Prop;
+                    public void DoWrite() => Prop = 1;
+                    public int Prop { get => 1; set => OnSet(); }
+                    private static void OnSet() { }
+                }
+                """
+        });
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        var reachability = new ImpactReachability(store, snapshot);
+
+        var result = reachability.Trace(Id("Start"), ImpactDirection.Downstream, maxDepth: 2);
+
+        var prop = Assert.Single(result.Symbols, item => item.SymbolId == Id("Prop"));
+        Assert.Equal(2, prop.Depth);
+        Assert.True(prop.IsFrontier);
+        Assert.Contains(result.WitnessLeafPaths(), path =>
+            path.Truncated && path.Hops[^1].TargetSymbolId == Id("Prop"));
+
+        string Id(string name) => ResolveSymbolId(snapshot, $"global::App.Flow.{name}");
+    }
+
+    [Fact]
     public async Task Constructs_ReportsSynthesizedConstructorAndAttributeCallers()
     {
         CreateProject("App", new Dictionary<string, string>

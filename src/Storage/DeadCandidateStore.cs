@@ -1087,8 +1087,10 @@ internal sealed class DeadCandidateStore
             return false;
 
         var memberId = isPropertyAccessor ? cand.AssociatedSymbolId ?? cand.SymbolId : cand.SymbolId;
-        var eligibleTypes = isInstanceConstructor ? conventions.EfDirectTargets : conventions.EfMemberTypes;
-        return SymbolId.DeriveContainingTypeSymbolId(memberId) is { } enclosing && eligibleTypes.Contains(enclosing);
+        return SymbolId.DeriveContainingTypeSymbolId(memberId) is { } enclosing &&
+               (isInstanceConstructor
+                   ? conventions.EfDirectTargets.Contains(enclosing) || conventions.EfSources.Contains(enclosing)
+                   : conventions.EfMemberTypes.Contains(enclosing));
     }
 
     private static bool IsFrameworkConvention(CandidateFacts cand, ConventionFacts conventions)
@@ -1312,7 +1314,7 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakeEfConventionUncertainty(string symbolId)
     {
-        return new DeadCandidateUncertainty([symbolId], "ef_convention", "EF Core can discover mapping sources, fields, properties and accessors by convention. It can also invoke instance constructors of mapped entities. The index does not track all of these uses. See DeclaredBoundaries.ef_convention.", "ef_convention");
+        return new DeadCandidateUncertainty([symbolId], "ef_convention", "EF Core can discover mapping sources, fields, properties and accessors by convention. It can also invoke instance constructors of mapped entities and EF mapping source types. The index does not track all of these uses. See DeclaredBoundaries.ef_convention.", "ef_convention");
     }
 
     private static DeadCandidateUncertainty MakeSerializationConventionUncertainty(string symbolId)

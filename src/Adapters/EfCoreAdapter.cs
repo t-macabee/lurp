@@ -303,6 +303,34 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
     private static INamedTypeSymbol? GetBuilderEntity(IOperation? instance, IMethodSymbol method, INamedTypeSymbol? configEntityType)
     {
+        if (instance is IParameterReferenceOperation parameter)
+        {
+            for (var current = instance.Parent; current != null; current = current.Parent)
+            {
+                if (current is not IAnonymousFunctionOperation lambda ||
+                    !lambda.Symbol.Parameters.Any(candidate =>
+                        SymbolEqualityComparer.Default.Equals(candidate, parameter.Parameter)))
+                    continue;
+
+                for (var outer = lambda.Parent; outer != null; outer = outer.Parent)
+                {
+                    if (outer is not IInvocationOperation enclosing)
+                        continue;
+
+                    if (enclosing.TargetMethod.Name != "Entity" ||
+                        !FrameworkTypes.Is(enclosing.TargetMethod.ContainingType, ModelBuilderMetadataName))
+                        return null;
+
+                    return ResolveEntityType(enclosing.Arguments.Select(a => UnwrapConversionAndDelegate(a.Value))
+                        .OfType<ITypeOfOperation>().FirstOrDefault()?.TypeOperand, method, configEntityType);
+                }
+
+                return null;
+            }
+
+            return null;
+        }
+
         if (instance is not IInvocationOperation invocation)
             return null;
 
@@ -312,7 +340,24 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 .OfType<ITypeOfOperation>().FirstOrDefault()?.TypeOperand, method, configEntityType);
         }
 
-        return GetBuilderEntity(invocation.Instance, method, configEntityType);
+        return GetBuilderEntity(InvocationReceiver(invocation), method, configEntityType);
+    }
+
+    /// <summary>
+    ///     The expression an invocation was called on. Roslyn binds an extension method to its
+    ///     unreduced form, so the receiver of a chained extension call such as
+    ///     <c>e.ToTable("Roots")</c> sits in the first argument instead of
+    ///     <see cref="IInvocationOperation.Instance" />.
+    /// </summary>
+    private static IOperation? InvocationReceiver(IInvocationOperation invocation)
+    {
+        if (invocation.Instance != null)
+            return invocation.Instance;
+
+        return invocation.TargetMethod is { IsExtensionMethod: true, ReducedFrom: null } &&
+               invocation.Arguments.Length > 0
+            ? UnwrapConversionAndDelegate(invocation.Arguments[0].Value)
+            : null;
     }
 
     private static string? ReadMemberName(IInvocationOperation invocation)
@@ -352,6 +397,12 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             ? type
             : type.AllInterfaces.FirstOrDefault(i => FrameworkTypes.Is(i, "System.Collections.Generic.IEnumerable`1"));
         return element == null ? type : element.TypeArguments[0] as INamedTypeSymbol;
+    }
+
+    private static bool IsOwned(ISymbol symbol)
+    {
+        return FrameworkTypes.GetAttributesWithInheritance(symbol).Any(a =>
+            FrameworkTypes.Is(a.AttributeClass, "Microsoft.EntityFrameworkCore.OwnedAttribute"));
     }
 
     private static bool IsNotMapped(ISymbol symbol)
@@ -399,7 +450,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
                     var target = NavigationType(property.Type);
                     if (target is not { TypeKind: TypeKind.Class } || !ctx.Adapter.IsSolutionSymbol(target) ||
-                        (property.SetMethod == null && SymbolEqualityComparer.Default.Equals(property.Type, target)) ||
+                        (property.SetMethod == null && !IsOwned(target) &&
+                         SymbolEqualityComparer.Default.Equals(property.Type, target)) ||
                         mappings.IgnoredTypes.Contains(target) || IsNotMapped(target) ||
                         ctx.Adapter.MakeSymbolId(target) is not { } targetId || !mappedTypes.Add(target))
                         continue;

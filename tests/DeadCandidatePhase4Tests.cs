@@ -13,7 +13,7 @@ public sealed class DeadCandidatePhase4Tests : IntegrationTestBase
                          namespace Sample;
                          internal class Context { public int Set { get; } }
                          internal class Entity { public Entity() {} internal int Value { get; set; } }
-                         internal class Configuration {}
+                         internal class Configuration { public Configuration() {} }
                          internal class UnmodeledHandler { public UnmodeledHandler() {} }
                          internal class Serializer
                          {
@@ -55,7 +55,8 @@ public sealed class DeadCandidatePhase4Tests : IntegrationTestBase
         ]);
 
         var page = store.GetDeadCandidatesPage(snapshot, null, null, null, false, false, false, 200, null);
-        Check(DeadCandidateReason.EfConvention, "P:Context.Set", "T:Configuration", "M:Entity.#ctor",
+        Check(DeadCandidateReason.EfConvention, "P:Context.Set", "T:Configuration", "M:Configuration.#ctor",
+            "M:Entity.#ctor",
             "P:Entity.Value", "M:Entity.get_Value", "M:Entity.set_Value(System.Int32)");
         Check(DeadCandidateReason.SerializationConvention, "M:Serializer.#ctor", "M:Serializer.OnRead");
         Check(DeadCandidateReason.FrameworkConvention, "T:UnmodeledHandler", "M:UnmodeledHandler.#ctor",

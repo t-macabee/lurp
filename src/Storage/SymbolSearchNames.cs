@@ -50,14 +50,15 @@ internal static class SymbolSearchNames
         return tokens.ToString();
     }
 
-    internal static int KindRank(string kind) => kind switch
+    internal static int KindRank(string kind, bool isAccessor = false) => kind switch
     {
         nameof(IndexedSymbolKind.Type) => 0,
-        nameof(IndexedSymbolKind.Method) => 1,
+        nameof(IndexedSymbolKind.Method) when !isAccessor => 1,
         nameof(IndexedSymbolKind.Property) => 2,
         nameof(IndexedSymbolKind.Event) => 3,
         nameof(IndexedSymbolKind.Field) => 4,
-        nameof(IndexedSymbolKind.Namespace) => 5,
-        _ => 6
+        nameof(IndexedSymbolKind.Method) => 5,
+        nameof(IndexedSymbolKind.Namespace) => 6,
+        _ => 7
     };
 }
