@@ -141,6 +141,29 @@ public sealed partial class ReleaseNotesTests
     }
 
     [Fact]
+    public void EveryReadmeEntry_SaysDraftOnlyAboveTheToolVersion()
+    {
+        var toolVersion = Version.Parse(VersionConstants.ToolVersion);
+        var readme = File.ReadAllText(Path.Combine(TestRepoRoot.Find(), "README.md"));
+        var failures = new List<string>();
+        foreach (var file in Notes())
+        {
+            var entry = Regex.Match(readme, $@"\]\(docs/{Regex.Escape(file.Name)}\)(?<text>[^\r\n]*)").Groups["text"].Value;
+            if (file.Version > toolVersion)
+            {
+                if (entry != " (draft)")
+                    failures.Add($"README.md: the {file.Name} entry must be the link and ' (draft)', found '{entry}'");
+            }
+            else if (!Regex.IsMatch(entry, @"^: \S") || entry.Contains("(draft)", StringComparison.Ordinal))
+            {
+                failures.Add($"README.md: the {file.Name} entry must be the link, ': ' and a summary without '(draft)', found '{entry}'");
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    [Fact]
     public void OnlyReadme_ListsTheNotes()
     {
         var root = TestRepoRoot.Find();

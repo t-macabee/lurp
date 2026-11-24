@@ -1,4 +1,4 @@
-# Lurp 4.1.0 (draft)
+# Lurp 4.1.0
 
 Run a full index after the upgrade.
 

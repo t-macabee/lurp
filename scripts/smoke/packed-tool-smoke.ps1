@@ -177,6 +177,16 @@ foreach ($share in $shares) {
     Assert-True ($share -ceq '0.0%') "no-edges model-view share expected '0.0%', got '$share'"
 }
 
+$externalDb = Join-Path $WorkDir 'external-file.db'
+$externalView = Join-Path $WorkDir 'model-view-external-file.html'
+& $python $modelViewInput external-file $dbPath $externalDb $snapshot1 "$('../' * 40)home/someone/packages/External.cs"
+Assert-True ($LASTEXITCODE -eq 0) "external-file copy expected exit 0, got $LASTEXITCODE"
+& $python $generator --db $externalDb --out $externalView
+Assert-True ($LASTEXITCODE -eq 0) "external-file render expected exit 0, got $LASTEXITCODE"
+$externalPage = Get-Content -LiteralPath $externalView -Raw -Encoding utf8
+Assert-True ($externalPage.Contains('&lt;external&gt;/External.cs')) 'model-view expected a file outside the repository as <external>/External.cs'
+Assert-True (-not $externalPage.Contains('home/someone')) 'model-view shows the local folder of a file outside the repository'
+
 $provenanceHelp = [regex]::Match($help.Text, '(?m)^ {4}--provenance=[^\r\n]*(?:\r?\n {5,}[^\r\n]*)*').Value
 $expectedLevels = [regex]::Match($provenanceHelp, 'Values:\s+([^.]+)\.').Groups[1].Value -replace '\s+', ''
 $pageLevels = [regex]::Matches($page, '<div class="ladder-tier tier-([a-z_]+)[ "]') |

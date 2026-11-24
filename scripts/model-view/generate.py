@@ -280,9 +280,9 @@ def github_repo(remote):
 
 
 def source_info(index):
-    root = Path(index.git_root) if index.git_root else None
-    if root is None or not root.exists():
-        return {"repo": "", "commit": "", "dirty": False, "solution": Path(index.solution_path).name}
+    root = Path(index.git_root or Path(index.solution_path).parent).resolve()
+    if not index.git_root or not root.exists():
+        return {"repo": "", "commit": "", "dirty": False, "solution": Path(index.solution_path).name, "root": root, "top": root}
     top = Path(git(root, "rev-parse", "--show-toplevel") or root)
     repo = github_repo(git(top, "remote", "get-url", "origin"))
     try:
@@ -290,7 +290,14 @@ def source_info(index):
     except ValueError:
         solution = Path(index.solution_path).name
     dirty = bool(git(top, "status", "--porcelain", "--", "*.cs", "*.csproj", "*.props", "*.targets", "*.sln", "*.slnx"))
-    return {"repo": repo, "commit": git(top, "rev-parse", "--short=7", "HEAD"), "dirty": dirty, "solution": solution}
+    return {"repo": repo, "commit": git(top, "rev-parse", "--short=7", "HEAD"), "dirty": dirty, "solution": solution,
+            "root": root, "top": top.resolve()}
+
+
+def shown_path(info, relative_path):
+    """A file outside the repository (a NuGet package source) keeps only its name: its folder is local to the machine."""
+    path = Path(os.path.normpath(info["root"] / relative_path))
+    return relative_path if path.is_relative_to(info["top"]) else f"<external>/{path.name}"
 
 
 # ---------------------------------------------------------------- survey SVG
@@ -673,7 +680,7 @@ def render(index, log, info, style, out_path, contract):
         ledger("MapsTo: EF Core entity mappings", names, index.of_kind("MapsTo")),
         ledger("RoutesTo: ASP.NET route → action", names, index.of_kind("RoutesTo")),
     ]
-    file_rows = [[td(str(i), "mono muted"), td(esc(path), "mono"), td(num(n), "num")] for i, (path, n) in enumerate(index.files, 1)]
+    file_rows = [[td(str(i), "mono muted"), td(esc(shown_path(info, path)), "mono"), td(num(n), "num")] for i, (path, n) in enumerate(index.files, 1)]
     ledgers.append(f'    <details class="ledger">\n      <summary><span>All {num(len(index.files))} indexed files, by declaration count</span></summary>\n'
                    f'      <div class="ledger-body">{table(["#", "File", "#Declarations"], file_rows, extra_class=" ledger-table")}</div>\n'
                    f'    </details>')

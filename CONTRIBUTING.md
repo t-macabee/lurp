@@ -102,9 +102,10 @@ $env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter "Fully
 
 1. Prepare the release commit. Set `<Version>` in `src/Lurp.csproj` (the only
    literal of the tool version). Write `docs/RELEASE_NOTES_<version>.md` with its
-   "Versions" table. Link it in the README list and change the version of the README
+   "Versions" table. Remove `(draft)` from its title. Link it in the README list,
+   with a summary in place of `(draft)`, and change the version of the README
    install line. Regenerate the docs (see "CLI/MCP contract versioning" above).
-   `ReleaseNotesTests` fails until the notes, the table, the README link and the
+   `ReleaseNotesTests` fails until the notes, the table, the README entry and the
    install line agree with the constants.
    If `ExtractorVersion` changed since the last release, regenerate
    `docs/MODEL_VIEW.html` from the eNoteV2 commit in `parity/targets.json`. Use the

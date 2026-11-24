@@ -17,7 +17,7 @@ source with evidence levels each time.
 
 ## [What the model sees](https://t-macabee.github.io/lurp/MODEL_VIEW.html)
 
-A point-in-time map of one Lurp 4.0.0 index (extractor 1.13.0) of
+A point-in-time map of one Lurp 4.1.0 index (extractor 1.13.0) of
 [eNoteV2](https://github.com/t-macabee/eNoteV2) (`eNote/eNote.sln` at `4ba9901`, 7 projects):
 the evidence level of every edge, the DI, routing and EF Core surfaces, and the
 full edge ledgers behind them. [`scripts/model-view/`](scripts/model-view/)
@@ -118,7 +118,7 @@ older runtime does not. Indexing and solution-backed status
 solution should be restored (an unrestored project still indexes, with a warning and missing edges; see "Restore first" below).
 
 ```bash
-dotnet tool install --global lurp --version 4.0.0
+dotnet tool install --global lurp --version 4.1.0
 lurp --mode=index --solution=path/to/Your.slnx
 ```
 
@@ -204,7 +204,7 @@ Measured on 2026-11-21 with Lurp 4.0.0 (Release build from `f683ccf` with the P2
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.0.0, schema v50, extractor 1.13.0, CLI/MCP contract v8, output schema v7<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.1.0, schema v50, extractor 1.13.0, CLI/MCP contract v8, output schema v7<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit
@@ -217,7 +217,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
-- [RELEASE_NOTES_4.1.0.md](docs/RELEASE_NOTES_4.1.0.md) (draft)
+- [RELEASE_NOTES_4.1.0.md](docs/RELEASE_NOTES_4.1.0.md): the 4.1.0 changes to EF Core mapping and the MCP tool results (CLI/MCP contract 8). Run one full index after the upgrade.
 - [RELEASE_NOTES_4.0.0.md](docs/RELEASE_NOTES_4.0.0.md): the 4.0.0 changes to extraction, storage, indexing and the CLI/MCP contract. Run one full index after the upgrade.
 - [RELEASE_NOTES_3.6.1.md](docs/RELEASE_NOTES_3.6.1.md): the 3.6.1 changes (release workflow waits up to 60 minutes for nuget.org to index); no index run is needed.
 - [RELEASE_NOTES_3.6.0.md](docs/RELEASE_NOTES_3.6.0.md): the 3.6.0 changes (Linux support, Windows-built manifests read on Linux, lock files kept after a run, and a clear error for a manifest without `git_root`/`solution_path`); no index run is needed.
