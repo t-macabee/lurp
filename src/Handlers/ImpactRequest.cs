@@ -16,7 +16,7 @@ internal sealed record ImpactRequest(
     int Limit,
     IReadOnlyList<string>? CanonicalKinds,
     IReadOnlyList<string>? CanonicalProvenance,
-    IReadOnlySet<string>? AllowedKinds,
+    IReadOnlySet<string> AllowedKinds,
     HashSet<string>? AllowedProvenance,
     string? Cursor)
 {
@@ -93,11 +93,9 @@ internal sealed record ImpactRequest(
                     ItemLabel: "provenance"));
         }
 
-        IReadOnlySet<string>? allowedKinds = canonicalKinds is not null
+        IReadOnlySet<string> allowedKinds = canonicalKinds is not null
             ? new HashSet<string>(canonicalKinds, StringComparer.Ordinal)
-            : parsedDirection == ImpactDirection.Upstream
-                ? ImpactReachability.UpstreamDefaultKinds
-                : null;
+            : ImpactReachability.DefaultTraversalKinds;
         HashSet<string>? allowedProvenance = canonicalProvenance is null
             ? null
             : new HashSet<string>(canonicalProvenance, StringComparer.Ordinal);

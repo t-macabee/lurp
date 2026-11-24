@@ -7,11 +7,8 @@ namespace Lurp.Tests;
 
 public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
 {
-    // Contract/acceptance (R141, decision 20): the upstream default follows every edge kind
-    // except Declares, Contains and TestedBy; an explicit --kinds= replaces that default;
-    // downstream keeps every kind.
     [Fact]
-    public async Task ImpactHandler_UpstreamDefault_SkipsDeclaresContainsAndTestedBy()
+    public async Task ImpactHandler_DefaultTraversal_SkipsDeclaresContainsAndTestedBy()
     {
         var snapshotId = await IndexDirectionFixtureAsync();
         var hitId = ResolveSymbolId(snapshotId, "global::DirProj.Target.Hit");
@@ -33,15 +30,14 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
         using (var declaresOnly = RunImpactJson(hitId, "upstream", kinds: nameof(EdgeKind.Declares)))
             Assert.Equal([targetId], SymbolIds(declaresOnly));
 
-        // (c) Downstream keeps every kind: declared members, nested types and the tests
-        // that cover the type are correct downstream answers.
+        var structuralKinds = new[] { nameof(EdgeKind.Contains), nameof(EdgeKind.Declares), nameof(EdgeKind.TestedBy) };
         using var downstream = RunImpactJson(targetId, "downstream", maxDepth: 1);
-        Assert.Equal(
-            new[] { nameof(EdgeKind.Contains), nameof(EdgeKind.Declares), nameof(EdgeKind.TestedBy) }
-                .OrderBy(kind => kind, StringComparer.Ordinal),
-            downstream.RootElement.GetProperty("groups").EnumerateArray()
-                .Select(group => group.GetProperty("edge_kind").GetString()!)
-                .OrderBy(kind => kind, StringComparer.Ordinal));
+        Assert.DoesNotContain(downstream.RootElement.GetProperty("groups").EnumerateArray(),
+            group => structuralKinds.Contains(group.GetProperty("edge_kind").GetString()));
+
+        using var structural = RunImpactJson(targetId, "downstream", kinds: string.Join(",", structuralKinds), maxDepth: 1);
+        Assert.Equal(structuralKinds, structural.RootElement.GetProperty("groups").EnumerateArray()
+            .Select(group => group.GetProperty("edge_kind").GetString()).Order(StringComparer.Ordinal));
     }
 
     private JsonDocument RunImpactJson(string symbolId, string direction, string? kinds = null, int? maxDepth = null)

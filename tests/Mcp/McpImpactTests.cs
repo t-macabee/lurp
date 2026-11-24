@@ -11,7 +11,7 @@ public sealed class McpImpactTests : ImpactIndexFixture
     private static readonly string[] CallsKind = ["Calls"];
     private static readonly string[] InheritsKind = ["Inherits"];
     private static readonly string[] CompilerProvedProvenance = ["compiler_proved"];
-    private static readonly string[] StructuralDownstreamKinds = ["Contains", "Declares", "TestedBy"];
+    private static readonly string[] StructuralKinds = ["Contains", "Declares", "TestedBy"];
 
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
@@ -128,11 +128,8 @@ public sealed class McpImpactTests : ImpactIndexFixture
                 cause.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal));
     }
 
-    // Contract/acceptance (R141, decision 20): the upstream default follows every edge kind
-    // except Declares, Contains and TestedBy; an explicit kinds array replaces that default;
-    // downstream keeps every kind.
     [Fact]
-    public async Task Impact_UpstreamDefault_SkipsDeclaresContainsAndTestedBy()
+    public async Task Impact_DefaultTraversal_SkipsDeclaresContainsAndTestedBy()
     {
         var snapshotId = await IndexDirectionFixtureAsync();
         await using var session = CreateSession();
@@ -157,13 +154,14 @@ public sealed class McpImpactTests : ImpactIndexFixture
         using (var declaresOnly = JsonDocument.Parse(impact.LurpImpact(symbol: hitId, direction: "upstream", kinds: ["Declares"], limit: 200)))
             Assert.Equal([targetId], McpSymbolIds(declaresOnly));
 
-        // (c) Downstream keeps every kind.
         using var downstream = JsonDocument.Parse(impact.LurpImpact(symbol: targetId, direction: "downstream", max_depth: 1, limit: 200));
-        Assert.Equal(
-            StructuralDownstreamKinds.OrderBy(kind => kind, StringComparer.Ordinal),
-            downstream.RootElement.GetProperty("groups").EnumerateArray()
-                .Select(group => group.GetProperty("edge_kind").GetString()!)
-                .OrderBy(kind => kind, StringComparer.Ordinal));
+        Assert.DoesNotContain(downstream.RootElement.GetProperty("groups").EnumerateArray(),
+            group => StructuralKinds.Contains(group.GetProperty("edge_kind").GetString()));
+
+        using var structural = JsonDocument.Parse(impact.LurpImpact(symbol: targetId, direction: "downstream",
+            kinds: StructuralKinds, max_depth: 1, limit: 200));
+        Assert.Equal(StructuralKinds, structural.RootElement.GetProperty("groups").EnumerateArray()
+            .Select(group => group.GetProperty("edge_kind").GetString()).Order(StringComparer.Ordinal));
     }
 
     private static List<string> McpSymbolIds(JsonDocument document) =>

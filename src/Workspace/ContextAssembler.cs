@@ -165,9 +165,9 @@ internal sealed class ContextAssembler
         // affected_public_surfaces) are named with the only honest recovery: re-running
         // with a larger --content-budget.
 
-        var reachability = new ImpactReachability(EdgeStore, SnapshotId);
-        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, MaxHops, ImpactReachability.UpstreamDefaultKinds, cancellationToken: cancellationToken);
-        var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, MaxHops, cancellationToken: cancellationToken);
+        var reachability = new ImpactReachability(EdgeStore, SnapshotId, DeclarationStore);
+        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, MaxHops, ImpactReachability.DefaultTraversalKinds, cancellationToken: cancellationToken);
+        var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, MaxHops, ImpactReachability.DefaultTraversalKinds, cancellationToken: cancellationToken);
         capsule.IncomingPaths.AddRange(incoming.WitnessLeafPaths());
         capsule.OutgoingPaths.AddRange(outgoing.WitnessLeafPaths());
         reachability.PopulateSites(

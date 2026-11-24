@@ -103,7 +103,7 @@ internal sealed class ContextUpstreamWalk
         // A dispatch source needs a separate visit so an ordinary route can still reach it.
         var visited = seeds.Select(id => new Visit(id)).ToHashSet();
         IEnumerable<(Visit, Witness?)> level = visited.Select(static visit => (visit, (Witness?)null));
-        var frameworkEntries = new Dictionary<string, Witness>(StringComparer.Ordinal);
+        var seenCallers = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var seed in seeds)
             _coverage.Add(seed, 0);
@@ -112,6 +112,7 @@ internal sealed class ContextUpstreamWalk
         {
             _context.ThrowIfCancellationRequested();
             var next = new Dictionary<Visit, Witness>();
+            var frameworkEntries = new Dictionary<string, Witness>(StringComparer.Ordinal);
             foreach (var (visit, prior) in level)
             {
                 _context.ThrowIfCancellationRequested();
@@ -129,7 +130,7 @@ internal sealed class ContextUpstreamWalk
                             edge.Provenance == Provenance.FrameworkDerived || prior?.HasFrameworkEdge == true);
                         KeepBest(next, nextVisit, witness);
                     }
-                    else if (depth == 1 && IsFrameworkEntry(edge) && !excluded.Contains(source))
+                    else if (IsFrameworkEntry(edge) && !excluded.Contains(source) && !seenCallers.Contains(source))
                         KeepBest(frameworkEntries, source, new Witness(visit.SymbolId, edge));
                 }
             }
@@ -142,22 +143,15 @@ internal sealed class ContextUpstreamWalk
                     results.Add(visit.SymbolId, witness);
             }
 
-            if (depth == 1)
+            foreach (var (id, witness) in frameworkEntries)
             {
-                foreach (var (id, witness) in frameworkEntries)
-                {
-                    results.TryAdd(id, witness);
-                    _coverage.TryAdd(id, depth);
-                }
-            }
-            else
-            {
-                foreach (var id in frameworkEntries.Keys)
-                    results.Remove(id);
+                results.TryAdd(id, witness);
+                _coverage.TryAdd(id, depth);
             }
 
             foreach (var (id, witness) in results.OrderBy(pair => pair.Key, StringComparer.Ordinal))
-                _callers.Add((id, depth, witness));
+                if (seenCallers.Add(id))
+                    _callers.Add((id, depth, witness));
 
             if (next.Count == 0)
                 break;
@@ -252,7 +246,8 @@ internal sealed class ContextUpstreamWalk
     }
 
     private static bool IsAccess(EdgeRecord edge) =>
-        edge.Kind is nameof(EdgeKind.Calls) or nameof(EdgeKind.MethodGroupRef) or nameof(EdgeKind.Reads) or nameof(EdgeKind.Writes);
+        edge.Kind is nameof(EdgeKind.Calls) or nameof(EdgeKind.Constructs) or nameof(EdgeKind.MethodGroupRef) or
+            nameof(EdgeKind.Reads) or nameof(EdgeKind.Writes);
 
     private static bool IsFrameworkEntry(EdgeRecord edge) =>
         edge.Kind is nameof(EdgeKind.RoutesTo) or nameof(EdgeKind.Handles);

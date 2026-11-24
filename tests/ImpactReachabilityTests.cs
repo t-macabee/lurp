@@ -181,7 +181,7 @@ public sealed class ImpactReachabilityTests
         ]);
 
         var upstream = reachability.Trace(Anchor, ImpactDirection.Upstream,
-            maxDepth: 1, allowedEdgeKinds: ImpactReachability.UpstreamDefaultKinds);
+            maxDepth: 1, allowedEdgeKinds: ImpactReachability.DefaultTraversalKinds);
         Assert.False(Assert.Single(upstream.Symbols).IsFrontier);
 
         var explicitUpstream = reachability.Trace("B", ImpactDirection.Upstream,

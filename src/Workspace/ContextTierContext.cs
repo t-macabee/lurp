@@ -10,6 +10,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     private readonly Dictionary<string, List<EdgeRecord>> _outgoing = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IndexedSymbolInfo?> _symbols = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsonElement?> _metadata = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<(string SymbolId, string AccessorKind)>> _accessors = new(StringComparer.Ordinal);
     private bool? _hasUnmodeledRegistrations;
 
     internal IEdgeStore EdgeStore { get; } = edgeStore;
@@ -28,8 +29,8 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     // Member-level facts (Calls, Constructs, MayDispatchTo, TestedBy) are
     // persisted on member symbol IDs; a type anchor carries none of them. Tier
     // builders therefore query an effective scope: the anchor id plus, for a
-    // type anchor, the ids of its directly declared members resolved through the
-    // persisted Declares edges. Each id is queried independently and results
+    // type anchor, its directly declared members, or for a property or event
+    // anchor, its accessors. Each id is queried independently and results
     // keep the originating edge's kind and provenance, so no type-level edges
     // are synthesized and member multiplicity is preserved.
     internal IReadOnlyList<string> EffectiveSymbolIds => field ??= ComputeEffectiveSymbolIds();
@@ -65,6 +66,14 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         if (!_metadata.TryGetValue(id, out var metadata))
             _metadata[id] = metadata = SymbolMetadata.Parse(GetSymbolInfo(id)?.MetadataJson, id);
         return metadata;
+    }
+
+    internal List<(string SymbolId, string AccessorKind)> GetAccessors(string id)
+    {
+        ThrowIfCancellationRequested();
+        if (!_accessors.TryGetValue(id, out var accessors))
+            _accessors[id] = accessors = DeclarationStore.GetAccessorsForSymbol(SnapshotId, id);
+        return accessors;
     }
 
     internal List<EdgeRecord> GetMayDispatchEdges(string symbolId)
@@ -178,12 +187,12 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     private List<string> ComputeEffectiveSymbolIds()
     {
         var ids = new List<string> { SymbolId.Value };
-        if (SymbolId.DocCommentId is not ['T', ':', ..])
-            return ids;
-
-        ids.AddRange(GetOutgoingEdges(SymbolId.Value)
-            .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
-            .Select(edge => edge.TargetSymbolId));
+        if (SymbolId.IsType)
+            ids.AddRange(GetOutgoingEdges(SymbolId.Value)
+                .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
+                .Select(edge => edge.TargetSymbolId));
+        else if (SymbolId.DocCommentId is [('P' or 'E'), ':', ..])
+            ids.AddRange(GetAccessors(SymbolId.Value).Select(accessor => accessor.SymbolId));
         return ids;
     }
 
@@ -193,7 +202,10 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         ThrowIfCancellationRequested();
         var info = GetSymbolInfo(symbolId);
         if (info == null)
-            return null;
+            return symbolId.StartsWith(GraphNodeIds.RoutePrefix, StringComparison.Ordinal)
+                ? new CapsuleItem(symbolId, "Route", symbolId, provenance, edgeKind,
+                    inclusionReason: inclusionReason, relationship: relationship, direct: direct)
+                : null;
 
         var source = DeclarationStore.GetSymbolSource(symbolId, SnapshotId, ViewKind.Declaration, IncludeGenerated);
 

@@ -461,6 +461,12 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _declReader!.GetSymbolInfo(symbolId, snapshotId);
     }
 
+    public List<(string SymbolId, string AccessorKind)> GetAccessorsForSymbol(string snapshotId, string associatedSymbolId)
+    {
+        EnsureOpen();
+        return _declReader!.GetAccessorsForSymbol(snapshotId, associatedSymbolId);
+    }
+
     public string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
     {
         EnsureOpen();

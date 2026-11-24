@@ -59,8 +59,6 @@ public sealed class ImpactHop
     [JsonPropertyName("site_count")] public int SiteCount { get; internal set; }
 
     [JsonPropertyName("sites")] public List<ImpactHopSite> Sites { get; internal set; }
-
-    internal string OtherEnd(string symbolId) => string.Equals(SourceSymbolId, symbolId, StringComparison.Ordinal) ? TargetSymbolId : SourceSymbolId;
 }
 
 public sealed class ImpactPath

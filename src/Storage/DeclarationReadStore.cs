@@ -38,6 +38,35 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         return ReadSymbolInfo(reader);
     }
 
+    internal List<(string SymbolId, string AccessorKind)> GetAccessorsForSymbol(string snapshotId, string associatedSymbolId)
+    {
+        var typeId = SymbolId.DeriveContainingTypeSymbolId(associatedSymbolId);
+        if (typeId == null)
+            return [];
+
+        // Scope the metadata lookup to the declaring type's members.
+        using var command = _connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT e.target_symbol_id, json_extract(ss.metadata_json, '$.{SymbolMetadataKeys.AccessorKind}')
+            FROM edges e
+            JOIN snapshot_symbols ss ON ss.snapshot_id = e.snapshot_id AND ss.symbol_id = e.target_symbol_id
+            WHERE e.snapshot_id = @snapshotId AND e.source_symbol_id = @typeId AND e.kind = 'Declares'
+              AND json_extract(ss.metadata_json, '$.{SymbolMetadataKeys.AssociatedSymbol}') = @associatedDocId
+            ORDER BY e.target_symbol_id;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@typeId", typeId);
+        command.Parameters.AddWithValue("@associatedDocId", SymbolId.DocCommentIdOf(associatedSymbolId));
+
+        using var reader = command.ExecuteReader();
+        var accessors = new List<(string SymbolId, string AccessorKind)>();
+        while (reader.Read())
+            if (!reader.IsDBNull(1))
+                accessors.Add((reader.GetString(0), reader.GetString(1)));
+
+        return accessors;
+    }
+
     internal string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
     {
         string startCol, endCol;

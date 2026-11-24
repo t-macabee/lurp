@@ -20,7 +20,7 @@ internal sealed class ImpactTool
 
     [McpServerTool(Name = "lurp_impact", Title = "Lurp Impact", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
         OutputSchemaType = typeof(ImpactResponse))]
-    [Description("Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination. The upstream direction follows every edge kind except Declares, Contains and TestedBy unless kinds names the set; the downstream direction follows every kind.")]
+    [Description("Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination. Both directions exclude Declares, Contains and TestedBy by default. Supply kinds to use a different set.")]
     public string LurpImpact(
         [McpRequired] string? symbol = null,
         string? direction = null,
@@ -51,7 +51,7 @@ internal sealed class ImpactTool
             if (bindError != null)
                 throw new McpProtocolException(bindError.FormatMcp(), McpErrorCode.InvalidParams);
 
-            var reachability = new ImpactReachability(store, snapshotId);
+            var reachability = new ImpactReachability(store, snapshotId, store);
             var traced = reachability.Trace(binding!.ResolvedSymbolId, request.Direction, request.MaxDepth, request.AllowedKinds, request.AllowedProvenance, includeSource: true, cancellationToken: cancellationToken);
             var semanticCauses = store.GetSemanticChangesForSymbol(snapshotId, binding.ResolvedSymbolId);
 

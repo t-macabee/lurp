@@ -1383,6 +1383,9 @@ public sealed class SemanticDifferTests : IDisposable
             return inner.GetSymbolInfo(symbolId, snapshotId);
         }
 
+        public List<(string SymbolId, string AccessorKind)> GetAccessorsForSymbol(string snapshotId, string associatedSymbolId) =>
+            inner.GetAccessorsForSymbol(snapshotId, associatedSymbolId);
+
         public string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
         {
             _symbolSourceCalls[symbolId] = _symbolSourceCalls.GetValueOrDefault(symbolId) + 1;

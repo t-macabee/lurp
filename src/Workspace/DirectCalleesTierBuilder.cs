@@ -6,53 +6,66 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
 {
     string IContextTierBuilder.Name => "direct_callees";
 
-    string IContextTierBuilder.InclusionReason => "Direct compiler-resolved calls or constructions made by the anchor.";
+    string IContextTierBuilder.InclusionReason => "Direct compiler-resolved calls, constructions, or accesses that can execute accessor code.";
 
     TierBindingScope IContextTierBuilder.BindingScope => TierBindingScope.AnchorDocuments;
 
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();
-        var seen = new HashSet<string>();
-        var allowedKinds = new HashSet<string>
-        {
-            nameof(EdgeKind.Calls),
-            nameof(EdgeKind.Constructs),
-            nameof(EdgeKind.MethodGroupRef)
-        };
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var family = AnchorMemberFamily();
+        var dispatchSites = new List<(EdgeRecord Access, string DispatchSource, bool IsMemberAccess)>();
 
         foreach (var symbolId in context.EffectiveSymbolIds)
         {
             context.ThrowIfCancellationRequested();
-            foreach (var edge in context.GetOutgoingEdges(symbolId))
+            var outgoing = context.GetOutgoingEdges(symbolId);
+            var dispatchTargets = outgoing.Where(edge => edge.Kind == nameof(EdgeKind.StaticallyCalls))
+                .Select(edge => edge.TargetSymbolId).ToHashSet(StringComparer.Ordinal);
+            foreach (var edge in outgoing)
             {
-                // D13: a recursive call is a self edge; the anchor is not its own callee.
-                if (!allowedKinds.Contains(edge.Kind) || edge.TargetSymbolId == edge.SourceSymbolId)
+                if (edge.TargetSymbolId == edge.SourceSymbolId || family.Contains(edge.TargetSymbolId))
                     continue;
 
-                // Direct callees are registered first so a dispatch projection
-                // can never replace a genuine direct call's stronger label.
+                var memberAccess = edge.Kind is nameof(EdgeKind.Reads) or nameof(EdgeKind.Writes) &&
+                    SymbolId.DocCommentIdOf(edge.TargetSymbolId) is [('P' or 'E'), ':', ..];
+                if (memberAccess)
+                {
+                    var accessors = context.GetAccessors(edge.TargetSymbolId)
+                        .Where(accessor => AccessorEdges.Inherits(accessor.AccessorKind, edge.Kind))
+                        .Select(accessor => accessor.SymbolId).ToList();
+                    var dispatchSources = dispatchTargets.Contains(edge.TargetSymbolId)
+                        ? accessors.Prepend(edge.TargetSymbolId).Where(id => context.GetMayDispatchEdges(id).Count != 0).ToList()
+                        : [];
+                    if (dispatchSources.Count == 0 && !accessors.Any(id => context.GetOutgoingEdges(id).Any(IsAccessorBodyEdge)))
+                        continue;
+
+                    foreach (var source in dispatchSources)
+                        dispatchSites.Add((edge, source, true));
+                }
+                else if (edge.Kind is not (nameof(EdgeKind.Calls) or nameof(EdgeKind.Constructs) or nameof(EdgeKind.MethodGroupRef)))
+                    continue;
+                else if (edge.Kind == nameof(EdgeKind.Calls))
+                    dispatchSites.Add((edge, edge.TargetSymbolId, false));
+
                 AddItem(edge.TargetSymbolId, edge.Kind, edge.Provenance,
-                    "Direct call or construction target of the anchor.",
+                    memberAccess ? "Direct access to a member with executable accessor code."
+                        : "Direct call or construction target of the anchor.",
                     CapsuleRelationship.DirectCallee, true);
             }
         }
 
-        // Dispatch projections run after the direct pass and only for targets
-        // not already present as direct callees (the shared seen set skips them).
-        foreach (var symbolId in context.EffectiveSymbolIds)
-        {
-            context.ThrowIfCancellationRequested();
-            foreach (var edge in context.GetOutgoingEdges(symbolId).Where(edge => edge.Kind == nameof(EdgeKind.Calls)))
-                AddMayDispatchTargets(edge);
-        }
+        // Give direct callees priority when a dispatch projection reaches the same target.
+        foreach (var (access, source, isMemberAccess) in dispatchSites)
+            AddMayDispatchTargets(access, source, isMemberAccess);
 
         return results;
 
         void AddItem(string symbolId, string edgeKind, string provenance, string inclusionReason,
             string? relationship = null, bool? direct = null)
         {
-            if (!seen.Add(symbolId))
+            if (family.Contains(symbolId) || !seen.Add(symbolId))
                 return;
 
             var item = context.BuildCapsuleItem(symbolId, edgeKind, provenance, inclusionReason,
@@ -60,40 +73,51 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
             if (item != null) results.Add(item);
         }
 
-        void AddMayDispatchTargets(EdgeRecord callEdge)
+        void AddMayDispatchTargets(EdgeRecord callEdge, string dispatchSource, bool isMemberAccess)
         {
             context.ThrowIfCancellationRequested();
             var receiverAlternatives = ReceiverTypeConstraints.Deserialize(callEdge.ReceiverTypeConstraintsJson)
                 .Select(static alternative => alternative.AsReadOnly())
                 .ToList();
-            if (receiverAlternatives.Count == 0)
+            if (receiverAlternatives.Count == 0 && !isMemberAccess)
                 return;
 
-            foreach (var edge in context.GetMayDispatchEdges(callEdge.TargetSymbolId))
+            foreach (var edge in context.GetMayDispatchEdges(dispatchSource))
             {
                 context.ThrowIfCancellationRequested();
-                var declaringTypes = context.GetDeclaringTypeIds(edge.TargetSymbolId);
-                if (!declaringTypes.Any(candidateTypeId =>
-                        context.IsReceiverCompatible(candidateTypeId, receiverAlternatives)))
+                if (receiverAlternatives.Count > 0 && !context.GetDeclaringTypeIds(edge.TargetSymbolId)
+                        .Any(candidateTypeId => context.IsReceiverCompatible(candidateTypeId, receiverAlternatives)))
                     continue;
 
-                // The call targets the interface/abstract member, not this
-                // implementation. The candidate is included only because it
-                // globally implements the called member (the MayDispatchTo
-                // relation, structurally compiler-proved in the graph);
-                // receiver-type compatibility narrows which global
-                // implementations are candidates but does not prove this call
-                // selects it at runtime. The projected item is a
-                // global_implementation_relation, never a direct callee.
+                var receiverEvidence = receiverAlternatives.Count > 0
+                    ? " The containing type satisfies the call site's persisted static receiver-type constraints."
+                    : "";
                 AddItem(edge.TargetSymbolId, edge.Kind, CapsuleProvenance.GlobalImplementationRelation,
-                    "Dispatch-projected implementation of a called interface or virtual member: the anchor " +
-                    $"calls the interface/abstract member via a Calls edge ({callEdge.Provenance}), which may " +
-                    $"dispatch to this implementation at runtime via a MayDispatchTo edge ({edge.Provenance}). " +
-                    "The containing type is assignable to the call site's persisted static receiver-type " +
-                    "constraints, which narrows but does not establish the runtime target, so this is not " +
-                    "a direct callee.",
+                    $"The anchor reaches the interface or virtual member via {callEdge.Kind} ({callEdge.Provenance}). " +
+                    $"A MayDispatchTo edge ({edge.Provenance}) identifies this candidate implementation." + receiverEvidence,
                     CapsuleRelationship.IndirectDispatchCandidate, false);
             }
         }
     }
+
+    private HashSet<string> AnchorMemberFamily()
+    {
+        var anchor = context.SymbolId;
+        var family = new HashSet<string>(StringComparer.Ordinal) { anchor.Value };
+        if (anchor.DocCommentId is [('P' or 'E'), ':', ..])
+            family.UnionWith(context.GetAccessors(anchor.Value).Select(accessor => accessor.SymbolId));
+        else if (anchor.DocCommentId is ['M', ':', ..] &&
+                 SymbolMetadata.GetString(context.GetSymbolMetadata(anchor.Value), SymbolMetadataKeys.AssociatedSymbol) is { } member)
+        {
+            var memberId = SymbolId.Compose(member, anchor.AssemblyIdentity);
+            family.Add(memberId);
+            family.UnionWith(context.GetAccessors(memberId).Select(accessor => accessor.SymbolId));
+        }
+
+        return family;
+    }
+
+    private static bool IsAccessorBodyEdge(EdgeRecord edge) =>
+        edge.Kind is nameof(EdgeKind.Calls) or nameof(EdgeKind.Constructs) or nameof(EdgeKind.Reads) or nameof(EdgeKind.Writes) or
+            nameof(EdgeKind.MethodGroupRef) or nameof(EdgeKind.Throws) or nameof(EdgeKind.StaticallyCalls);
 }

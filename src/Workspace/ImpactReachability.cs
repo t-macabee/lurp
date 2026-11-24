@@ -1,25 +1,50 @@
 namespace Lurp.Workspace;
 
 /// <summary>
-///     Reachability traversal over the edge graph: visits each symbol once and
-///     reports its depth, a deterministic witness path and its shortest-path
+///     Reachability traversal over the edge graph: reports each reached symbol
+///     with its depth, a deterministic witness path and its shortest-path
 ///     count. It never enumerates one entry per path, so memory stays
 ///     O(symbols + edges examined) instead of growing exponentially with
 ///     <c>maxDepth</c>.
 /// </summary>
 public sealed class ImpactReachability
 {
+    [Flags]
+    internal enum MemberAccess { None = 0, Read = 1, Write = 2 }
+
+    internal readonly record struct Visit(string SymbolId, MemberAccess Access = MemberAccess.None);
+
+    internal sealed record Witness(Visit Parent, ImpactHop Hop, MemberAccess ParentAccess,
+        (ImpactHop Hop, MemberAccess ParentAccess)? Read, (ImpactHop Hop, MemberAccess ParentAccess)? Write)
+    {
+        internal (ImpactHop Hop, MemberAccess ParentAccess) HopFor(MemberAccess access) => access switch
+        {
+            MemberAccess.Read when Read.HasValue => Read.Value,
+            MemberAccess.Write when Write.HasValue => Write.Value,
+            _ => (Hop, ParentAccess)
+        };
+    }
+
+    private readonly record struct Expansion(EdgeRecord Edge, MemberAccess ParentAccess = MemberAccess.None);
+
+    private readonly Dictionary<string, List<(string SymbolId, string AccessorKind)>> _accessorCache = new(StringComparer.Ordinal);
     private readonly Dictionary<(ImpactDirection, string), List<EdgeRecord>> _edgeCache = [];
     private readonly string _snapshotId;
     private readonly IEdgeStore _store;
+    private readonly IDeclarationStore? _declarations;
 
-    public ImpactReachability(IEdgeStore store, string snapshotId)
+    public ImpactReachability(IEdgeStore store, string snapshotId) : this(store, snapshotId, store as IDeclarationStore)
+    {
+    }
+
+    public ImpactReachability(IEdgeStore store, string snapshotId, IDeclarationStore? declarations)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _declarations = declarations;
         _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
     }
 
-    internal static readonly IReadOnlySet<string> UpstreamDefaultKinds = Enum.GetNames<EdgeKind>()
+    internal static readonly IReadOnlySet<string> DefaultTraversalKinds = Enum.GetNames<EdgeKind>()
         .Where(name => name is not nameof(EdgeKind.Declares) and not nameof(EdgeKind.Contains) and not nameof(EdgeKind.TestedBy))
         .ToHashSet(StringComparer.Ordinal);
 
@@ -41,62 +66,119 @@ public sealed class ImpactReachability
             throw new ArgumentException("Symbol id is required.", nameof(symbolId));
 
         cancellationToken.ThrowIfCancellationRequested();
-        var depth = new Dictionary<string, int>(StringComparer.Ordinal) { [symbolId] = 0 };
-        var parentHops = new Dictionary<string, ImpactHop>(StringComparer.Ordinal);
-        var pathCounts = new Dictionary<string, long>(StringComparer.Ordinal) { [symbolId] = 1 };
-        var reached = new List<string>();
-        var level = new List<string> { symbolId };
+        var seeds = maxDepth > 0
+            ? GetSeeds(symbolId, direction, allowedEdgeKinds)
+            : new HashSet<string>(StringComparer.Ordinal) { symbolId };
+        var depth = seeds.ToDictionary(id => new Visit(id), _ => 0);
+        var parents = new Dictionary<Visit, Witness>();
+        var pathCounts = depth.Keys.ToDictionary(visit => visit, _ => 1L);
+        var level = depth.Keys.ToList();
 
         for (var currentDepth = 0; currentDepth < maxDepth && level.Count > 0; currentDepth++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // One level is expanded at a time, in ordinal symbol order, so the
-            // witness parent of a symbol never depends on discovery order.
-            level.Sort(StringComparer.Ordinal);
-            var next = new List<string>();
+            var next = new List<Visit>();
 
-            foreach (var currentId in level)
+            foreach (var current in level.OrderBy(visit => visit.SymbolId, StringComparer.Ordinal).ThenBy(visit => visit.Access))
             {
-                string? previousNeighborId = null;
-                foreach (var edge in FilterAndSort(GetEdges(currentId, direction), direction, allowedEdgeKinds, allowedProvenance))
+                cancellationToken.ThrowIfCancellationRequested();
+                var edges = FilteredExpansions(current, direction, allowedEdgeKinds, allowedProvenance).ToList();
+                edges.Sort((left, right) =>
                 {
-                    var neighborId = NeighborOf(edge, direction);
-                    // FilterAndSort orders by neighbor first, so parallel edges
-                    // between one pair are adjacent; credit each neighbor once.
-                    if (string.Equals(neighborId, previousNeighborId, StringComparison.Ordinal))
-                        continue;
-                    previousNeighborId = neighborId;
+                    var order = CompareForExpansion(left.Edge, right.Edge, direction);
+                    return order != 0 ? order : left.ParentAccess.CompareTo(right.ParentAccess);
+                });
 
-                    if (depth.TryGetValue(neighborId, out var neighborDepth))
+                foreach (var group in edges.GroupBy(expansion => NeighborOf(expansion.Edge, direction), StringComparer.Ordinal))
+                {
+                    if (seeds.Contains(group.Key))
+                        continue;
+
+                    // A visit records the union of access modes available from this parent.
+                    // A compound assignment still contributes one symbol route.
+                    var access = MemberAccess.None;
+                    Expansion? read = null, write = null;
+                    if (direction == ImpactDirection.Downstream && _declarations != null &&
+                        SymbolId.DocCommentIdOf(group.Key) is [('P' or 'E'), ':', ..])
                     {
-                        // An edge from the previous level is one more shortest
-                        // route; an edge into an already shallower symbol cannot
-                        // extend a shortest path to it.
+                        foreach (var expansion in group)
+                        {
+                            if (expansion.Edge.Kind == nameof(EdgeKind.Reads))
+                                read ??= expansion;
+                            else if (expansion.Edge.Kind == nameof(EdgeKind.Writes))
+                                write ??= expansion;
+                        }
+
+                        if (read.HasValue) access |= MemberAccess.Read;
+                        if (write.HasValue) access |= MemberAccess.Write;
+                    }
+
+                    var neighbor = new Visit(group.Key, access);
+                    if (depth.TryGetValue(neighbor, out var neighborDepth))
+                    {
                         if (neighborDepth == currentDepth + 1)
-                            pathCounts[neighborId] = SaturatingAdd(pathCounts[neighborId], pathCounts[currentId]);
+                            pathCounts[neighbor] = SaturatingAdd(pathCounts[neighbor], pathCounts[current]);
                         continue;
                     }
 
-                    depth[neighborId] = currentDepth + 1;
-                    parentHops[neighborId] = BuildHop(edge, includeSource);
-                    pathCounts[neighborId] = pathCounts[currentId];
-                    reached.Add(neighborId);
-                    next.Add(neighborId);
+                    var first = group.First();
+                    depth[neighbor] = currentDepth + 1;
+                    parents[neighbor] = new Witness(current, BuildHop(first.Edge, includeSource), first.ParentAccess,
+                        read is { } readEdge ? (BuildHop(readEdge.Edge, includeSource), readEdge.ParentAccess) : null,
+                        write is { } writeEdge ? (BuildHop(writeEdge.Edge, includeSource), writeEdge.ParentAccess) : null);
+                    pathCounts[neighbor] = pathCounts[current];
+                    next.Add(neighbor);
                 }
             }
 
             level = next;
         }
 
-        var symbols = new List<ImpactReachedSymbol>(reached.Count);
-        foreach (var id in reached.OrderBy(id => depth[id]).ThenBy(id => id, StringComparer.Ordinal))
+        var symbols = new List<ImpactReachedSymbol>();
+        var witnesses = new Dictionary<string, Visit>(StringComparer.Ordinal);
+        foreach (var visits in parents.Keys.OrderBy(visit => depth[visit]).ThenBy(visit => visit.SymbolId, StringComparer.Ordinal)
+                     .GroupBy(visit => visit.SymbolId, StringComparer.Ordinal))
         {
-            var isFrontier = depth[id] == maxDepth &&
-                             HasFilteredEdgeOffWitnessPath(id, direction, symbolId, parentHops, allowedEdgeKinds, allowedProvenance);
-            symbols.Add(new ImpactReachedSymbol(id, depth[id], pathCounts[id], isFrontier, parentHops[id]));
+            cancellationToken.ThrowIfCancellationRequested();
+            var visit = visits.First();
+            var shortest = depth[visit];
+            var count = visits.TakeWhile(candidate => depth[candidate] == shortest)
+                .Aggregate(0L, (total, candidate) => SaturatingAdd(total, pathCounts[candidate]));
+            var isFrontier = shortest == maxDepth &&
+                             HasFilteredEdgeOffWitnessPath(visit, direction, seeds, parents, allowedEdgeKinds, allowedProvenance);
+            symbols.Add(new ImpactReachedSymbol(visit.SymbolId, shortest, count, isFrontier, parents[visit].Hop));
+            witnesses.Add(visit.SymbolId, visit);
         }
 
-        return new ImpactReachabilityResult(symbolId, symbols, parentHops);
+        return new ImpactReachabilityResult(symbolId, symbols, seeds, witnesses, parents);
+    }
+
+    private HashSet<string> GetSeeds(string symbolId, ImpactDirection direction, IReadOnlySet<string>? allowedEdgeKinds)
+    {
+        var seeds = new HashSet<string>(StringComparer.Ordinal) { symbolId };
+        if (direction != ImpactDirection.Downstream || allowedEdgeKinds == null || allowedEdgeKinds.Contains(nameof(EdgeKind.Declares)))
+            return seeds;
+
+        switch (SymbolId.DocCommentIdOf(symbolId))
+        {
+            case ['T', ':', ..]:
+                seeds.UnionWith(GetEdges(symbolId, direction)
+                    .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
+                    .Select(edge => edge.TargetSymbolId));
+                break;
+            case [('P' or 'E'), ':', ..]:
+                seeds.UnionWith(GetAccessors(symbolId).Select(accessor => accessor.SymbolId));
+                break;
+        }
+
+        return seeds;
+    }
+
+    private List<(string SymbolId, string AccessorKind)> GetAccessors(string symbolId)
+    {
+        if (!_accessorCache.TryGetValue(symbolId, out var accessors))
+            _accessorCache[symbolId] = accessors = _declarations?.GetAccessorsForSymbol(_snapshotId, symbolId) ?? [];
+        return accessors;
     }
 
     private List<EdgeRecord> GetEdges(string currentId, ImpactDirection direction)
@@ -114,52 +196,76 @@ public sealed class ImpactReachability
         return edges;
     }
 
-    private bool HasFilteredEdgeOffWitnessPath(string symbolId, ImpactDirection direction, string anchorId,
-        IReadOnlyDictionary<string, ImpactHop> parentHops, IReadOnlySet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance)
+    private bool HasFilteredEdgeOffWitnessPath(Visit visit, ImpactDirection direction, HashSet<string> seeds,
+        Dictionary<Visit, Witness> parents, IReadOnlySet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance)
     {
-        var edges = GetEdges(symbolId, direction);
-        var witnessSymbols = WitnessSymbols(symbolId, anchorId, parentHops);
-        foreach (var edge in FilteredEdges(edges, allowedEdgeKinds, allowedProvenance))
-            if (!witnessSymbols.Contains(NeighborOf(edge, direction)))
-                return true;
-        return false;
-    }
-
-    private static HashSet<string> WitnessSymbols(string symbolId, string anchorId, IReadOnlyDictionary<string, ImpactHop> parentHops)
-    {
-        var symbols = new HashSet<string>(StringComparer.Ordinal) { symbolId };
-        var current = symbolId;
-        while (!string.Equals(current, anchorId, StringComparison.Ordinal) && parentHops.TryGetValue(current, out var hop))
+        var witnessSymbols = new HashSet<string>(StringComparer.Ordinal) { visit.SymbolId };
+        var current = visit;
+        while (parents.TryGetValue(current, out var witness))
         {
-            current = hop.OtherEnd(current);
-            symbols.Add(current);
+            current = witness.Parent;
+            witnessSymbols.Add(current.SymbolId);
         }
 
-        return symbols;
-    }
-
-    private static List<EdgeRecord> FilterAndSort(List<EdgeRecord> edges, ImpactDirection direction,
-        IReadOnlySet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance)
-    {
-        var filtered = FilteredEdges(edges, allowedEdgeKinds, allowedProvenance);
-        filtered.Sort((left, right) => CompareForExpansion(left, right, direction));
-        return filtered;
-    }
-
-    private static List<EdgeRecord> FilteredEdges(List<EdgeRecord> edges, IReadOnlySet<string>? allowedEdgeKinds,
-        HashSet<string>? allowedProvenance)
-    {
-        var filtered = new List<EdgeRecord>(edges.Count);
-        foreach (var edge in edges)
+        return FilteredExpansions(visit, direction, allowedEdgeKinds, allowedProvenance).Any(expansion =>
         {
-            if (allowedEdgeKinds != null && !allowedEdgeKinds.Contains(edge.Kind))
-                continue;
-            if (allowedProvenance != null && !allowedProvenance.Contains(edge.Provenance))
-                continue;
-            filtered.Add(edge);
-        }
+            var neighbor = NeighborOf(expansion.Edge, direction);
+            return !witnessSymbols.Contains(neighbor) && !seeds.Contains(neighbor);
+        });
+    }
 
-        return filtered;
+    private IEnumerable<Expansion> FilteredExpansions(Visit visit, ImpactDirection direction,
+        IReadOnlySet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance) =>
+        Expand(visit, direction).Where(expansion =>
+            (allowedEdgeKinds == null || allowedEdgeKinds.Contains(expansion.Edge.Kind)) &&
+            (allowedProvenance == null || allowedProvenance.Contains(expansion.Edge.Provenance)));
+
+    private IEnumerable<Expansion> Expand(Visit visit, ImpactDirection direction)
+    {
+        var id = visit.SymbolId;
+        foreach (var edge in GetEdges(id, direction))
+            yield return new Expansion(edge);
+
+        if (_declarations == null)
+            yield break;
+
+        if (direction == ImpactDirection.Downstream && visit.Access != MemberAccess.None)
+        {
+            foreach (var (accessor, role) in GetAccessors(id))
+            {
+                var access = MatchingAccess(visit.Access, role);
+                if (access == MemberAccess.None)
+                    continue;
+
+                foreach (var edge in GetEdges(accessor, direction))
+                    if (edge.TargetSymbolId != id)
+                        yield return new Expansion(edge, access);
+            }
+        }
+        else if (direction == ImpactDirection.Upstream && SymbolId.DocCommentIdOf(id) is ['M', ':', ..])
+        {
+            var metadata = SymbolMetadata.Parse(_declarations.GetSymbolInfo(id, _snapshotId)?.MetadataJson, id);
+            var role = SymbolMetadata.GetString(metadata, SymbolMetadataKeys.AccessorKind);
+            var associatedDocId = SymbolMetadata.GetString(metadata, SymbolMetadataKeys.AssociatedSymbol);
+            if (role == null || associatedDocId == null || !SymbolId.TryParse(id, out var parsed))
+                yield break;
+
+            var associatedId = SymbolId.Compose(associatedDocId, parsed.AssemblyIdentity);
+            var family = GetAccessors(associatedId);
+            foreach (var edge in GetEdges(associatedId, direction))
+                if (edge.SourceSymbolId != id && edge.SourceSymbolId != associatedId &&
+                    AccessorEdges.Inherits(role, edge.Kind) && !family.Any(accessor => accessor.SymbolId == edge.SourceSymbolId))
+                    yield return new Expansion(edge);
+        }
+    }
+
+    private static MemberAccess MatchingAccess(MemberAccess access, string role)
+    {
+        if ((access & MemberAccess.Read) != 0 && AccessorEdges.Inherits(role, nameof(EdgeKind.Reads)))
+            return MemberAccess.Read;
+        if ((access & MemberAccess.Write) != 0 && AccessorEdges.Inherits(role, nameof(EdgeKind.Writes)))
+            return MemberAccess.Write;
+        return MemberAccess.None;
     }
 
     // Expansion order: neighbor, kind, provenance, then source location. The
@@ -182,7 +288,13 @@ public sealed class ImpactReachability
         compared = Nullable.Compare(left.SourceStartLine, right.SourceStartLine);
         if (compared != 0) return compared;
 
-        return Nullable.Compare(left.SourceStartColumn, right.SourceStartColumn);
+        compared = Nullable.Compare(left.SourceStartColumn, right.SourceStartColumn);
+        if (compared != 0) return compared;
+
+        // A bridged edge can share a neighbor and location with an edge from
+        // another accessor. Use both persisted endpoints to break those ties.
+        compared = string.CompareOrdinal(left.SourceSymbolId, right.SourceSymbolId);
+        return compared != 0 ? compared : string.CompareOrdinal(left.TargetSymbolId, right.TargetSymbolId);
     }
 
     private static ImpactHop BuildHop(EdgeRecord edge, bool includeSource)
@@ -285,14 +397,19 @@ public sealed class ImpactReachedSymbol
 
 public sealed class ImpactReachabilityResult
 {
-    private readonly IReadOnlyDictionary<string, ImpactHop> _parentHops;
+    private readonly IReadOnlySet<string> _seeds;
+    private readonly IReadOnlyDictionary<string, ImpactReachability.Visit> _witnesses;
+    private readonly IReadOnlyDictionary<ImpactReachability.Visit, ImpactReachability.Witness> _parents;
 
     internal ImpactReachabilityResult(string anchorSymbolId, IReadOnlyList<ImpactReachedSymbol> symbols,
-        IReadOnlyDictionary<string, ImpactHop> parentHops)
+        IReadOnlySet<string> seeds, IReadOnlyDictionary<string, ImpactReachability.Visit> witnesses,
+        IReadOnlyDictionary<ImpactReachability.Visit, ImpactReachability.Witness> parents)
     {
         AnchorSymbolId = anchorSymbolId ?? throw new ArgumentNullException(nameof(anchorSymbolId));
         Symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
-        _parentHops = parentHops ?? throw new ArgumentNullException(nameof(parentHops));
+        _seeds = seeds;
+        _witnesses = witnesses;
+        _parents = parents;
     }
 
     public string AnchorSymbolId { get; }
@@ -301,22 +418,26 @@ public sealed class ImpactReachabilityResult
     public IReadOnlyList<ImpactReachedSymbol> Symbols { get; }
 
     /// <summary>
-    ///     The witness path from the anchor to <paramref name="symbolId" />, in
-    ///     traversal order (first hop first). Empty for the anchor and for
-    ///     symbols that were not reached.
+    ///     The witness path from a depth-zero starting point to <paramref name="symbolId" />,
+    ///     in traversal order (first hop first). Empty for the starting points and
+    ///     for symbols that were not reached.
     /// </summary>
     public List<ImpactHop> WitnessPath(string symbolId)
     {
         ArgumentNullException.ThrowIfNull(symbolId);
 
+        if (!_witnesses.TryGetValue(symbolId, out var current))
+            return [];
+
         var hops = new List<ImpactHop>();
-        var current = symbolId;
-        while (!string.Equals(current, AnchorSymbolId, StringComparison.Ordinal))
+        var access = ImpactReachability.MemberAccess.None;
+        while (!_seeds.Contains(current.SymbolId))
         {
-            if (!_parentHops.TryGetValue(current, out var hop))
-                return [];
+            var witness = _parents[current];
+            var (hop, parentAccess) = witness.HopFor(access);
             hops.Add(hop);
-            current = hop.OtherEnd(current);
+            access = parentAccess;
+            current = witness.Parent;
         }
 
         hops.Reverse();
@@ -332,14 +453,18 @@ public sealed class ImpactReachabilityResult
     /// </summary>
     public IReadOnlyList<ImpactPath> WitnessLeafPaths()
     {
-        var parents = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var symbol in Symbols)
-            parents.Add(symbol.ParentHop.OtherEnd(symbol.SymbolId));
+        var parents = new HashSet<ImpactReachability.Visit>();
+        foreach (var visit in _witnesses.Values)
+        {
+            var current = visit;
+            while (_parents.TryGetValue(current, out var witness) && parents.Add(witness.Parent))
+                current = witness.Parent;
+        }
 
         var leaves = new List<ImpactPath>();
         foreach (var symbol in Symbols)
         {
-            if (parents.Contains(symbol.SymbolId))
+            if (parents.Contains(_witnesses[symbol.SymbolId]))
                 continue;
 
             leaves.Add(new ImpactPath(WitnessPath(symbol.SymbolId),

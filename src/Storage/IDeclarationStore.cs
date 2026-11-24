@@ -4,6 +4,7 @@ public interface IDeclarationStore
 {
     void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations);
     IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId);
+    List<(string SymbolId, string AccessorKind)> GetAccessorsForSymbol(string snapshotId, string associatedSymbolId);
     string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false);
     string? GetContainingTypeSource(string symbolId, string snapshotId, bool includeGenerated);
     string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines, bool includeGenerated);

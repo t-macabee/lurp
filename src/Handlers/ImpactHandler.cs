@@ -105,7 +105,7 @@ internal static class ImpactHandler
             if (bindError != null)
                 HandlerBootstrap.Fail(bindError.FormatCli());
 
-            var reachability = new ImpactReachability(store, snapshotId);
+            var reachability = new ImpactReachability(store, snapshotId, store);
             var traced = reachability.Trace(binding!.ResolvedSymbolId, request.Direction, request.MaxDepth, request.AllowedKinds, request.AllowedProvenance);
             var semanticCauses = store.GetSemanticChangesForSymbol(snapshotId, binding.ResolvedSymbolId);
 
