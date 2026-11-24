@@ -202,7 +202,9 @@ public class MigrationRunner
             new Migration_047_SnapshotSymbolBareFqn(),
             new Migration_048_RecomputeLineStarts(),
             new Migration_049_EdgeSitesDocumentIndex(),
-            new Migration_050_EdgeSiteEvidence()
+            new Migration_050_EdgeSiteEvidence(),
+            new Migration_051_MultiTfmDeclarationSpans(),
+            new Migration_052_WeightedSymbolFts()
         ];
     }
 }

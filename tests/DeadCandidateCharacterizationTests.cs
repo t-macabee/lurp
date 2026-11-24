@@ -2047,10 +2047,8 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
             Assert.Equal("src/TestProject/APart.cs", widget.Locations[0].DocumentPath);
             Assert.Equal("src/TestProject/ZPart.cs", widget.Locations[1].DocumentPath);
             Assert.Equal("src/TestProject/APart.cs", widget.DocumentPath);
-            // start_line is the FullSpan start: the blank line before each `partial class Widget`
-            // counts as leading trivia (same contract as LineNumberBaseTests).
-            Assert.Equal(2, widget.Locations[0].StartLine);
-            Assert.Equal(2, widget.Locations[1].StartLine);
+            Assert.Equal(3, widget.Locations[0].StartLine);
+            Assert.Equal(3, widget.Locations[1].StartLine);
             Assert.False(widget.Locations[0].IsGenerated);
             Assert.False(widget.Locations[1].IsGenerated);
 

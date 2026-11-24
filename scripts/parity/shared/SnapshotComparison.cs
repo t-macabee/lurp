@@ -41,7 +41,9 @@ public static class SnapshotComparison
             ["project_name", "document_path", "reason", "occurrence_count", "extractor_version"], ["snapshot_id"]),
         ["annotations"] = (["symbol_id", "kind", "value", "document_path"], ["annotation_id", "snapshot_id"]),
         ["source_fts"] = (["document_path", "content"], ["snapshot_id", "document_version_id"]),
-        ["symbol_fts"] = (["symbol_id", "fqn", "doc_comment_id", "kind"], ["snapshot_id"]),
+        ["symbol_fts"] = (
+            ["symbol_id", "fqn", "doc_comment_id", "kind", "simple_name", "name_tokens", "container_tokens", "kind_rank", "is_test"],
+            ["snapshot_id"]),
         ["snapshot_graph_nodes"] = (["node_id"], ["snapshot_id"]),
         ["projects"] = (
             ["name", "assembly_name", "target_framework", "metadata_reference_identities", "compilation_options_fingerprint",
@@ -544,10 +546,10 @@ public static class SnapshotComparison
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT symbol_id, fqn, doc_comment_id, kind
+            SELECT symbol_id, fqn, doc_comment_id, kind, simple_name, name_tokens, container_tokens, kind_rank, is_test
             FROM symbol_fts
             WHERE snapshot_id = @snapshotId
-            ORDER BY symbol_id, fqn, doc_comment_id, kind;
+            ORDER BY symbol_id, fqn, doc_comment_id, kind, simple_name, name_tokens, container_tokens, kind_rank, is_test;
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
@@ -555,10 +557,8 @@ public static class SnapshotComparison
         using var reader = command.ExecuteReader();
         while (reader.Read())
             result.Add(new SymbolFtsSnapshot(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetString(3)));
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetInt32(7), reader.GetBoolean(8)));
         return result;
     }
 
@@ -685,7 +685,12 @@ public static class SnapshotComparison
         string SymbolId,
         string Fqn,
         string DocCommentId,
-        string Kind);
+        string Kind,
+        string SimpleName,
+        string NameTokens,
+        string ContainerTokens,
+        int KindRank,
+        bool IsTest);
 
     public sealed record EdgeSiteSnapshot(
         string SourceSymbolId,

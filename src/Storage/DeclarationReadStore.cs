@@ -149,7 +149,7 @@ internal sealed class DeclarationReadStore
             // line numbers); names carry the Index suffix to keep the boundary
             // with the 1-based DeclarationLocation values self-documenting.
             var startLineIndex = SourceLineMap.FindLineIndex(span.LineStarts, span.Start.Value);
-            var endLineIndex = SourceLineMap.FindLineIndex(span.LineStarts, span.End.Value - 1);
+            var endLineIndex = SourceLineMap.FindEndLineIndex(span.LineStarts, span.Start.Value, span.End.Value);
             var (byteStart, byteEnd, _, _) = SourceLineMap.ExpandLineWindow(
                 span.LineStarts, startLineIndex, endLineIndex, contextLines, span.Content.Length);
             var source = SourceLineMap.SliceUtf8(span.Content, byteStart, byteEnd, span.DocumentVersionId);
@@ -174,7 +174,7 @@ internal sealed class DeclarationReadStore
             """;
         if (!includeGenerated)
             command.CommandText += " AND COALESCE(d.is_generated, 0) = 0";
-        command.CommandText += " ORDER BY doc.relative_path, d.full_start;";
+        command.CommandText += " ORDER BY doc.relative_path, d.full_start, d.full_end;";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@symbolId", symbolId);
 
@@ -245,7 +245,9 @@ internal sealed class DeclarationReadStore
                 result[symbolId] = documentVersionIds;
             }
 
-            documentVersionIds.Add(reader.GetString(1));
+            var documentVersionId = reader.GetString(1);
+            if (documentVersionIds.Count == 0 || documentVersionIds[^1] != documentVersionId)
+                documentVersionIds.Add(documentVersionId);
         }
 
         return result;
@@ -291,7 +293,7 @@ internal sealed class DeclarationReadStore
 
         if (!includeGenerated) command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
 
-        command.CommandText += " ORDER BY doc.relative_path, d.full_start;";
+        command.CommandText += " ORDER BY doc.relative_path, d.full_start, d.full_end;";
 
         command.Parameters.AddWithValue("@symbolId", symbolId);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -507,14 +509,14 @@ internal sealed class DeclarationReadStore
 
         using var cmd = _connection.CreateCommand();
         var whereCursor = cursor != null
-            ? "AND (full_start > @lastFullStart OR (full_start = @lastFullStart AND symbol_id > @lastSymbolId))"
+            ? "AND (full_start, symbol_id, full_end) > (@lastFullStart, @lastSymbolId, @lastFullEnd)"
             : string.Empty;
         cmd.CommandText = outlineRows + "\n" + $"""
             SELECT symbol_id, kind, fqn, full_start, full_end, signature_start, name_start, is_partial, is_generated
             FROM outline_rows
             WHERE copy_rank = 1
             {whereCursor}
-            ORDER BY full_start, symbol_id
+            ORDER BY full_start, symbol_id, full_end
             LIMIT @limitPlusOne;
             """;
         BindOutlineParameters(cmd);
@@ -523,9 +525,11 @@ internal sealed class DeclarationReadStore
         {
             cmd.Parameters.AddWithValue("@lastFullStart", cursor.LastFullStart);
             cmd.Parameters.AddWithValue("@lastSymbolId", cursor.LastSymbolId);
+            cmd.Parameters.AddWithValue("@lastFullEnd", cursor.LastFullEnd);
         }
 
         var rows = new List<DeclarationOutlineEntry>();
+        var lastFullEnd = 0;
         using (var reader = cmd.ExecuteReader())
         {
             while (reader.Read())
@@ -535,6 +539,8 @@ internal sealed class DeclarationReadStore
                 var fqn = reader.IsDBNull(2) ? null : reader.GetString(2);
                 var fullStart = reader.GetInt32(3);
                 var fullEnd = reader.GetInt32(4);
+                if (rows.Count < limit)
+                    lastFullEnd = fullEnd;
                 var sigStart = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
                 var nameStart = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6);
                 var isPartial = reader.GetInt32(7) == 1;
@@ -545,7 +551,7 @@ internal sealed class DeclarationReadStore
                 if (lineStarts is { Length: > 0 } && fullStart >= 0 && fullEnd >= fullStart)
                 {
                     var sIdx = SourceLineMap.FindLineIndex(lineStarts, fullStart);
-                    var eIdx = SourceLineMap.FindLineIndex(lineStarts, fullEnd);
+                    var eIdx = SourceLineMap.FindEndLineIndex(lineStarts, fullStart, fullEnd);
                     startLine = LineNumbers.ToOneBased(sIdx);
                     endLine = LineNumbers.ToOneBased(eIdx);
                     if (sigStart.HasValue)
@@ -571,7 +577,7 @@ internal sealed class DeclarationReadStore
             // Last row is the lookahead; drop it and encode the cursor from the last returned row.
             rows.RemoveAt(rows.Count - 1);
             var last = rows[^1];
-            nextCursor = new OutlineCursor(snapshotId, fingerprint, last.FullStart, last.SymbolId).Encode();
+            nextCursor = new OutlineCursor(snapshotId, fingerprint, last.FullStart, last.SymbolId, lastFullEnd).Encode();
         }
 
         return new DeclarationOutlinePage(rows, nextCursor, totalCount);

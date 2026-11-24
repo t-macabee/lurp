@@ -25,13 +25,13 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
     //  2: (blank)
     //  3: public class Caller
     //  4: {
-    //  5:     public void Run()                 <- declaration (leading trivia = indent on this line)
+    //  5:     public void Run()                 <- declaration
     //  6:     {
     //  7:         var helper = new Helper();
     //  8:         helper.Do();                 <- Calls edge call site
     //  9:     }
     // 10: }
-    // 11: (blank)                            <- leading trivia of class Helper (FullSpan start)
+    // 11: (blank)
     // 12: public class Helper
     // 13: {
     // 14:     public void Do()               <- declaration (round-trip anchor)
@@ -98,10 +98,8 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
 
     /// <summary>
     ///     Declaration locations report the fixture's physical 1-based lines.
-    ///     An indented method's FullSpan leading trivia is the indent on its own line,
-    ///     so its start_line equals the code line (Run -> 5). A class preceded by a
-    ///     blank line has leading trivia starting on that blank line (Helper -> 11),
-    ///     while its end_line is the line of its closing brace (17).
+    ///     The start is the declaration line for both the method (5) and the class (12).
+    ///     The class ends on its closing brace (17).
     /// </summary>
     [Fact]
     public async Task DeclarationLocation_ReportsOneBasedPhysicalLines()
@@ -113,11 +111,11 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
         using var store = OpenStore(DbPath);
 
         var helperLoc = Assert.Single(store.GetDeclarationLocations(helperId, snapshotId));
-        Assert.Equal(11, helperLoc.StartLine); // FullSpan includes leading trivia: the blank line 11
+        Assert.Equal(12, helperLoc.StartLine);
         Assert.Equal(17, helperLoc.EndLine); // class closes on physical line 17
 
         var runLoc = Assert.Single(store.GetDeclarationLocations(runId, snapshotId));
-        Assert.Equal(5, runLoc.StartLine); // leading trivia is only the indent on line 5
+        Assert.Equal(5, runLoc.StartLine);
     }
 
     /// <summary>

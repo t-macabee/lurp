@@ -163,7 +163,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         var best = candidates[0];
 
         var startLineIndex = SourceLineMap.FindLineIndex(lineStarts, best.FullStart);
-        var endLineIndex = SourceLineMap.FindLineIndex(lineStarts, best.FullEnd);
+        var endLineIndex = SourceLineMap.FindEndLineIndex(lineStarts, best.FullStart, best.FullEnd);
         var startLine = LineNumbers.ToOneBased(startLineIndex);
         var endLine = LineNumbers.ToOneBased(endLineIndex);
 

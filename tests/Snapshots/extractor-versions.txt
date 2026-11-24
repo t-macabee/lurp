@@ -1,6 +1,6 @@
 # Extractor version gate (D103). Columns: name, version, rows, SHA-256 of the sorted rows.
 # Written by ExtractorVersionGateTests. Review the diff; see VERSIONING.md.
-ExtractorVersion	1.14.0	2578	fa302ee62069fb0d478c44e26fb024664027a07fb1f09f18bb8913d613a7f4b4
+ExtractorVersion	1.14.0	2578	33edbb7a6fc7f7ee0f1b07126fdec3b8dd9a3a2baa69509dc1bbb8c8c90cce21
 ASP.NET Core	aspnetcore-v4	4	41f6ba55157c86f28cd321e3e12d2b0eb23e53369dfe3e9237ba11ab96d3ccba
 Declares	declares-v2	420	41ba3c930f9708c1de29c7640fd9f6efc67c225e47a9830e98bff63494fb0a63
 Dependency Injection	di-v3	47	85fde7069e93a52b0a2d4a1f68de6442c517d6f8a2d8de8eb99558742040abb9

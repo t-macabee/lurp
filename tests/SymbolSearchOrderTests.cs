@@ -58,6 +58,87 @@ public sealed class SymbolSearchOrderTests : IntegrationTestBase
         Assert.Equal(JsonValueKind.Null, page2.RootElement.GetProperty("next_cursor").ValueKind);
     }
 
+    [Fact]
+    public async Task Search_PrefersProductionTypesAndPaginatesAcrossAllFourTiers()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Ranking.cs"] = """
+                namespace App
+                {
+                    public class Impact {}
+                    public class ImpactReachability {}
+                    public class SearchIndex {}
+                    public class ContextAssembler {}
+                    public class DeadCandidate {}
+                    public class RentalService {}
+                    public class XMLParser {}
+                    public class Ranking
+                    {
+                        private int _impact;
+                        public void Impact() {}
+                        public void Search() {}
+                        private int context_holder;
+                        public void Dead() {}
+                        private int _rental;
+                    }
+                    public class Preimpact {}
+                }
+                namespace Containers.Impact { public class Nested {} }
+                """
+        });
+        CreateProject("Checks", new Dictionary<string, string>
+        {
+            ["Tests.cs"] = """
+                namespace AChecks;
+                public class Impact {}
+                public class ImpactTests { [Xunit.Fact] public void Impact() {} }
+                """
+        }, packageReferences: ["xunit@2.9.3"]);
+        RestoreSolution();
+        await RunFullIndexAsync(DbPath);
+
+        string[] expected =
+        [
+            "global::App.Impact", "global::App.Ranking.Impact",
+            "global::AChecks.Impact", "global::AChecks.ImpactTests.Impact",
+            "global::App.ImpactReachability", "global::App.Ranking._impact",
+            "global::AChecks.ImpactTests",
+            "global::App.Preimpact", "global::Containers.Impact.Nested"
+        ];
+        using var all = await RunSearchAsync("--type=symbol", "--query=Impact", "--limit=100");
+        Assert.Equal(expected, SymbolFqns(all));
+
+        foreach (var limit in new[] { 1, 3, 4 })
+        {
+            var collected = new List<string>();
+            string? cursor = null;
+            do
+            {
+                string[] args = ["--type=symbol", "--query=Impact", $"--limit={limit}",
+                    .. (cursor == null ? Array.Empty<string>() : new[] { $"--cursor={cursor}" })];
+                using var page = await RunSearchAsync(args);
+                collected.AddRange(SymbolFqns(page));
+                Assert.True(collected.Count <= expected.Length);
+                cursor = page.RootElement.GetProperty("next_cursor").GetString();
+            } while (cursor != null);
+            Assert.Equal(expected, collected);
+        }
+
+        foreach (var (query, first) in new[]
+                 {
+                     ("Search", "global::App.Ranking.Search"),
+                     ("Context", "global::App.ContextAssembler"),
+                     ("Dead", "global::App.Ranking.Dead"),
+                     ("Rental", "global::App.RentalService"),
+                     ("XML Par", "global::App.XMLParser")
+                 })
+        {
+            using var page = await RunSearchAsync("--type=symbol", $"--query={query}", "--limit=1");
+            Assert.Equal(first, Assert.Single(SymbolFqns(page)));
+        }
+    }
+
     [Theory]
     [InlineData("Method")]
     [InlineData("Int32")]

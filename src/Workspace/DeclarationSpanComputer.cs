@@ -11,7 +11,7 @@ internal static class DeclarationSpanComputer
     public static (DeclarationSpan Full, DeclarationSpan Signature, DeclarationSpan Body, DeclarationSpan Name)
         ComputeSpans(SyntaxNode node, string sourceText, Encoding encoding)
     {
-        var fullCharSpan = node.FullSpan;
+        var fullCharSpan = TextSpan.FromBounds(FindFullStart(node), node.Span.End);
         var fullStart = CharOffsetToByteOffset(sourceText, fullCharSpan.Start, encoding);
         var fullEnd = CharOffsetToByteOffset(sourceText, fullCharSpan.End, encoding);
         var full = new DeclarationSpan(fullStart, fullEnd);
@@ -21,6 +21,31 @@ internal static class DeclarationSpanComputer
         var signature = new DeclarationSpan(fullStart, CharOffsetToByteOffset(sourceText, signatureCharEnd, encoding));
 
         return (full, signature, body, name);
+    }
+
+    private static int FindFullStart(SyntaxNode node)
+    {
+        var start = node.SpanStart;
+        var trivia = node.GetLeadingTrivia();
+        TextLineCollection? lines = null;
+        for (var i = trivia.Count - 1; i >= 0; i--)
+        {
+            var item = trivia[i];
+            if (item.IsKind(SyntaxKind.WhitespaceTrivia) || item.IsKind(SyntaxKind.EndOfLineTrivia))
+                continue;
+            if (item.Kind() is not (SyntaxKind.SingleLineCommentTrivia or SyntaxKind.MultiLineCommentTrivia
+                or SyntaxKind.SingleLineDocumentationCommentTrivia or SyntaxKind.MultiLineDocumentationCommentTrivia))
+                break;
+
+            lines ??= node.SyntaxTree.GetText().Lines;
+            // The last character of structured documentation trivia can be the line break.
+            if (lines.GetLineFromPosition(start).LineNumber -
+                lines.GetLineFromPosition(item.Span.End - 1).LineNumber > 1)
+                break;
+            start = item.SpanStart;
+        }
+
+        return start;
     }
 
     private static DeclarationSpan ComputeNameSpan(SyntaxNode node, string sourceText, Encoding encoding, DeclarationSpan full)

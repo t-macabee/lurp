@@ -60,7 +60,7 @@ public static class Program
                 FlagCatalog.Type, FlagCatalog.Kind,
                 FlagCatalog.Limit with { Description = $"Max results per scope (default: {SearchHandler.DefaultLimit})." },
                 FlagCatalog.SnippetTokens,
-                FlagCatalog.Cursor with { Description = "Continue from a previous page's `next_cursor` (`--type=symbol` only). The cursor continues into the substring matches." },
+                FlagCatalog.Cursor with { Description = "Continue from a previous page's `next_cursor` (`--type=symbol` only). The cursor continues across all symbol match tiers." },
                 FlagCatalog.IncludeGenerated,
                 FlagCatalog.Snapshot,
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet

@@ -73,10 +73,8 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
 
         command.CommandText = """
             INSERT INTO declarations (symbol_id, document_version_id,full_start, full_end,signature_start, signature_end,body_start, body_end,name_start, name_end,is_partial,is_generated,generator_identity) VALUES (@symbolId, @documentVersionId,@fullStart, @fullEnd,@signatureStart, @signatureEnd,@bodyStart, @bodyEnd,@nameStart, @nameEnd,@isPartial,@isGenerated,@generatorIdentity)
-            ON CONFLICT(symbol_id, document_version_id)
+            ON CONFLICT(symbol_id, document_version_id, COALESCE(full_start, -1), COALESCE(full_end, -1))
             DO UPDATE SET
-                full_start        = excluded.full_start,
-                full_end          = excluded.full_end,
                 signature_start   = excluded.signature_start,
                 signature_end     = excluded.signature_end,
                 body_start        = excluded.body_start,
@@ -107,12 +105,16 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
             INSERT OR IGNORE INTO snapshot_declarations (snapshot_id, declaration_id)
             SELECT @snapshotId, declaration_id
             FROM declarations
-            WHERE symbol_id = @symbolId AND document_version_id = @documentVersionId;
+            WHERE symbol_id = @symbolId AND document_version_id = @documentVersionId
+              AND COALESCE(full_start, -1) = COALESCE(@fullStart, -1)
+              AND COALESCE(full_end, -1) = COALESCE(@fullEnd, -1);
             """;
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
         command.Parameters.AddWithValue("@documentVersionId", decl.DocumentVersionId);
+        command.Parameters.AddWithValue("@fullStart", (object?)decl.FullSpan.Start ?? DBNull.Value);
+        command.Parameters.AddWithValue("@fullEnd", (object?)decl.FullSpan.End ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
 }

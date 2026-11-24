@@ -866,7 +866,10 @@ internal sealed class DeadCandidateStore
             locatedRows.Sort(static (a, b) =>
             {
                 var byPath = string.CompareOrdinal(a.DocPath, b.DocPath);
-                return byPath != 0 ? byPath : Comparer<int?>.Default.Compare(a.FullStart, b.FullStart);
+                if (byPath != 0)
+                    return byPath;
+                var byStart = Comparer<int?>.Default.Compare(a.FullStart, b.FullStart);
+                return byStart != 0 ? byStart : Comparer<int?>.Default.Compare(a.FullEnd, b.FullEnd);
             });
 
             var isGeneratedOverall = locatedRows.Count > 0 && locatedRows.All(static r => r.IsGenerated == 1);

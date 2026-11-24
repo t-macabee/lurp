@@ -40,13 +40,12 @@ internal sealed class SearchSymbolStore
     public SearchSymbolStore(SqliteConnection connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _connection.CreateFunction<string, string, bool>("lurp_symbol_name_equals",
+            static (name, query) => string.Equals(name, query, StringComparison.OrdinalIgnoreCase),
+            isDeterministic: true);
     }
 
-    /// <summary>
-    ///     Keyset-paginated symbol search in one sequence (D73): tier 1 whole-token matches
-    ///     over FQN (by rank, FQN, symbol id), then tier 2 case-insensitive substring matches
-    ///     over FQN (by FQN, symbol id) for plain identifier queries.
-    /// </summary>
+    /// <summary>Ranks each match once and pages by the same key across all four tiers.</summary>
     public SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
@@ -54,193 +53,93 @@ internal sealed class SearchSymbolStore
 
         var fingerprint = SearchCursor.ComputeFingerprint(query, kind, includeGenerated);
         cursor?.Validate(snapshotId, fingerprint);
+        var term = query.Trim();
+        var literal = SearchUtils.ToFtsPhrase(term);
+        var prefix = SearchUtils.ToFtsPhrase(SymbolSearchNames.Tokenize(term)) + "*";
 
-        var ftsQuery = SearchUtils.ToColumnFtsPhrase("fqn", query);
-        var isPlainIdentifier = SearchUtils.IsPlainIdentifierQuery(query);
-
-        if (cursor is { Mode: "substring" })
-        {
-            if (!isPlainIdentifier)
-                return new SymbolSearchPage([], null);
-
-            var tier2Only = ReadSubstringTier(query, ftsQuery, snapshotId, limit + 1, includeGenerated, kind, cursor);
-            var hasMoreTier2 = tier2Only.Count > limit;
-            if (hasMoreTier2)
-                tier2Only.RemoveAt(limit);
-
-            var tier2Cursor = hasMoreTier2
-                ? BuildCursor(snapshotId, fingerprint, "substring", null, tier2Only[^1])
-                : null;
-            return new SymbolSearchPage(tier2Only, tier2Cursor);
-        }
-
-        var tier1 = ReadFtsTier(ftsQuery, snapshotId, limit + 1, includeGenerated, kind, cursor);
-        if (tier1.Count > limit)
-        {
-            tier1.RemoveAt(limit);
-            var tier1Cursor = BuildCursor(snapshotId, fingerprint, "fts", tier1[^1].Rank, tier1[^1].Result);
-            return new SymbolSearchPage(tier1.ConvertAll(static r => r.Result), tier1Cursor);
-        }
-
-        var results = tier1.ConvertAll(static r => r.Result);
-        if (!isPlainIdentifier)
-            return new SymbolSearchPage(results, null);
-
-        var remaining = limit - results.Count;
-        var tier2 = ReadSubstringTier(query, ftsQuery, snapshotId, remaining + 1, includeGenerated, kind, cursor: null);
-        var hasMore = tier2.Count > remaining;
-        var takeCount = Math.Min(remaining, tier2.Count);
-        for (var i = 0; i < takeCount; i++)
-            results.Add(tier2[i]);
-
-        if (!hasMore)
-            return new SymbolSearchPage(results, null);
-
-        var nextCursor = takeCount > 0
-            ? BuildCursor(snapshotId, fingerprint, "substring", null, results[^1])
-            : BuildCursor(snapshotId, fingerprint, "fts", tier1[^1].Rank, tier1[^1].Result);
-        return new SymbolSearchPage(results, nextCursor);
-    }
-
-    private List<(SymbolSearchResult Result, double Rank)> ReadFtsTier(
-        string ftsQuery,
-        string snapshotId,
-        int limit,
-        bool includeGenerated,
-        string? kind,
-        SearchCursor? cursor)
-    {
-        using var command = _connection.CreateCommand();
-        command.CommandText = """
-            SELECT symbol_fts.symbol_id, symbol_fts.fqn, symbol_fts.doc_comment_id, symbol_fts.kind, symbol_fts.rank AS match_rank
-            FROM symbol_fts
-            WHERE symbol_fts MATCH @ftsQuery
-              AND symbol_fts.snapshot_id = @snapshotId
-            """;
-
-        AppendKindFilter(command, "symbol_fts.kind", kind);
-        if (!includeGenerated)
-            command.CommandText += ExcludeGeneratedOrExternalClause("symbol_fts.symbol_id");
-
-        if (cursor != null)
-        {
-            command.CommandText += """
-
-                  AND (symbol_fts.rank > @lastRank
-                       OR (symbol_fts.rank = @lastRank AND symbol_fts.fqn > @lastFqn)
-                       OR (symbol_fts.rank = @lastRank AND symbol_fts.fqn = @lastFqn AND symbol_fts.symbol_id > @lastSymbolId))
-                """;
-            command.Parameters.AddWithValue("@lastRank", cursor.LastRank ?? double.NegativeInfinity);
-            command.Parameters.AddWithValue("@lastFqn", cursor.LastFqn);
-            command.Parameters.AddWithValue("@lastSymbolId", cursor.LastSymbolId);
-        }
-
-        command.CommandText += """
-
-            ORDER BY symbol_fts.rank, symbol_fts.fqn, symbol_fts.symbol_id
-            LIMIT @limit;
-            """;
-
-        command.Parameters.AddWithValue("@ftsQuery", ftsQuery);
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.Parameters.AddWithValue("@limit", limit);
-
-        var rows = new List<(SymbolSearchResult Result, double Rank)>();
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            var result = new SymbolSearchResult(
-                reader.GetString(0),
-                reader.IsDBNull(1) ? "" : reader.GetString(1),
-                reader.GetString(3),
-                reader.GetString(2));
-            rows.Add((result, reader.GetDouble(4)));
-        }
-
-        return rows;
-    }
-
-    private List<SymbolSearchResult> ReadSubstringTier(
-        string query,
-        string ftsQuery,
-        string snapshotId,
-        int limit,
-        bool includeGenerated,
-        string? kind,
-        SearchCursor? cursor)
-    {
+        // Rank from the row's text so indexing another snapshot cannot change this cursor's key.
         using var command = _connection.CreateCommand();
         command.CommandText = $"""
-            SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind
-            FROM snapshot_symbols ss
-            JOIN symbols s ON s.symbol_id = ss.symbol_id
-            WHERE ss.snapshot_id = @snapshotId
-              AND {TextCaseMatching.SqlFunctionName}(ss.fqn, @query)
-              AND ss.symbol_id NOT IN (
-                  SELECT symbol_id
-                  FROM symbol_fts
-                  WHERE symbol_fts MATCH @ftsQuery
-                    AND snapshot_id = @snapshotId
-              )
+            WITH name_matches AS MATERIALIZED (
+                SELECT rowid FROM symbol_fts
+                WHERE symbol_fts MATCH @nameQuery AND snapshot_id = @snapshotId
+            ),
+            container_matches AS MATERIALIZED (
+                SELECT rowid FROM symbol_fts
+                WHERE symbol_fts MATCH @containerQuery AND snapshot_id = @snapshotId
+            ),
+            ranked AS (
+                SELECT f.symbol_id, f.fqn, f.doc_comment_id, f.kind, f.is_test, f.kind_rank,
+                       CASE
+                           WHEN lurp_symbol_name_equals(f.simple_name, @term) THEN 1
+                           WHEN n.rowid IS NOT NULL THEN 2
+                           WHEN @plainIdentifier AND {TextCaseMatching.SqlFunctionName}(f.simple_name, @term) THEN 3
+                           WHEN c.rowid IS NOT NULL OR
+                                (@plainIdentifier AND {TextCaseMatching.SqlFunctionName}(f.fqn, @term)) THEN 4
+                       END AS tier,
+                       CASE
+                           WHEN n.rowid IS NOT NULL THEN length(f.name_tokens)
+                           WHEN c.rowid IS NOT NULL THEN 0
+                           ELSE 1
+                       END AS token_rank
+                FROM symbol_fts f
+                LEFT JOIN name_matches n ON n.rowid = f.rowid
+                LEFT JOIN container_matches c ON c.rowid = f.rowid
+                WHERE f.snapshot_id = @snapshotId
+                {(string.IsNullOrEmpty(kind) ? "" : "AND f.kind = @kind")}
+                {(includeGenerated ? "" : ExcludeGeneratedOrExternalClause("f.symbol_id"))}
+            )
+            SELECT symbol_id, fqn, doc_comment_id, kind, tier, is_test, kind_rank,
+                   CASE WHEN tier IN (2, 4) THEN token_rank ELSE 0 END AS match_rank
+            FROM ranked AS r
+            WHERE tier IS NOT NULL
             """;
-
-        AppendKindFilter(command, "s.kind", kind);
-        if (!includeGenerated)
-            command.CommandText += ExcludeGeneratedOrExternalClause("s.symbol_id");
 
         if (cursor != null)
         {
             command.CommandText += """
 
-                  AND (ss.fqn > @lastFqn OR (ss.fqn = @lastFqn AND s.symbol_id > @lastSymbolId))
+                  AND (tier, is_test, kind_rank, match_rank, fqn, symbol_id) >
+                      (@tier, @isTest, @kindRank, @lastRank, @lastFqn, @lastSymbolId)
                 """;
+            command.Parameters.AddWithValue("@tier", cursor.Tier);
+            command.Parameters.AddWithValue("@isTest", cursor.IsTest);
+            command.Parameters.AddWithValue("@kindRank", cursor.KindRank);
+            command.Parameters.AddWithValue("@lastRank", cursor.LastRank);
             command.Parameters.AddWithValue("@lastFqn", cursor.LastFqn);
             command.Parameters.AddWithValue("@lastSymbolId", cursor.LastSymbolId);
         }
 
         command.CommandText += """
 
-            ORDER BY ss.fqn, s.symbol_id
-            LIMIT @limit;
+            ORDER BY tier, is_test, kind_rank, match_rank, fqn, symbol_id
+            LIMIT @limitPlusOne;
             """;
-
-        command.Parameters.AddWithValue("@query", query);
-        command.Parameters.AddWithValue("@ftsQuery", ftsQuery);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.Parameters.AddWithValue("@limit", limit);
+        command.Parameters.AddWithValue("@term", term);
+        command.Parameters.AddWithValue("@plainIdentifier", SearchUtils.IsPlainIdentifierQuery(term));
+        command.Parameters.AddWithValue("@nameQuery", $"name_tokens : ({literal} OR {prefix})");
+        command.Parameters.AddWithValue("@containerQuery", $"container_tokens : {prefix} OR fqn : {literal}");
+        command.Parameters.AddWithValue("@limitPlusOne", (long)limit + 1);
+        if (!string.IsNullOrEmpty(kind))
+            command.Parameters.AddWithValue("@kind", kind);
 
-        var rows = new List<SymbolSearchResult>();
+        var results = new List<SymbolSearchResult>();
+        SearchCursor? last = null;
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            rows.Add(new SymbolSearchResult(
-                reader.GetString(0),
-                reader.IsDBNull(1) ? "" : reader.GetString(1),
-                reader.GetString(3),
-                reader.GetString(2)));
+            if (results.Count == limit)
+                return new SymbolSearchPage(results, last!.Encode());
+
+            var result = new SymbolSearchResult(reader.GetString(0), reader.GetString(1),
+                reader.GetString(3), reader.GetString(2));
+            results.Add(result);
+            last = new SearchCursor(snapshotId, fingerprint, reader.GetInt32(4), reader.GetInt32(5),
+                reader.GetInt32(6), reader.GetInt32(7), result.FullyQualifiedName, result.SymbolId);
         }
 
-        return rows;
-    }
-
-    private static void AppendKindFilter(SqliteCommand command, string columnName, string? kind)
-    {
-        if (!string.IsNullOrEmpty(kind))
-        {
-            command.CommandText += $" AND {columnName} = @kind";
-            command.Parameters.AddWithValue("@kind", kind);
-        }
-    }
-
-    private static string BuildCursor(string snapshotId, string fingerprint, string mode, double? lastRank, SymbolSearchResult last)
-    {
-        return new SearchCursor(
-            snapshotId,
-            fingerprint,
-            mode,
-            lastRank,
-            last.FullyQualifiedName,
-            last.SymbolId).Encode();
+        return new SymbolSearchPage(results, null);
     }
 
     /// <summary>Finds every linked symbol matching one exact key in <paramref name="snapshotId" />, ordered by <c>symbol_id</c>.</summary>

@@ -1308,7 +1308,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(50, runner.GetCurrentSchemaVersion());
+        Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
 
         using var verify = TestDatabase.Open(_dbPath);
         using var query = verify.CreateCommand();
@@ -1356,6 +1356,72 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
                 columns.Add(reader.GetString(0));
             return columns;
         }
+    }
+
+    [Fact]
+    public void RoundTrip_From50_PreservesDeclarationLinksAndRebuildsSymbolSearch()
+    {
+        CreateDatabaseAtVersion(50);
+        using (var connection = TestDatabase.Open(_dbPath))
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                VALUES ('w1', '/repo', '/repo/Test.slnx');
+
+                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc)
+                VALUES ('s1', 'w1', '2026-11-22T00:00:00Z'), ('s2', 'w1', '2026-11-23T00:00:00Z');
+
+                INSERT INTO projects (snapshot_id, name, assembly_name, target_framework, metadata_reference_identities)
+                VALUES ('s1', 'App.Tests', 'Checks', 'net10.0', '["xunit.core, Version=2.0.0.0"]');
+
+                INSERT INTO documents (document_id, relative_path) VALUES ('doc', 'src/A.cs');
+                INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count)
+                VALUES ('dv', 'doc', 'hash', X'313233343536', 'utf-8', 6);
+                INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('s1', 'dv'), ('s2', 'dv');
+
+                INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind)
+                VALUES ('T:Core.XMLParser|App', 'T:Core.XMLParser', 'App', 'Type'),
+                       ('T:Core.XMLParser|Checks', 'T:Core.XMLParser', 'Checks', 'Type'),
+                       ('N:Core.XMLParser|App', 'N:Core.XMLParser', 'App', 'Namespace');
+                INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn)
+                SELECT 's1', symbol_id, 'global::Core.XMLParser' FROM symbols;
+                INSERT INTO declarations (declaration_id, symbol_id, document_version_id, full_start, full_end)
+                VALUES (1, 'T:Core.XMLParser|App', 'dv', 0, 3);
+                INSERT INTO snapshot_declarations (snapshot_id, declaration_id) VALUES ('s1', 1);
+                INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
+                SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, ss.snapshot_id
+                FROM snapshot_symbols ss JOIN symbols s USING(symbol_id);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+        Assert.Equal(52, runner.GetCurrentSchemaVersion());
+
+        using var store = new SqliteIndexStore(_dbPath);
+        store.Open();
+        var results = store.SearchSymbolsPage("XML Par", "s1", 10, false, null, null);
+        Assert.Equal(["T:Core.XMLParser|App", "N:Core.XMLParser|App", "T:Core.XMLParser|Checks"],
+            results.Items.Select(item => item.SymbolId).ToArray());
+
+        var alternate = new SymbolDeclaration
+        {
+            SymbolId = new SymbolId("T:Core.XMLParser", "App", "global::Core.XMLParser"),
+            Kind = IndexedSymbolKind.Type,
+            DocumentVersionId = "dv",
+            FullSpan = new DeclarationSpan(3, 6),
+            SignatureSpan = new DeclarationSpan(3, 6),
+            BodySpan = new DeclarationSpan(null, null),
+            NameSpan = new DeclarationSpan(3, 6),
+            TargetFramework = "net10.0"
+        };
+        store.SaveDeclarations("s2", [alternate, alternate]);
+        Assert.Equal("123", store.GetSymbolSource(alternate.SymbolId.Value, "s1", ViewKind.Declaration));
+        Assert.Equal("456", store.GetSymbolSource(alternate.SymbolId.Value, "s2", ViewKind.Declaration));
+        Assert.Equal(1, store.GetSymbolInfo(alternate.SymbolId.Value, "s1")!.DeclarationCount);
+        Assert.Equal(1, store.GetSymbolInfo(alternate.SymbolId.Value, "s2")!.DeclarationCount);
     }
 
     private void CreateDatabaseAtVersion(int version)

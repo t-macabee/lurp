@@ -3,17 +3,17 @@ namespace Lurp.Storage;
 /// <summary>
 ///     Opaque keyset-pagination cursor for the declaration outline. Snapshots are immutable, so a
 ///     cursor into one stays valid indefinitely. The sequence comes from a SQL ORDER BY on
-///     (full_start, symbol_id) whose sort key can be pushed back into the next query, so a
+///     (full_start, symbol_id, full_end) whose sort key can be pushed back into the next query, so a
 ///     keyset cursor is appropriate (see six-gaps-in-lurp.md Gap 3 decision). Offset would
 ///     also be sound over an immutable snapshot, but keyset avoids phantom/duplicate hazards
 ///     if the store ever reorders under duplicate full_start values and matches the
 ///     SearchCursor idiom.
 /// </summary>
-public sealed record OutlineCursor(string SnapshotId, string Fingerprint, int LastFullStart, string LastSymbolId)
+public sealed record OutlineCursor(string SnapshotId, string Fingerprint, int LastFullStart, string LastSymbolId, int LastFullEnd)
 {
     public static string ComputeFingerprint(string document, bool includeGenerated)
     {
-        return CursorUtils.JoinFingerprint(document, includeGenerated);
+        return CursorUtils.JoinFingerprint("span", document, includeGenerated);
     }
 
     public string Encode()

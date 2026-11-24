@@ -42,15 +42,7 @@ internal sealed class SearchIndexMaintenance
                 """;
             command.ExecuteNonQuery();
 
-            command.CommandText = """
-                INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
-                SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, ss.snapshot_id
-                FROM snapshot_symbols ss
-                JOIN symbols s ON s.symbol_id = ss.symbol_id
-                WHERE ss.snapshot_id = @snapshotId
-                  AND ss.fqn IS NOT NULL;
-                """;
-            command.ExecuteNonQuery();
+            InsertSymbolRows(_connection, snapshotId);
 
             transaction.Commit();
         }
@@ -81,8 +73,10 @@ internal sealed class SearchIndexMaintenance
             command.ExecuteNonQuery();
 
             command.CommandText = """
-                INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
-                SELECT symbol_id, fqn, doc_comment_id, kind, @toSnapshotId
+                INSERT INTO symbol_fts (simple_name, name_tokens, container_tokens, fqn, doc_comment_id, kind,
+                                        kind_rank, is_test, symbol_id, snapshot_id)
+                SELECT simple_name, name_tokens, container_tokens, fqn, doc_comment_id, kind,
+                       kind_rank, is_test, symbol_id, @toSnapshotId
                 FROM symbol_fts
                 WHERE snapshot_id = @fromSnapshotId;
                 """;
@@ -155,22 +149,8 @@ internal sealed class SearchIndexMaintenance
                 command.Parameters.Clear();
             }
 
-            // Re-insert only for changed symbols
             if (changedSymbolIds.Count > 0)
-            {
-                command.CommandText = """
-                    INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
-                    SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, ss.snapshot_id
-                    FROM snapshot_symbols ss
-                    JOIN symbols s ON s.symbol_id = ss.symbol_id
-                    WHERE ss.snapshot_id = @snapshotId
-                      AND ss.fqn IS NOT NULL
-                      AND ss.symbol_id IN (SELECT value FROM json_each(@symbolIds));
-                    """;
-                command.Parameters.AddWithValue("@snapshotId", snapshotId);
-                SqlIdList.Bind(command, "@symbolIds", changedSymbolIds);
-                command.ExecuteNonQuery();
-            }
+                InsertSymbolRows(_connection, snapshotId, changedSymbolIds);
 
             transaction.Commit();
         }
@@ -178,6 +158,67 @@ internal sealed class SearchIndexMaintenance
         {
             transaction.Rollback();
             throw;
+        }
+    }
+
+    internal static void InsertSymbolRows(SqliteConnection connection, string snapshotId, HashSet<string>? changedSymbolIds = null)
+    {
+        var projects = ProjectFacts.Load(connection, snapshotId);
+        var isTestByAssembly = new Dictionary<string, bool>(StringComparer.Ordinal);
+        using var select = connection.CreateCommand();
+        select.CommandText = """
+            SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, s.assembly_identity
+            FROM snapshot_symbols ss
+            JOIN symbols s ON s.symbol_id = ss.symbol_id
+            WHERE ss.snapshot_id = @snapshotId AND ss.fqn IS NOT NULL
+            """;
+        select.Parameters.AddWithValue("@snapshotId", snapshotId);
+        if (changedSymbolIds != null)
+        {
+            select.CommandText += " AND ss.symbol_id IN (SELECT value FROM json_each(@symbolIds))";
+            SqlIdList.Bind(select, "@symbolIds", changedSymbolIds);
+        }
+
+        using var insert = connection.CreateCommand();
+        insert.CommandText = """
+            INSERT INTO symbol_fts (simple_name, name_tokens, container_tokens, fqn, doc_comment_id, kind,
+                                    kind_rank, is_test, symbol_id, snapshot_id)
+            VALUES (@name, @nameTokens, @containerTokens, @fqn, @docId, @kind,
+                    @kindRank, @isTest, @symbolId, @snapshotId);
+            """;
+        var simpleName = insert.Parameters.Add("@name", SqliteType.Text);
+        var nameTokens = insert.Parameters.Add("@nameTokens", SqliteType.Text);
+        var containerTokens = insert.Parameters.Add("@containerTokens", SqliteType.Text);
+        var fqn = insert.Parameters.Add("@fqn", SqliteType.Text);
+        var docId = insert.Parameters.Add("@docId", SqliteType.Text);
+        var kind = insert.Parameters.Add("@kind", SqliteType.Text);
+        var kindRank = insert.Parameters.Add("@kindRank", SqliteType.Integer);
+        var isTest = insert.Parameters.Add("@isTest", SqliteType.Integer);
+        var symbolId = insert.Parameters.Add("@symbolId", SqliteType.Text);
+        insert.Parameters.AddWithValue("@snapshotId", snapshotId);
+        insert.Prepare();
+
+        using var reader = select.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = reader.GetString(0);
+            var qualifiedName = reader.GetString(1);
+            var commentId = reader.GetString(2);
+            var kindName = reader.GetString(3);
+            var assembly = reader.GetString(4);
+            if (!isTestByAssembly.TryGetValue(assembly, out var isTestAssembly))
+                isTestByAssembly[assembly] = isTestAssembly = projects.IsTestProject(MetadataReferenceIdentity.SimpleName(assembly));
+            var (name, container) = SymbolSearchNames.FromDocCommentId(commentId, qualifiedName);
+            simpleName.Value = name;
+            nameTokens.Value = SymbolSearchNames.Tokenize(name);
+            containerTokens.Value = SymbolSearchNames.Tokenize(container);
+            fqn.Value = qualifiedName;
+            docId.Value = commentId;
+            kind.Value = kindName;
+            kindRank.Value = SymbolSearchNames.KindRank(kindName);
+            isTest.Value = isTestAssembly ? 1 : 0;
+            symbolId.Value = id;
+            insert.ExecuteNonQuery();
         }
     }
 }

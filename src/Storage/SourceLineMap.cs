@@ -49,6 +49,9 @@ public static class SourceLineMap
         return lo;
     }
 
+    public static int FindEndLineIndex(int[] lineStarts, int fullStart, int fullEnd) =>
+        FindLineIndex(lineStarts, fullEnd > fullStart ? fullEnd - 1 : fullStart);
+
     public static int Utf8Column(byte[] content, int lineStart, int offset)
     {
         var safeOffset = Math.Clamp(offset, lineStart, content.Length);
@@ -110,13 +113,17 @@ public static class SourceLineMap
                 $"Declaration span [{fullStart}, {fullEnd}) for symbol '{symbolId}' is outside document version '{documentVersionId}' ({content.Length} bytes).");
 
         var startLineIndex = FindLineIndex(lineStarts, fullStart.Value);
-        var endLineIndex = FindLineIndex(lineStarts, fullEnd.Value);
+        var endLineIndex = FindEndLineIndex(lineStarts, fullStart.Value, fullEnd.Value);
+        var endOffset = fullEnd.Value;
+        if (endLineIndex + 1 < lineStarts.Length && endOffset == lineStarts[endLineIndex + 1])
+            endOffset -= LineBreaks.TrailingLineBreakByteLength(content.AsSpan(lineStarts[endLineIndex], endOffset - lineStarts[endLineIndex]));
+
         return new DeclarationLocation(
             documentPath,
             LineNumbers.ToOneBased(startLineIndex),
             Utf8Column(content, lineStarts[startLineIndex], fullStart.Value),
             LineNumbers.ToOneBased(endLineIndex),
-            Utf8Column(content, lineStarts[endLineIndex], fullEnd.Value),
+            Utf8Column(content, lineStarts[endLineIndex], endOffset),
             isGenerated);
     }
 }

@@ -104,16 +104,16 @@ public sealed class McpOutlineTests : IntegrationTestBase
         Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
         Assert.Equal(docPath, doc.RootElement.GetProperty("document").GetString());
         var decls = doc.RootElement.GetProperty("declarations");
-        // Leading comments count toward both the full span and signature. The end is exclusive.
+        // Attached comments count toward the full span and signature. End lines include the last token.
         (string? Fqn, string? Kind, int Start, int Signature, int Name, int End)[] expected =
         [
-            ("global::OutlineProj.ClassA", "Type", 2, 2, 3, 8),
-            ("global::OutlineProj.ClassA.MethodOne", "Method", 4, 4, 5, 6),
-            ("global::OutlineProj.ClassA.MethodTwo", "Method", 6, 6, 6, 7),
-            ("global::OutlineProj.ClassB", "Type", 8, 8, 8, 11),
-            ("global::OutlineProj.ClassB.BMethod", "Method", 9, 9, 9, 10),
-            ("global::OutlineProj.ClassC", "Type", 11, 11, 12, 15),
-            ("global::OutlineProj.ClassC.CMethod", "Method", 13, 13, 13, 14)
+            ("global::OutlineProj.ClassA", "Type", 2, 2, 3, 7),
+            ("global::OutlineProj.ClassA.MethodOne", "Method", 4, 4, 5, 5),
+            ("global::OutlineProj.ClassA.MethodTwo", "Method", 6, 6, 6, 6),
+            ("global::OutlineProj.ClassB", "Type", 8, 8, 8, 10),
+            ("global::OutlineProj.ClassB.BMethod", "Method", 9, 9, 9, 9),
+            ("global::OutlineProj.ClassC", "Type", 11, 11, 12, 14),
+            ("global::OutlineProj.ClassC.CMethod", "Method", 13, 13, 13, 13)
         ];
         var actual = decls.EnumerateArray().Select(row => (
             row.GetProperty("fully_qualified_name").GetString(),

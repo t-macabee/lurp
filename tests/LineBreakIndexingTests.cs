@@ -93,7 +93,7 @@ public sealed class LineBreakIndexingTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task DeclarationThatEndsTheFile_EndsAtColumnZeroOfTheNextLine()
+    public async Task DeclarationBeforeATrailingNewline_EndsOnTheDeclarationLine()
     {
         await IndexCrProjectAsync();
         var outputDir = Path.GetDirectoryName(DbPath)!;
@@ -106,7 +106,7 @@ public sealed class LineBreakIndexingTests : IntegrationTestBase
         var loc = Assert.Single(findDoc.RootElement.GetProperty("locations").EnumerateArray());
         Assert.Equal(2, loc.GetProperty("start_line").GetInt32());
         Assert.Equal(0, loc.GetProperty("start_column").GetInt32());
-        Assert.Equal(3, loc.GetProperty("end_line").GetInt32());
-        Assert.Equal(0, loc.GetProperty("end_column").GetInt32());
+        Assert.Equal(2, loc.GetProperty("end_line").GetInt32());
+        Assert.Equal("public class A { }".Length, loc.GetProperty("end_column").GetInt32());
     }
 }

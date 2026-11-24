@@ -55,8 +55,8 @@ public sealed class McpParityTests : IntegrationTestBase
     }
 
     [Theory]
-    [InlineData(2, "T:ParityProj.Foo", 2, 6)]
-    [InlineData(3, BarId, 3, 4)]
+    [InlineData(2, "T:ParityProj.Foo", 2, 5)]
+    [InlineData(3, BarId, 3, 3)]
     public async Task Navigate_Parity(int line, string symbol, int start, int end)
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();
