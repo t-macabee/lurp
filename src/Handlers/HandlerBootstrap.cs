@@ -129,36 +129,6 @@ internal static class HandlerBootstrap
         return value;
     }
 
-    /// <summary>
-    ///     Decodes and validates a <see cref="SequenceCursor" />, exiting 1 with an explicit
-    ///     message rather than resuming an offset against a sequence it was not issued for.
-    /// </summary>
-    public static SequenceCursor? ResolveSequenceCursor(string[] args, string snapshotId, string fingerprint, string kind)
-    {
-        var raw = GetArgValue(args, "--cursor=");
-        if (string.IsNullOrEmpty(raw))
-            return null;
-
-        var cursor = SequenceCursor.TryDecode(raw);
-        if (cursor == null)
-        {
-            Fail("ERROR: --cursor is not a valid continuation token.");
-            return null;
-        }
-
-        try
-        {
-            cursor.Validate(snapshotId, fingerprint, kind);
-        }
-        catch (ArgumentException ex)
-        {
-            Fail($"ERROR: {ex.Message}");
-            return null;
-        }
-
-        return cursor;
-    }
-
     public static FreshnessMode ParseFreshnessMode(string[] args)
     {
         var raw = GetArgValue(args, "--freshness=");

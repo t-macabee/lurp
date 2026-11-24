@@ -302,10 +302,6 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     private sealed class CapsuleBindingReader(List<BindingIncompletenessRecord> records) : IBindingIncompletenessStore
     {
         public List<BindingIncompletenessRecord> GetBindingIncompleteness(string snapshotId, string? projectName) => records;
-        public void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records) =>
-            throw new NotSupportedException();
-        public void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId) =>
-            throw new NotSupportedException();
     }
 
     [Fact]

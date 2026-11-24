@@ -203,6 +203,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             var swScope = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
             var prunedSymbolIds = _store.PruneUnlinkedSnapshotSymbols(newSnapshotIdStr, pruneCandidates);
+            _store.PruneOrphanAnnotations(newSnapshotIdStr);
             if (prunedSymbolIds.Count > 0)
                 _output.WriteLine($"Pruned {prunedSymbolIds.Count} removed symbols.");
 

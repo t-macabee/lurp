@@ -155,6 +155,7 @@ public static class SymbolFinderOracle
 
             targetCounts[target.Symbol.MethodKind] = targetCounts.GetValueOrDefault(target.Symbol.MethodKind) + 1;
             var family = DispatchFamily(target.Id, dispatchAdjacency);
+            var ownerFamily = target.OwnerId is null ? null : DispatchFamily(target.OwnerId, dispatchAdjacency);
             var expectedCallers = new HashSet<string>(StringComparer.Ordinal);
             var missingCallers = new List<SymbolFinderMissingCaller>();
 
@@ -218,7 +219,7 @@ public static class SymbolFinderOracle
                     }
 
                     checkedPairs++;
-                    var isMatch = Matches(edgeSet, callerId, target.OwnerId, family, relations);
+                    var isMatch = Matches(edgeSet, callerId, ownerFamily, family, relations);
                     evaluated[key] = isMatch;
                     if (!isMatch)
                         continue;
@@ -275,15 +276,14 @@ public static class SymbolFinderOracle
     private static bool Matches(
         HashSet<(string Source, string Kind, string Target)> edges,
         string callerId,
-        string? ownerId,
+        HashSet<string>? ownerFamily,
         HashSet<string> family,
         Relation[] relations)
     {
         foreach (var relation in relations)
         {
-            if (relation.OnOwner
-                    ? ownerId is not null && edges.Contains((callerId, relation.Kind, ownerId))
-                    : family.Any(id => edges.Contains((callerId, relation.Kind, id))))
+            var targets = relation.OnOwner ? ownerFamily : family;
+            if (targets is not null && targets.Any(id => edges.Contains((callerId, relation.Kind, id))))
                 return true;
         }
 

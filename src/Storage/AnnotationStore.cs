@@ -12,20 +12,29 @@ internal sealed class AnnotationStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
-    public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
+    public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations, bool requireLiveSymbol = false)
     {
         using var transaction = _connection.BeginTransaction();
         try
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-
-            foreach (var ann in annotations)
-            {
-                command.CommandText = """
+            command.CommandText = requireLiveSymbol
+                ? """
+                    INSERT OR IGNORE INTO annotations (snapshot_id, symbol_id, kind, value, document_path)
+                    SELECT @snapshotId, @symbolId, @kind, @value, @documentPath
+                    WHERE EXISTS (
+                        SELECT 1 FROM snapshot_symbols
+                        WHERE snapshot_id = @snapshotId AND symbol_id = @symbolId
+                    );
+                    """
+                : """
                     INSERT OR IGNORE INTO annotations (snapshot_id, symbol_id, kind, value, document_path)
                     VALUES (@snapshotId, @symbolId, @kind, @value, @documentPath);
                     """;
+
+            foreach (var ann in annotations)
+            {
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.Parameters.AddWithValue("@symbolId", ann.SymbolId);
@@ -83,7 +92,24 @@ internal sealed class AnnotationStore
         }
 
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        return ReadAnnotations(command);
+    }
 
+    public List<AnnotationRecord> GetUserAnnotations(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT annotation_id, symbol_id, kind, value, document_path
+            FROM annotations
+            WHERE snapshot_id = @snapshotId AND document_path IS NULL
+            ORDER BY annotation_id;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        return ReadAnnotations(command);
+    }
+
+    private static List<AnnotationRecord> ReadAnnotations(SqliteCommand command)
+    {
         var results = new List<AnnotationRecord>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
@@ -254,6 +280,21 @@ internal sealed class AnnotationStore
             """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+        command.ExecuteNonQuery();
+    }
+
+    public void PruneOrphanAnnotations(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            DELETE FROM annotations
+            WHERE snapshot_id = @snapshotId
+              AND NOT EXISTS (
+                  SELECT 1 FROM snapshot_symbols
+                  WHERE snapshot_id = @snapshotId AND symbol_id = annotations.symbol_id
+              );
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.ExecuteNonQuery();
     }
 

@@ -48,7 +48,7 @@ function Send-McpMessage {
 }
 
 function Read-McpResponse {
-    param([System.Diagnostics.Process]$Proc, [int]$Id, [int]$TimeoutMs = 60000)
+    param([System.Diagnostics.Process]$Proc, [int]$Id, [int]$TimeoutMs = 60000, [switch]$Raw)
     $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
     while ($true) {
         $remaining = [int]($deadline - [DateTime]::UtcNow).TotalMilliseconds
@@ -59,7 +59,10 @@ function Read-McpResponse {
         if ($null -eq $line) { throw "MCP stdout closed while waiting for response id=$Id" }
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         $msg = $line | ConvertFrom-Json
-        if (($msg.PSObject.Properties.Name -contains 'id') -and ($msg.id -eq $Id)) { return $msg }
+        if (($msg.PSObject.Properties.Name -contains 'id') -and ($msg.id -eq $Id)) {
+            if ($Raw) { return $line }
+            return $msg
+        }
     }
 }
 
@@ -77,7 +80,8 @@ function Initialize-Mcp {
 function Get-McpToolJson {
     param([System.Diagnostics.Process]$Proc, [int]$Id, [string]$Name, $Arguments)
     Send-McpMessage $Proc 'tools/call' @{ name = $Name; arguments = $Arguments } $Id
-    $resp = Read-McpResponse $Proc $Id
+    $rawResponse = Read-McpResponse $Proc $Id -Raw
+    $resp = $rawResponse | ConvertFrom-Json
     if ($resp.PSObject.Properties.Name -contains 'error') {
         throw "tool ${Name} returned error: $($resp.error | ConvertTo-Json -Compress)"
     }
@@ -85,11 +89,22 @@ function Get-McpToolJson {
         $errText = if ($resp.result.content -and @($resp.result.content).Count -gt 0) { $resp.result.content[0].text } else { '' }
         throw "tool ${Name} returned isError: $errText"
     }
-    $sc = $resp.result.structuredContent
-    if ($null -ne $sc -and ($sc.PSObject.Properties.Name -contains 'result')) {
-        return ($sc.result | ConvertFrom-Json)
+    $structured = [System.Text.Json.Nodes.JsonNode]::Parse($rawResponse)['result']['structuredContent']
+    if ($structured -isnot [System.Text.Json.Nodes.JsonObject]) {
+        throw "tool ${Name} did not return a structuredContent object"
     }
-    return ($resp.result.content[0].text | ConvertFrom-Json)
+    if ($structured.ContainsKey('result')) {
+        throw "tool ${Name} returned a legacy result wrapper in structuredContent"
+    }
+    $text = $resp.result.content[0].text
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        throw "tool ${Name} did not return content[0].text"
+    }
+    $textPayload = [System.Text.Json.Nodes.JsonNode]::Parse($text)
+    if (-not [System.Text.Json.Nodes.JsonNode]::DeepEquals($structured, $textPayload)) {
+        throw "tool ${Name} structuredContent differs from content[0].text"
+    }
+    return $resp.result.structuredContent
 }
 
 function Get-Python {

@@ -646,6 +646,28 @@ public sealed class SymbolFinderOracleTests
     }
 
     [Fact]
+    public async Task TargetExplicitPropertyGetter_AcceptsReadsThroughOwnerDispatchFamily()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, """
+            public interface I { int Value { get; } }
+            public sealed class C : I { int I.Value => 1; }
+            public static class Reader { public static int Read(I value) => value.Value; }
+            """);
+        var compilation = (await solution.Projects.Single().GetCompilationAsync())!;
+        var implementation = compilation.Assembly.GlobalNamespace.GetTypeMembers("C").Single()
+            .GetMembers().OfType<IPropertySymbol>().Single();
+        var target = SymbolDocIds.Normalized(implementation.GetMethod!)!;
+        var owner = SymbolDocIds.Normalized(implementation)!;
+        const string caller = "M:Reader.Read(I)";
+        var read = (caller, nameof(EdgeKind.Reads), "P:I.Value");
+
+        Assert.Equal([caller], await MissingCallerIdsAsync(solution, [read], target));
+        Assert.Empty(await MissingCallerIdsAsync(solution,
+            [read, ("P:I.Value", nameof(EdgeKind.MayDispatchTo), owner)], target));
+    }
+
+    [Fact]
     public async Task TargetPropertySet_AcceptsWrites()
     {
         using var workspace = new AdhocWorkspace();

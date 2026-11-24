@@ -313,13 +313,7 @@ public sealed class SnapshotManifestJsonTests
     private sealed class StubBindingIncompletenessStore(IReadOnlyList<BindingIncompletenessRecord> records)
         : IBindingIncompletenessStore
     {
-        public void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> recordsToSave) =>
-            throw new NotSupportedException();
-
         public List<BindingIncompletenessRecord> GetBindingIncompleteness(string snapshotId, string? projectName = null) =>
             projectName == null ? [.. records] : [.. records.Where(record => record.ProjectName == projectName)];
-
-        public void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId) =>
-            throw new NotSupportedException();
     }
 }

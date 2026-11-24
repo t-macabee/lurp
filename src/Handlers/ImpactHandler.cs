@@ -23,8 +23,6 @@ internal static class ImpactHandler
         }
     }
 
-    internal static readonly IReadOnlyList<string> EdgeKindNames = Enum.GetNames<EdgeKind>();
-
     /// <summary>
     ///     Why a name filter did not parse; see <see cref="TryParseNameFilter" />. <see cref="Parsed" />
     ///     with a null <c>canonical</c> means the input held no part at all (for example an empty

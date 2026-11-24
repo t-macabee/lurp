@@ -140,8 +140,17 @@ public static class IndexRunner
     {
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
         var snapshotIdStr = snapshotId.ToString();
+        var workspaceId = workspaceInfo.Id.Value;
 
-        var disposition = ExistingSnapshotPolicy.Resolve(store, snapshotIdStr, workspaceInfo.Id.Value, SnapshotBuildStrategies.Full, force, sink);
+        // A full index can replace a complete snapshot with the same ID, including
+        // one built incrementally. Capture its notes before the policy deletes it.
+        var existing = store.GetExistingSnapshotState(snapshotIdStr, workspaceId);
+        var annotationSourceId = existing?.Status == SnapshotStatusValues.Complete
+            ? snapshotIdStr
+            : store.GetSelectedLatestSnapshotId(workspaceId);
+        var userAnnotations = annotationSourceId is null ? [] : store.GetUserAnnotations(annotationSourceId);
+
+        var disposition = ExistingSnapshotPolicy.Resolve(store, snapshotIdStr, workspaceId, SnapshotBuildStrategies.Full, force, sink);
         if (disposition == ExistingSnapshotDisposition.Reuse)
             return (snapshotIdStr, false);
 
@@ -320,6 +329,7 @@ public static class IndexRunner
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds));
 
             cancellationToken.ThrowIfCancellationRequested();
+            store.RestoreUserAnnotations(snapshotIdStr, userAnnotations);
             store.MarkSnapshotComplete(snapshotIdStr);
 
             IndexFinalization.RefreshPlannerStatistics(store, sink, timings);

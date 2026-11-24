@@ -5,7 +5,7 @@ namespace Lurp.Workspace;
 
 /// <summary>
 ///     Collects symbol IDs declared only in excluded <c>bin/</c>/<c>obj/</c> compile
-///     items (D4, D167.5) so <see cref="IEdgeStore.DeleteOrphanEdges" /> buckets
+///     items (D4, D167.5) so <see cref="SqliteIndexStore.DeleteOrphanEdges" /> buckets
 ///     orphan edges touching them under <c>excluded_document</c> instead of
 ///     <c>other</c>. Runs once per index run (full or incremental) across all
 ///     projects with excluded documents.

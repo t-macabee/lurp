@@ -4,9 +4,7 @@ namespace Lurp.Storage;
 
 public interface IBindingIncompletenessStore
 {
-    void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records);
     List<BindingIncompletenessRecord> GetBindingIncompleteness(string snapshotId, string? projectName = null);
-    void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId);
 }
 
 internal sealed class BindingIncompletenessStore(SqliteConnection connection) : IBindingIncompletenessStore

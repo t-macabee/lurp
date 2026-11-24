@@ -490,97 +490,12 @@ public sealed class ImpactReachabilityTests
         }
 
         // Unused members — throw to catch accidental usage
-        public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
-        {
-            throw new NotSupportedException();
-        }
-
-        public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null)
-        {
-            throw new NotSupportedException();
-        }
-
         public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
         {
             throw new NotSupportedException();
         }
 
-        public int CountEdges(string snapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public int CountDiagnostics(string snapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
-        {
-            throw new NotSupportedException();
-        }
-
         public List<EdgeRecord> GetEdgesTouchingSymbols(string snapshotId, IEnumerable<string> symbolIds)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool TryRetractAnnotation(string snapshotId, long annotationId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId, IEnumerable<string> excludedSymbolIds)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void PruneSnapshotGraphNodes(string snapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool HasStaleExtractorVersions(string snapshotId)
         {
             throw new NotSupportedException();
         }
@@ -614,97 +529,12 @@ public sealed class ImpactReachabilityTests
             return [];
         }
 
-        public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
-        {
-            throw new NotSupportedException();
-        }
-
-        public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null)
-        {
-            throw new NotSupportedException();
-        }
-
         public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
         {
             throw new NotSupportedException();
         }
 
-        public int CountEdges(string snapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public int CountDiagnostics(string snapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
-        {
-            throw new NotSupportedException();
-        }
-
         public List<EdgeRecord> GetEdgesTouchingSymbols(string snapshotId, IEnumerable<string> symbolIds)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool TryRetractAnnotation(string snapshotId, long annotationId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId, IEnumerable<string> excludedSymbolIds)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void PruneSnapshotGraphNodes(string snapshotId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool HasStaleExtractorVersions(string snapshotId)
         {
             throw new NotSupportedException();
         }

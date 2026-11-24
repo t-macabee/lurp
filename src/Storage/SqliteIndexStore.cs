@@ -553,6 +553,13 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _annotations!.SaveAnnotations(snapshotId, annotations);
     }
 
+    internal void RestoreUserAnnotations(string snapshotId, IReadOnlyList<AnnotationRecord> annotations)
+    {
+        EnsureOpen();
+        if (annotations.Count > 0)
+            _annotations!.SaveAnnotations(snapshotId, annotations, requireLiveSymbol: true);
+    }
+
     public long SaveUserAnnotation(string snapshotId, string symbolId, string kind, string value)
     {
         EnsureOpen();
@@ -607,6 +614,12 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         return _annotations!.GetAnnotations(snapshotId, symbolId);
+    }
+
+    internal List<AnnotationRecord> GetUserAnnotations(string snapshotId)
+    {
+        EnsureOpen();
+        return _annotations!.GetUserAnnotations(snapshotId);
     }
 
     public AnnotationPage GetAnnotationsPage(string snapshotId, string? symbolId, string? documentPath, string? kind, int limit, AnnotationCursor? cursor)
@@ -685,6 +698,12 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         _annotations!.CopyAnnotationsToSnapshot(fromSnapshotId, toSnapshotId);
+    }
+
+    internal void PruneOrphanAnnotations(string snapshotId)
+    {
+        EnsureOpen();
+        _annotations!.PruneOrphanAnnotations(snapshotId);
     }
 
     public bool TryRetractAnnotation(string snapshotId, long annotationId)
