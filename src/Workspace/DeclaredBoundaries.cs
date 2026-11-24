@@ -39,7 +39,7 @@ internal static class DeclaredBoundaries
         ),
         new(
             "mediatr_stream_handler",
-            "MediatR stream handler pattern (IStreamRequestHandler or IAsyncStreamHandler) is not modeled: " +
+            "Legacy MediatR stream handler annotation: " +
             "the implementing type was detected but no Handles edge was emitted."
         ),
         new(

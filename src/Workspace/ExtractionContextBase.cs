@@ -13,7 +13,8 @@ internal sealed record ProjectExtractionInputs(
     EdgeLocationResolver LocationResolver,
     IReadOnlySet<string>? ScopeDocuments,
     BindingIncompletenessCollector? Incompleteness,
-    Dictionary<SyntaxTree, SemanticModel> SemanticModelCache);
+    Dictionary<SyntaxTree, SemanticModel> SemanticModelCache,
+    IReadOnlySet<AssemblyIdentity>? SolutionAssemblyIdentities = null);
 
 /// <summary>The members that every workspace extraction context shares.</summary>
 internal abstract class ExtractionContextBase(ProjectExtractionInputs inputs)

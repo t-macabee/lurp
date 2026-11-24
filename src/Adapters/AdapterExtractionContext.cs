@@ -46,6 +46,27 @@ public sealed class AdapterExtractionContext
         return _workspace.GetOrCreateSemanticModel(tree);
     }
 
+    internal bool IsSolutionSymbol(ISymbol symbol)
+    {
+        return symbol.ContainingAssembly is { } assembly &&
+               (assembly.Identity.Equals(Compilation.Assembly.Identity) ||
+                Inputs.SolutionAssemblyIdentities?.Contains(assembly.Identity) == true);
+    }
+
+    internal SemanticModel? GetDeclaringSemanticModel(SyntaxTree tree)
+    {
+        if (Compilation.ContainsSyntaxTree(tree))
+            return GetSemanticModel(tree);
+
+        foreach (var reference in Compilation.References.OfType<CompilationReference>())
+        {
+            if (reference.Compilation.ContainsSyntaxTree(tree))
+                return reference.Compilation.GetSemanticModel(tree);
+        }
+
+        return null;
+    }
+
     public bool IsInScope(SyntaxTree? syntaxTree)
     {
         return _workspace.IsInScope(syntaxTree);

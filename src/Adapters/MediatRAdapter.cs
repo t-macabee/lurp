@@ -5,7 +5,7 @@ namespace Lurp.Adapters;
 
 public sealed class MediatRAdapter : IFrameworkAdapter
 {
-    private const string AdapterVersion = "mediatr-v2";
+    private const string AdapterVersion = "mediatr-v3";
 
     public string Name => "MediatR";
     public string Version => AdapterVersion;
@@ -13,7 +13,6 @@ public sealed class MediatRAdapter : IFrameworkAdapter
 
     private static readonly string[] UnmodeledInterfaceMetadataNames =
     [
-        "MediatR.IStreamRequestHandler`2",
         "MediatR.IPipelineBehavior`2",
         "MediatR.IStreamPipelineBehavior`2",
         "MediatR.Pipeline.IRequestPreProcessor`1",
@@ -41,6 +40,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
                 {
                     if (!FrameworkTypes.Is(iface, "MediatR.IRequestHandler`2") &&
                         !FrameworkTypes.Is(iface, "MediatR.IRequestHandler`1") &&
+                        !FrameworkTypes.Is(iface, "MediatR.IStreamRequestHandler`2") &&
                         !FrameworkTypes.Is(iface, "MediatR.INotificationHandler`1"))
                     {
                         continue;

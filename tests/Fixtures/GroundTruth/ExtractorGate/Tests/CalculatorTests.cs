@@ -23,6 +23,11 @@ public class CalculatorTests
         new ExtractorGate.App.Calculator().Add(2, 2);
     }
 
+    public static IEnumerable<object[]> Cases => [[new ExtractorGate.App.Calculator()]];
+
+    [Theory, MemberData(nameof(Cases))]
+    public void AddFromData(object _) { }
+
     [Fact]
     public void AddViaHelper()
     {

@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 4.1.0, schema v50, extractor 1.13.0, CLI/MCP contract v8, output schema v7<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 4.1.0, schema v50, extractor 1.14.0, CLI/MCP contract v8, output schema v7<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -122,12 +122,12 @@ capsule path hops list up to 20 sites with `site_count`.
 
 | Adapter | Facts emitted |
 |---|---|
-| ASP.NET Core | `RoutesTo` (`route://<METHOD> /<template>` built with ASP.NET Core's selector, combine, token and HTTP-method rules → controller action) |
-| Dependency Injection | `Registers` for every MS.DI registration form (`Add*`, `TryAdd*`, keyed, `ServiceDescriptor`): service → implementation and registering member → implementation. A factory, an instance of an interface or abstract type and a `Type` value that is not a `typeof` give the runtime-unknown node. Hosted services, options and an external `IServiceCollection` method give the runtime-unknown node and the named type with `runtime_unknown`. A Scrutor scan `FromAssemblyOf<T>()` → `AddClasses()` → `AsImplementedInterfaces()` gives interface → class with `convention`; any other scan gives a `convention:assembly_scan:<assembly>` placeholder. |
-| MediatR | `Handles` (request/notification → the method that implements the handler interface's `Handle`, including explicit, inherited and overloaded implementations) |
-| EF Core | `MapsTo` (entity, declared or inherited `DbSet`, configuration); navigation `References` (context or configuration → related entity); `ef_query_filter_constraint` and `ef_unique_index_constraint` (only `IsUnique`) on the entity; same facts in `OnModelCreating` and `Configure` |
-| Serialization | `serialization_contract` annotation per member (`name=<wire name>`, `ignored`, `included`) from System.Text.Json, Newtonsoft.Json and DataContract attributes, writing a value only when the library reads the attribute (`DataMember` on a `[DataContract]` type; STJ name or condition on a non-public member only with `JsonInclude`); `JsonSerializable` context → type `References` |
-| Test | `TestedBy` (production type → covering test method; test methods: an attribute that is or derives from a framework test attribute, list in `TestFrameworks`; follows the test body, test-assembly helpers, class constructors, initializers and setup methods) |
+| ASP.NET Core | `RoutesTo` from built-in and custom HTTP route attributes to controller actions. `UseMiddleware` emits `Constructs` to the middleware type and `Calls` to its entry points and explicit public constructors. |
+| Dependency Injection | `Registers` for every MS.DI registration form (`Add*`, `TryAdd*`, keyed, `ServiceDescriptor`): service → implementation and registering member → implementation. A factory, an instance of an interface or abstract type and a `Type` value that is not a `typeof` give the runtime-unknown node. Hosted services, options and external single-type extensions also claim the named type with `runtime_unknown`. `Configure<T>` and `AddOptions<T>` add `options_binding` annotations. The supported Scrutor scan links interfaces to classes with `convention`. Unmodeled scans with a statically identifiable assembly emit a `convention:assembly_scan:<assembly>` placeholder. |
+| MediatR | `Handles` (request, stream request or notification → the method that implements the handler interface's `Handle`, including explicit, inherited and overloaded implementations) |
+| EF Core | `MapsTo` from `DbSet` properties, concrete contexts and configurations. Targets include fluent entity, owned and complex mappings and types reachable through navigation properties. `HasOne` and `HasMany` also emit `References`. Query filters and unique indexes add constraint annotations. |
+| Serialization | `serialization_contract` annotation per member (`name=<wire name>`, `ignored`, `included`) from System.Text.Json, Newtonsoft.Json and DataContract attributes, writing a value only when the library reads the attribute (`DataMember` on a `[DataContract]` type; STJ name or condition on a non-public member only with `JsonInclude`); `JsonSerializable` context → type `References`. JSON constructors and serialization callbacks receive `included` annotations. |
+| Test | `TestedBy` from solution production types to test methods. Follows test bodies, helpers, data sources, fixture initialization and setup methods. Reflected setup also contributes `References` from the test to its dependencies so edits refresh coverage facts. |
 
 ### 4.2 Evidence ladder
 
@@ -308,7 +308,7 @@ entry, not a new extractor.
 | `masstransit_consumer` | MassTransit consumer registration is not modeled: no adapter exists to emit consumer-wiring edges for AddConsumer or endpoint configuration. |
 | `ef_convention` | The index does not model all EF Core conventions. EF Core can use fields, properties and property accessors of an EF-mapped entity or a base class of one by reflection. Instance constructors must belong to the entity type itself. |
 | `shape_similarity` | Semantic sibling similarity is not modeled: consistency audits requiring comparison against 'similar' implementations are unsupported. Use the proved neighborhood instead — implementations of a shared interface, shared base types and overrides, callers/callees, and containing-declaration siblings. |
-| `mediatr_stream_handler` | MediatR stream handler pattern (IStreamRequestHandler or IAsyncStreamHandler) is not modeled: the implementing type was detected but no Handles edge was emitted. |
+| `mediatr_stream_handler` | Legacy MediatR stream handler annotation: the implementing type was detected but no Handles edge was emitted. |
 | `mediatr_pipeline_behavior` | MediatR pipeline behavior (IPipelineBehavior) is not modeled: the implementing type was detected but no edge was emitted. Pipeline behaviors affect all requests passing through the pipeline. |
 | `mediatr_exception_handler` | MediatR exception handler (IRequestExceptionHandler) is not modeled: the implementing type was detected but no edge was emitted. |
 | `mediatr_pre_post_processor` | MediatR pre/post processor (IRequestPreProcessor or IRequestPostProcessor) is not modeled: the implementing type was detected but no edge was emitted. |

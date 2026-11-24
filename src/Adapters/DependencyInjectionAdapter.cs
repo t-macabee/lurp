@@ -31,12 +31,13 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     };
 
     public string Name => "Dependency Injection";
-    public string Version => "di-v2";
+    public string Version => "di-v3";
     public string Description => "Dependency injection registrations (MS.DI, options, hosted services, Scrutor scans)";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
         var edges = new List<EdgeRecord>();
+        var annotations = new List<AnnotationRecord>();
 
         // No IServiceCollection type: no call of the project can bind to a registration API.
         if (context.Compilation.GetTypesByMetadataName(ServiceCollectionType).IsEmpty)
@@ -48,7 +49,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             if (ownerId == null)
                 continue;
 
-            var call = new RegistrationCall(context, Version, edges, ownerId);
+            var call = new RegistrationCall(context, Version, edges, ownerId, annotations);
             var model = context.GetSemanticModel(node.SyntaxTree);
             foreach (var root in ExecutableRoots.Operations(node, model))
             {
@@ -57,7 +58,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             }
         }
 
-        return edges;
+        return new AdapterExtractionResult(edges, annotations);
     }
 
     private static void ReadInvocation(IInvocationOperation invocation, RegistrationCall call)
@@ -90,6 +91,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             // di_options: the options type is known, the configuration binding is not modeled.
             call.Unknown(call.OwnerId, location);
             call.OwnerClaim(method.TypeArguments, location);
+            if (method.Name is "Configure" or "AddOptions" && method.TypeArguments is [var options])
+                call.OptionsBinding(options, location);
         }
         else if (FrameworkTypes.Is(declaringType, ScrutorExtensionsType, "Scrutor") && method.Name == "Scan")
         {
@@ -97,9 +100,92 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         }
         else if (IsExternalServiceCollectionMethod(method, call.Context.Compilation))
         {
-            // di_external_extension: the registrations of an external method are not visible.
             call.Unknown(call.OwnerId, location);
+            var declared = method.ReducedFrom ?? method;
+            if (declared.IsExtensionMethod && FrameworkTypes.Is(declared.Parameters[0].Type, ServiceCollectionType) &&
+                !call.Context.IsSolutionSymbol(declared) && !IsMediatRMethod(declared) &&
+                !ReadExternalScan(invocation, location, call) && method.TypeArguments.Length == 1)
+            {
+                call.OwnerClaim(method.TypeArguments, location);
+            }
         }
+    }
+
+    private static bool ReadExternalScan(IInvocationOperation invocation, Location location, RegistrationCall call)
+    {
+        var scans = invocation.Arguments
+            .SelectMany(a => a.Value.DescendantsAndSelf().OfType<IAnonymousFunctionOperation>())
+            .SelectMany(lambda => lambda.Body.Descendants().OfType<IInvocationOperation>())
+            .Where(candidate => !call.Context.IsSolutionSymbol(candidate.TargetMethod) &&
+                                !IsMediatRMethod(candidate.TargetMethod) && HasAssemblyParameter(candidate.TargetMethod))
+            .Distinct()
+            .ToList();
+        if (HasAssemblyParameter(invocation.TargetMethod))
+            scans.Add(invocation);
+
+        var assemblies = new HashSet<IAssemblySymbol>(SymbolEqualityComparer.Default);
+        foreach (var scan in scans)
+        {
+            foreach (var type in scan.TargetMethod.TypeArguments)
+            {
+                if (KnownType(type)?.ContainingAssembly is { } assembly)
+                    assemblies.Add(assembly);
+            }
+
+            foreach (var argument in scan.Arguments.Where(a => a.Parameter != null && IsAssemblySelector(a.Parameter)))
+            {
+                foreach (var value in argument.Value.DescendantsAndSelf())
+                {
+                    var assembly = value switch
+                    {
+                        ITypeOfOperation typeOf => KnownType(typeOf.TypeOperand)?.ContainingAssembly,
+                        IInvocationOperation assemblyCall when assemblyCall.TargetMethod.Name == "GetExecutingAssembly" &&
+                            FrameworkTypes.Is(assemblyCall.TargetMethod.ContainingType, "System.Reflection.Assembly")
+                            => call.Context.Compilation.Assembly,
+                        _ => null
+                    };
+
+                    if (assembly != null)
+                        assemblies.Add(assembly);
+                }
+            }
+        }
+
+        foreach (var assembly in assemblies)
+            call.Add(call.OwnerId, GraphNodeIds.AssemblyScanConventionPrefix + assembly.Identity.GetDisplayName(),
+                Provenance.Convention, location, targetIsBoundary: true);
+
+        return scans.Count > 0;
+    }
+
+    private static bool IsMediatRMethod(IMethodSymbol method)
+    {
+        return method.ContainingAssembly?.Name is "MediatR" or "MediatR.Extensions.Microsoft.DependencyInjection";
+    }
+
+    private static bool HasAssemblyParameter(IMethodSymbol method)
+    {
+        return NamesAssembly(method.Name) || method.Parameters.Any(IsAssemblySelector);
+    }
+
+    private static bool IsAssemblySelector(IParameterSymbol parameter)
+    {
+        var type = parameter.Type;
+        return NamesAssembly(parameter.Name) || IsAssembly(type) ||
+               type is IArrayTypeSymbol array && IsAssembly(array.ElementType) ||
+               type is INamedTypeSymbol { TypeArguments: [var element] } named &&
+                   FrameworkTypes.Is(named, "System.Collections.Generic.IEnumerable`1") && IsAssembly(element);
+    }
+
+    private static bool NamesAssembly(string name)
+    {
+        return name.Contains("assembly", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("assemblies", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAssembly(ITypeSymbol type)
+    {
+        return FrameworkTypes.Is(type, "System.Reflection.Assembly");
     }
 
     /// <summary>
@@ -269,7 +355,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     }
 
     /// <summary>The edge sink of one D8 owner.</summary>
-    internal sealed class RegistrationCall(AdapterExtractionContext context, string version, List<EdgeRecord> edges, string ownerId)
+    internal sealed class RegistrationCall(
+        AdapterExtractionContext context, string version, List<EdgeRecord> edges, string ownerId, List<AnnotationRecord> annotations)
     {
         internal AdapterExtractionContext Context => context;
         internal string OwnerId => ownerId;
@@ -278,6 +365,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         {
             edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.Registers), provenance, version,
                 context.LocationResolver.Resolve(location), targetIsBoundary: targetIsBoundary));
+        }
+
+        internal void OptionsBinding(ITypeSymbol options, Location location)
+        {
+            if (KnownType(options) is { } known && context.MakeSymbolId(known) is { } id)
+                annotations.Add(new AnnotationRecord(id, "options_binding", "configured", context.LocationResolver.Resolve(location).path));
         }
 
         /// <summary>A registration that Lurp cannot read: source → the runtime-unknown node.</summary>

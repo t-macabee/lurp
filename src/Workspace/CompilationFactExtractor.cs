@@ -124,7 +124,7 @@ public static class CompilationFactExtractor
         var inputs = new ProjectExtractionInputs(
             compilation, snapshotId,
             new EdgeLocationResolver(documentIdStrings, generatedIdStrings, workspaceInfo.Id.GitRoot),
-            scopeDocuments, incompleteness, []);
+            scopeDocuments, incompleteness, [], GetSolutionAssemblyIdentities(compilation, workspaceInfo));
 
         var symbolExtractor = new SymbolExtractor(inputs, workspaceInfo, targetFramework);
 
@@ -184,6 +184,23 @@ public static class CompilationFactExtractor
             : CompilationHelper.GetDiagnostics(projectName, compilation);
 
         return new ExtractionResult(declarations, edges, diagnostics, [.. incompleteness.ToRecords()], measurements, annotations, failures);
+    }
+
+    private static HashSet<AssemblyIdentity> GetSolutionAssemblyIdentities(Compilation compilation, WorkspaceInfo workspaceInfo)
+    {
+        var projectAssemblies = workspaceInfo.AssemblyNames.Values.ToHashSet(StringComparer.Ordinal);
+        var identities = new HashSet<AssemblyIdentity> { compilation.Assembly.Identity };
+
+        // Roslyn represents C# project references as compilations, including transitive project
+        // dependencies. Package and reference assemblies use metadata references.
+        foreach (var reference in compilation.References.OfType<CompilationReference>())
+        {
+            var identity = reference.Compilation.Assembly.Identity;
+            if (projectAssemblies.Contains(identity.Name))
+                identities.Add(identity);
+        }
+
+        return identities;
     }
 
     public sealed record ExtractionFailure(string Stage, string ProjectName, string? AdapterName, string Message, Exception Exception);

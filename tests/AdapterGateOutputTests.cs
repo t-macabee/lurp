@@ -8,7 +8,7 @@ namespace Lurp.Tests;
 public sealed class AdapterGateOutputTests(ExtractorGateFixture gate)
 {
     [Fact]
-    public void AspNetCoreAdapter_WritesOnlyRoutesTo()
+    public void AspNetCoreAdapter_WritesRoutesAndMiddlewareEdges()
     {
         var adapterVersion = new AspNetCoreAdapter().Version;
         var kinds = gate.Results
@@ -17,6 +17,6 @@ public sealed class AdapterGateOutputTests(ExtractorGateFixture gate)
             .Select(edge => edge.Kind)
             .ToHashSet(StringComparer.Ordinal);
 
-        Assert.Equal([nameof(EdgeKind.RoutesTo)], kinds);
+        Assert.Equal([nameof(EdgeKind.RoutesTo), nameof(EdgeKind.Constructs), nameof(EdgeKind.Calls)], kinds);
     }
 }

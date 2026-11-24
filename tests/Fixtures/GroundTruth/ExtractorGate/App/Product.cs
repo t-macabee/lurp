@@ -5,6 +5,9 @@ namespace ExtractorGate.App;
 
 public class Product
 {
+    [JsonConstructor]
+    internal Product() { }
+
     [JsonPropertyName("product_name")]
     public string Name { get; set; } = "";
 }
@@ -26,6 +29,7 @@ public class WithContract
 }
 
 [JsonSerializable(typeof(Product))]
+[JsonSerializable(typeof(WithContract))]
 internal partial class GateJsonContext
 {
 }

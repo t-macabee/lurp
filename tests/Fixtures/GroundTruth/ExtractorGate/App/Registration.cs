@@ -16,6 +16,8 @@ public static class Registration
     public static void Configure(IServiceCollection services)
     {
         services.AddScoped<IService, Service>();
+        services.Configure<GateOptions>(_ => { });
+        services.AddHttpClient<GateClient>();
         services.TryAddSingleton<IClock, Clock>();
         services.AddKeyedScoped<IService, Service>("keyed");
         services.AddScoped<IClock>(_ => new Clock());
@@ -27,4 +29,11 @@ public static class Registration
             .AsImplementedInterfaces()
             .WithScopedLifetime());
     }
+}
+
+public class GateOptions;
+
+public class GateClient(HttpClient client)
+{
+    public HttpClient Client { get; } = client;
 }

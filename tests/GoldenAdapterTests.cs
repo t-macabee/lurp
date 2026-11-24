@@ -11,7 +11,7 @@ namespace Lurp.Tests;
 ///     an external type (System.String) and is therefore dropped by the snapshot
 ///     orphan filter — that one is asserted at extractor level (Pattern B).
 /// </summary>
-public sealed class GoldenAdapterTests : IntegrationTestBase
+public sealed partial class GoldenAdapterTests : IntegrationTestBase
 {
     private const string AspNetCoreFramework = "Microsoft.AspNetCore.App";
 
@@ -757,9 +757,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
-        var contextId = ResolveSymbolId(snapshotId, "global::App.AppContext");
+        var dbSetId = ResolveSymbolId(snapshotId, "global::App.BaseContext<T>.Items");
         var mapsTo = QueryEdges(snapshotId, "MapsTo", Provenance.FrameworkDerived);
-        var edge = Assert.Single(mapsTo, e => e.SourceSymbolId == contextId);
+        var edge = Assert.Single(mapsTo, e => e.SourceSymbolId == dbSetId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Widget"), edge.TargetSymbolId);
         Assert.EndsWith("AppContext.cs", edge.SourceDocumentPath, StringComparison.Ordinal);
         Assert.Equal(2, edge.SourceStartLine);
@@ -917,7 +917,8 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
                 (appDbId, blogId),
                 (twoConfigId, tagId),
                 (twoConfigId, authorId),
-                (blogConfigId, blogId)
+                (blogConfigId, blogId),
+                (blogConfigId, postId)
             }
             .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
             .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)
@@ -1234,17 +1235,8 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
     }
 
-    /// <summary>
-    ///     Regression: namespace segments of a fully qualified name bind as member
-    ///     accesses and resolve to <see cref="Microsoft.CodeAnalysis.INamespaceSymbol" />.
-    ///     Namespaces are not snapshot symbols and the same-assembly guard does not stop
-    ///     them, so before the fix they produced a TestedBy edge with an <c>N:</c> source
-    ///     that the orphan filter silently dropped afterwards. Pattern B: the external
-    ///     production endpoint never survives to a persisted snapshot, so the adapter
-    ///     contract is pinned at extraction level.
-    /// </summary>
     [Fact]
-    public async Task TestAdapter_FullyQualifiedNameProducesNoNamespaceTestedBy()
+    public async Task Phase3_TestAdapter_ExcludesExternalTypesBeforePersistence()
     {
         var test = new TestAdapterExtractorTest();
         try
@@ -1261,6 +1253,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
                                                      public void UsesFullyQualifiedName()
                                                      {
                                                          System.Linq.Enumerable.Range(0, 1);
+                                                         Xunit.Assert.True(true);
                                                      }
                                                  }
                                                  """
@@ -1270,11 +1263,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
             var testedBy = extraction.EdgesOf("TestedBy", Provenance.FrameworkDerived);
 
-            // Non-vacuous: the external production type still produces an edge.
-            Assert.Contains(testedBy, e => e.SourceSymbolId.StartsWith("T:System.Linq.Enumerable", StringComparison.Ordinal));
-
-            // Namespace segments must not become TestedBy sources.
-            Assert.DoesNotContain(testedBy, e => e.SourceSymbolId.StartsWith("N:", StringComparison.Ordinal));
+            Assert.Empty(testedBy);
         }
         finally
         {
@@ -1284,14 +1273,8 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
     // ── R5 characterization tests ──────────────────────────────────────
 
-    /// <summary>
-    ///     Characterization (R5): MediatR adapter only recognizes
-    ///     <c>IRequestHandler</c> and <c>INotificationHandler</c>. Other handler
-    ///     patterns (stream handlers) are silently skipped — no edge is emitted,
-    ///     and no false "proved" claim is made.
-    /// </summary>
     [Fact]
-    public async Task MediatRAdapter_StreamHandler_IsSilentlySkipped()
+    public async Task Phase3_MediatR_StreamHandlerProducesHandles()
     {
         CreateProject("App",
             new Dictionary<string, string>
@@ -1315,18 +1298,12 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
-        // Stream handler pattern is not recognized — zero Handles edges.
-        var handles = QueryEdges(snapshotId, "Handles", Provenance.FrameworkDerived);
-        Assert.Empty(handles);
-
-        // Confirm no false Registers claim either.
-        var registers = QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived);
-        Assert.Empty(registers);
-
-        // After the fix: stream handler emits an "unmodeled_mediatr_pattern" annotation.
+        var handle = Assert.Single(QueryEdges(snapshotId, "Handles", Provenance.FrameworkDerived));
+        Assert.Equal(ResolveSymbolId(snapshotId, "global::App.StreamPing"), handle.SourceSymbolId);
+        Assert.Equal(ResolveSymbolId(snapshotId, "global::App.StreamPingHandler.Handle"), handle.TargetSymbolId);
+        Assert.Empty(QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived));
         using var store = OpenStore(DbPath);
-        var annotations = store.GetAnnotations(snapshotId);
-        Assert.Contains(annotations, a =>
+        Assert.DoesNotContain(store.GetAnnotations(snapshotId), a =>
             a is { Kind: "unmodeled_mediatr_pattern", Value: "IStreamRequestHandler" });
     }
 
@@ -1369,60 +1346,42 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     [Fact]
     public async Task TestAdapter_DerivedTestAttributes_MarkTestMethods()
     {
-        var test = new TestAdapterExtractorTest();
-        try
+        CreateProject("App", new Dictionary<string, string>
         {
-            var extraction = await test.ExtractAsync(
-                new Dictionary<string, string>
+            ["Model.cs"] = "namespace App; public class Model;"
+        });
+        CreateProject("App.Tests", new Dictionary<string, string>
+        {
+            ["Tests.cs"] = """
+                using Xunit;
+
+                namespace App.Tests;
+
+                public sealed class MyFactAttribute : FactAttribute { }
+                public sealed class TestAttribute : Attribute { }
+
+                public class T
                 {
-                    ["Tests.cs"] = """
-                                   using System;
+                    [SkippableFact]
+                    public void Skippable() { new App.Model(); }
 
-                                   namespace App.Tests;
+                    [MyFact]
+                    public void Mine() { new App.Model(); }
 
-                                   public sealed class MyFactAttribute : Xunit.FactAttribute { }
-                                   public sealed class TestAttribute : Attribute { }
-
-                                   public class T
-                                   {
-                                       [Xunit.SkippableFact]
-                                       public void Skippable() { new System.Text.StringBuilder(); }
-
-                                       [MyFact]
-                                       public void Mine() { new System.Text.StringBuilder(); }
-
-                                       [Test]
-                                       public void NotATest() { new System.Text.StringBuilder(); }
-                                   }
-                                   """
-                },
-                projectName: "App.Tests",
-                runAdapters: true);
-
-            var testedBy = extraction.EdgesOf("TestedBy", Provenance.FrameworkDerived)
-                .Select(e => (e.SourceSymbolId, e.TargetSymbolId))
-                .OrderBy(e => e.TargetSymbolId, StringComparer.Ordinal)
-                .ToList();
-
-            var expected = new (string Source, string Target)[]
-                {
-                    ("T:System.Text.StringBuilder", extraction.ResolveId("global::App.Tests.T.Skippable")),
-                    ("T:System.Text.StringBuilder", extraction.ResolveId("global::App.Tests.T.Mine"))
+                    [Test]
+                    public void NotATest() { new App.Model(); }
                 }
-                .OrderBy(e => e.Target, StringComparer.Ordinal)
-                .ToList();
+                """
+        }, ["xunit@2.9.3", "Xunit.SkippableFact@1.5.61"], projectReferences: ["App"]);
 
-            Assert.Equal(expected.Count, testedBy.Count);
-            for (var i = 0; i < expected.Count; i++)
-            {
-                Assert.StartsWith(expected[i].Source + "|", testedBy[i].SourceSymbolId, StringComparison.Ordinal);
-                Assert.Equal(expected[i].Target, testedBy[i].TargetSymbolId);
-            }
-        }
-        finally
-        {
-            test.Dispose();
-        }
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var production = ResolveSymbolId(snapshot, "global::App.Model");
+        var testedBy = QueryEdges(snapshot, "TestedBy", Provenance.FrameworkDerived);
+        Assert.Equal(2, testedBy.Count);
+        Assert.All(testedBy, edge => Assert.Equal(production, edge.SourceSymbolId));
+        Assert.Contains(testedBy, edge => edge.TargetSymbolId == ResolveSymbolId(snapshot, "global::App.Tests.T.Skippable"));
+        Assert.Contains(testedBy, edge => edge.TargetSymbolId == ResolveSymbolId(snapshot, "global::App.Tests.T.Mine"));
     }
 
     [Fact]

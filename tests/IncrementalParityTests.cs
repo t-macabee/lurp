@@ -1432,21 +1432,17 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Handlers.cs"] = """
-                                  using System.Collections.Generic;
-                                  using System.Runtime.CompilerServices;
                                   using System.Threading;
                                   using MediatR;
 
                                   namespace App;
 
-                                  public record SR : IStreamRequest<int>;
+                                  public record SR : IRequest<int>;
 
-                                  public class SH : IStreamRequestHandler<SR, int>
+                                  public class SH : IPipelineBehavior<SR, int>
                                   {
-                                      public async IAsyncEnumerable<int> Handle(SR request, [EnumeratorCancellation] CancellationToken cancellationToken)
-                                      {
-                                          yield return 1;
-                                      }
+                                      public Task<int> Handle(SR request, RequestHandlerDelegate<int> next, CancellationToken cancellationToken)
+                                          => next();
                                   }
                                   """,
                 ["Dtos.cs"] = """
@@ -1491,7 +1487,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                 var row = Assert.Single(annotations);
                 Assert.Equal(shId, row.SymbolId);
                 Assert.Equal("unmodeled_mediatr_pattern", row.Kind);
-                Assert.Equal("IStreamRequestHandler", row.Value);
+                Assert.Equal("IPipelineBehavior", row.Value);
                 Assert.Equal("src/App/Handlers.cs", row.DocumentPath);
             }
             finally

@@ -20,7 +20,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
     private const int JsonIgnoreConditionAlways = 1;
 
     public string Name => "Serialization";
-    public string Version => "serialization-v2";
+    public string Version => "serialization-v3";
     public string Description => "Serialization contracts (System.Text.Json, Newtonsoft.Json, DataContract)";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
@@ -38,13 +38,18 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             var hasDataContract = HasAttribute(type, DataContractAttribute);
             foreach (var member in type.GetMembers())
             {
-                if (member is not (IPropertySymbol or IFieldSymbol { IsImplicitlyDeclared: false }))
-                    continue;
-
                 if (!context.IsSymbolInScope(member))
                     continue;
 
-                ExtractMemberContracts(member, hasDataContract, context, annotations);
+                switch (member)
+                {
+                    case IPropertySymbol or IFieldSymbol { IsImplicitlyDeclared: false }:
+                        ExtractMemberContracts(member, hasDataContract, context, annotations);
+                        break;
+                    case IMethodSymbol { IsImplicitlyDeclared: false } method:
+                        ExtractMethodContract(method, context, annotations);
+                        break;
+                }
             }
         }
 
@@ -97,6 +102,25 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                 CollectNamedTypes(array.ElementType, results);
                 break;
         }
+    }
+
+    private static void ExtractMethodContract(
+        IMethodSymbol method, AdapterExtractionContext context, List<AnnotationRecord> annotations)
+    {
+        var included = method.MethodKind switch
+        {
+            MethodKind.Constructor => HasAttribute(method, "System.Text.Json.Serialization.JsonConstructorAttribute") ||
+                                      HasAttribute(method, "Newtonsoft.Json.JsonConstructorAttribute"),
+            MethodKind.Ordinary => HasAttribute(method, "System.Runtime.Serialization.OnSerializingAttribute") ||
+                                   HasAttribute(method, "System.Runtime.Serialization.OnSerializedAttribute") ||
+                                   HasAttribute(method, "System.Runtime.Serialization.OnDeserializingAttribute") ||
+                                   HasAttribute(method, "System.Runtime.Serialization.OnDeserializedAttribute"),
+            _ => false
+        };
+
+        if (included && context.MakeSymbolId(method) is { } id)
+            annotations.Add(new AnnotationRecord(id, "serialization_contract", "included",
+                context.LocationResolver.Resolve(method).path));
     }
 
     private static void ExtractMemberContracts(

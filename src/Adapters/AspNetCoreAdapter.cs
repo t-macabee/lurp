@@ -1,16 +1,19 @@
 using System.Text;
+using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
 
 public sealed class AspNetCoreAdapter : IFrameworkAdapter
 {
-    private const string AdapterVersion = "aspnetcore-v3";
+    private const string AdapterVersion = "aspnetcore-v4";
 
     public string Name => "ASP.NET Core";
     public string Version => AdapterVersion;
-    public string Description => "ASP.NET Core controller action routes";
+    public string Description => "ASP.NET Core controller action routes and middleware";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
@@ -47,7 +50,80 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             }
         }
 
+        ExtractMiddleware(context, edges);
         return edges;
+    }
+
+    private static void ExtractMiddleware(AdapterExtractionContext context, List<EdgeRecord> edges)
+    {
+        const string extensions = "Microsoft.AspNetCore.Builder.UseMiddlewareExtensions";
+        if (context.Compilation.GetTypeByMetadataName(extensions) == null)
+            return;
+
+        foreach (var (owner, node) in context.Bodies())
+        {
+            if (context.MakeSymbolId(owner) is not { } ownerId)
+                continue;
+
+            var model = context.GetSemanticModel(node.SyntaxTree);
+            foreach (var root in ExecutableRoots.Operations(node, model))
+            foreach (var call in root.DescendantsAndSelf().OfType<IInvocationOperation>())
+            {
+                if (call.TargetMethod.Name != "UseMiddleware" ||
+                    !FrameworkTypes.Is(FrameworkTypes.DeclaringType(call.TargetMethod), extensions))
+                    continue;
+
+                var middleware = call.TargetMethod.TypeArguments.FirstOrDefault() ??
+                    (call.Arguments.FirstOrDefault(a => a.Parameter?.Name == "middleware")?.Value as ITypeOfOperation)?.TypeOperand;
+                if (middleware is not INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: false } type ||
+                    !context.IsSolutionSymbol(type) || context.MakeSymbolId(type) is not { } typeId)
+                    continue;
+
+                var location = context.LocationResolver.Resolve(call.Syntax.GetLocation());
+                edges.Add(context.MakeEdge(ownerId, typeId, nameof(EdgeKind.Constructs),
+                    Provenance.FrameworkDerived, AdapterVersion, location));
+
+                var methods = MiddlewareInvokers(type);
+                foreach (var method in methods.Concat(type.InstanceConstructors.Where(c => !c.IsImplicitlyDeclared &&
+                             c.DeclaredAccessibility == Accessibility.Public)))
+                {
+                    if (context.MakeSymbolId(method) is { } methodId)
+                        edges.Add(context.MakeEdge(ownerId, methodId, nameof(EdgeKind.Calls),
+                            Provenance.FrameworkDerived, AdapterVersion, location));
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<IMethodSymbol> MiddlewareInvokers(INamedTypeSymbol type)
+    {
+        var contract = type.AllInterfaces.FirstOrDefault(i => FrameworkTypes.Is(i, "Microsoft.AspNetCore.Http.IMiddleware"));
+        if (contract != null)
+        {
+            if (contract.GetMembers("InvokeAsync").FirstOrDefault() is { } member &&
+                type.FindImplementationForInterfaceMember(member) is IMethodSymbol method)
+                yield return method;
+            yield break;
+        }
+
+        var overridden = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            foreach (var method in current.GetMembers().OfType<IMethodSymbol>())
+            {
+                if (method.Name is not ("Invoke" or "InvokeAsync") || method.IsStatic ||
+                    method.DeclaredAccessibility != Accessibility.Public || overridden.Contains(method))
+                    continue;
+
+                for (var parent = method.OverriddenMethod; parent != null; parent = parent.OverriddenMethod)
+                    overridden.Add(parent);
+
+                if (!method.IsGenericMethod && method.Parameters.FirstOrDefault() is { } parameter &&
+                    FrameworkTypes.Is(parameter.Type, "Microsoft.AspNetCore.Http.HttpContext") &&
+                    FrameworkTypes.DerivesFrom(method.ReturnType, "System.Threading.Tasks.Task"))
+                    yield return method;
+            }
+        }
     }
 
     private static void ProcessControllerAction(INamedTypeSymbol controller, IMethodSymbol method, AdapterExtractionContext context, List<EdgeRecord> edges)
@@ -59,7 +135,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         var location = SymbolEqualityComparer.Default.Equals(method.ContainingType, controller)
             ? context.LocationResolver.Resolve(method)
             : context.LocationResolver.Resolve(controller);
-        foreach (var (httpMethod, template) in BuildRoutes(controller, method))
+        foreach (var (httpMethod, template) in BuildRoutes(controller, method, context))
         {
             var routeSourceId = $"{GraphNodeIds.RoutePrefix}{httpMethod} /{template}";
             edges.Add(context.MakeEdge(routeSourceId, methodId, nameof(EdgeKind.RoutesTo), Provenance.FrameworkDerived, AdapterVersion, location,
@@ -118,10 +194,10 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return dispose == null || !SymbolEqualityComparer.Default.Equals(controller.FindImplementationForInterfaceMember(dispose), method);
     }
 
-    private static List<(string Method, string Template)> BuildRoutes(INamedTypeSymbol controller, IMethodSymbol action)
+    private static List<(string Method, string Template)> BuildRoutes(INamedTypeSymbol controller, IMethodSymbol action, AdapterExtractionContext context)
     {
-        var controllerSelectors = CreateSelectors(controller);
-        var actionSelectors = CreateSelectors(action);
+        var controllerSelectors = CreateSelectors(controller, context);
+        var actionSelectors = CreateSelectors(action, context);
 
         var controllerToken = controller.Name.EndsWith("Controller", StringComparison.OrdinalIgnoreCase)
             ? controller.Name[..^"Controller".Length]
@@ -161,14 +237,14 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
     private sealed record RouteSelector(string? Template, IReadOnlyList<string> HttpMethods);
 
-    private static List<RouteSelector> CreateSelectors(ISymbol symbol)
+    private static List<RouteSelector> CreateSelectors(ISymbol symbol, AdapterExtractionContext context)
     {
         var nonSilent = new List<(string? Template, List<string> Methods)>();
         var silentMethods = new List<string>();
 
         foreach (var attr in FrameworkTypes.GetAttributesWithInheritance(symbol))
         {
-            if (!TryReadRouteProvider(attr, out var template, out var hasNameOrOrder, out var methods))
+            if (!TryReadRouteProvider(attr, context, out var template, out var hasNameOrOrder, out var methods))
                 continue;
 
             if (template == null && !hasNameOrOrder)
@@ -213,7 +289,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return selectors;
     }
 
-    private static bool TryReadRouteProvider(AttributeData attr, out string? template, out bool hasNameOrOrder, out List<string> methods)
+    private static bool TryReadRouteProvider(AttributeData attr, AdapterExtractionContext context, out string? template, out bool hasNameOrOrder, out List<string> methods)
     {
         template = null;
         hasNameOrOrder = false;
@@ -264,17 +340,112 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         if (FrameworkTypes.DerivesFrom(attrClass, "Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute"))
         {
             var fixedMethod = GetKnownHttpMethod(attrClass);
-            if (fixedMethod == null)
-                return false;
+            if (TryReadHttpMethodConstructor(attr, context, out var constructorTemplate, out var verbs))
+                template = constructorTemplate;
+            else
+                template = attr.ConstructorArguments.FirstOrDefault().Value as string;
 
-            methods.Add(fixedMethod);
-            if (attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is string t)
-                template = t;
+            if (fixedMethod != null)
+                methods.Add(fixedMethod);
+            else if (verbs is { Length: > 0 })
+                methods.AddRange(verbs);
+            else
+                methods.Add("CUSTOM");
+
             hasNameOrOrder = HasNameOrOrder(attr);
             return true;
         }
 
         return false;
+    }
+
+    private static bool TryReadHttpMethodConstructor(
+        AttributeData attribute, AdapterExtractionContext context, out string? template, out string[]? verbs)
+    {
+        const string httpMethodAttribute = "Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute";
+        template = null;
+        verbs = null;
+        var constructor = attribute.AttributeConstructor;
+        var arguments = attribute.ConstructorArguments.Select(constant => constant.Kind == TypedConstantKind.Array
+            ? constant.IsNull ? null : constant.Values.Select(c => c.Value).ToArray()
+            : constant.Value).ToArray();
+
+        var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        while (constructor != null && visited.Add(constructor))
+        {
+            if (FrameworkTypes.Is(constructor.ContainingType, httpMethodAttribute))
+            {
+                verbs = (arguments.FirstOrDefault() as object?[])?.OfType<string>()
+                    .Where(verb => verb.Length > 0).Select(verb => verb.ToUpperInvariant())
+                    .Distinct(StringComparer.Ordinal).ToArray();
+                template = arguments.ElementAtOrDefault(1) as string;
+                return true;
+            }
+
+            if (constructor.DeclaringSyntaxReferences.IsEmpty && GetKnownHttpMethod(constructor.ContainingType) != null)
+            {
+                template = arguments.FirstOrDefault() as string;
+                return true;
+            }
+
+            var initializer = constructor.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() switch
+            {
+                ConstructorDeclarationSyntax declaration => (SyntaxNode?)declaration.Initializer,
+                TypeDeclarationSyntax declaration => declaration.BaseList?.Types.OfType<PrimaryConstructorBaseTypeSyntax>().FirstOrDefault(),
+                _ => null
+            };
+            if (initializer == null ||
+                context.GetDeclaringSemanticModel(initializer.SyntaxTree)?.GetOperation(initializer) is not IInvocationOperation call)
+                return false;
+
+            var nextArguments = new object?[call.TargetMethod.Parameters.Length];
+            foreach (var argument in call.Arguments)
+            {
+                if (argument.Parameter is { } parameter)
+                    nextArguments[parameter.Ordinal] = ReadRouteArgument(argument.Value, arguments, context);
+            }
+
+            constructor = call.TargetMethod;
+            arguments = nextArguments;
+        }
+
+        return false;
+    }
+
+    private static object? ReadRouteArgument(
+        IOperation value, object?[] arguments, AdapterExtractionContext context, HashSet<IFieldSymbol>? fields = null)
+    {
+        switch (value)
+        {
+            case { ConstantValue.HasValue: true }:
+                return value.ConstantValue.Value;
+            case IConversionOperation conversion:
+                return ReadRouteArgument(conversion.Operand, arguments, context, fields);
+            case IParameterReferenceOperation parameter:
+                return arguments.ElementAtOrDefault(parameter.Parameter.Ordinal);
+            case IArrayCreationOperation { Initializer: { } initializer }:
+                return initializer.ElementValues.Select(element => ReadRouteArgument(element, arguments, context, fields)).ToArray();
+            case ICollectionExpressionOperation collection:
+                return collection.Elements.Select(element => ReadRouteArgument(element, arguments, context, fields)).ToArray();
+            case IFieldReferenceOperation { Field.IsStatic: true, Field.IsReadOnly: true } field:
+                fields ??= new HashSet<IFieldSymbol>(SymbolEqualityComparer.Default);
+                if (field.Field.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is not VariableDeclaratorSyntax
+                    { Initializer.Value: { } expression } ||
+                    context.GetDeclaringSemanticModel(expression.SyntaxTree)?.GetOperation(expression) is not { } fieldValue ||
+                    !fields.Add(field.Field))
+                    return null;
+
+                try
+                {
+                    return ReadRouteArgument(fieldValue, [], context, fields);
+                }
+                finally
+                {
+                    fields.Remove(field.Field);
+                }
+        }
+
+        return null;
     }
 
     private static bool HasNameOrOrder(AttributeData attr)

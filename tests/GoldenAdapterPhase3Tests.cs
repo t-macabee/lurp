@@ -1,0 +1,322 @@
+using Lurp.Adapters;
+using Lurp.Storage;
+
+namespace Lurp.Tests;
+
+public sealed partial class GoldenAdapterTests
+{
+    [Fact]
+    public async Task Phase3_EfCore_MapsInheritedAndDiscoveredEntities_AndConverges()
+    {
+        const string entities = """
+            using Microsoft.EntityFrameworkCore;
+            namespace App;
+            public class Root
+            {
+                public int Id { get; set; }
+                public Nav Navigation { get; set; } = null!;
+                public Address Address { get; set; } = null!;
+                public List<Tag> Tags { get; set; } = [];
+                public Money Price { get; set; } = null!;
+                public OwnedDetail Detail { get; set; } = null!;
+                [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+                public Hidden Skipped { get; set; } = null!;
+                public Ignored IgnoreMe { get; set; } = null!;
+            }
+            public class Nav { public Leaf Child { get; set; } = null!; }
+            public class Leaf;
+            public class Address;
+            public class Tag;
+            public class Money;
+            [Owned] public class OwnedDetail;
+            public class Hidden;
+            public class Ignored;
+            public class TypeOfEntity;
+            """;
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Entities.cs"] = entities,
+            ["BaseContext.cs"] = """
+                using Microsoft.EntityFrameworkCore;
+                namespace App;
+                public abstract class BaseContext : DbContext
+                {
+                    protected DbSet<Root> Rows { get; set; } = null!;
+                    private DbSet<Hidden> HiddenRows { get; set; } = null!;
+                    protected override void OnModelCreating(ModelBuilder model)
+                    {
+                        model.Entity(typeof(TypeOfEntity));
+                        var root = model.Entity<Root>();
+                        root.OwnsOne(x => x.Address);
+                        root.OwnsMany<Tag>(nameof(Root.Tags));
+                        root.ComplexProperty(x => x.Price);
+                        root.Ignore(x => x.IgnoreMe);
+                    }
+                }
+                """,
+            ["AppContext.cs"] = """
+                using Microsoft.EntityFrameworkCore;
+                namespace App;
+                public class AppContext : BaseContext;
+                public class CallingContext : BaseContext
+                {
+                    protected override void OnModelCreating(ModelBuilder model) => base.OnModelCreating(model);
+                }
+                public class ReplacingContext : BaseContext
+                {
+                    protected override void OnModelCreating(ModelBuilder model) { }
+                }
+                """
+        }, ["Microsoft.EntityFrameworkCore@10.0.1"]);
+
+        RestoreSolution();
+        var initial = await RunFullIndexAsync(DbPath);
+        var mappings = QueryEdges(initial, "MapsTo", Provenance.FrameworkDerived);
+        var context = ResolveSymbolId(initial, "global::App.AppContext");
+        foreach (var name in new[] { "Root", "Nav", "Leaf", "Address", "Tag", "Money", "OwnedDetail", "TypeOfEntity" })
+        {
+            var id = ResolveSymbolId(initial, "global::App." + name);
+            Assert.Contains(mappings, e => e.SourceSymbolId == context && e.TargetSymbolId == id &&
+                e.SourceDocumentPath!.EndsWith("AppContext.cs", StringComparison.Ordinal));
+        }
+
+        var entity = ResolveSymbolId(initial, "global::App.TypeOfEntity");
+        var caller = ResolveSymbolId(initial, "global::App.CallingContext");
+        var replacement = ResolveSymbolId(initial, "global::App.ReplacingContext");
+        Assert.Contains(mappings, e => e.SourceSymbolId == caller && e.TargetSymbolId == entity);
+        Assert.DoesNotContain(mappings, e => e.SourceSymbolId == replacement && e.TargetSymbolId == entity);
+
+        var rows = ResolveSymbolId(initial, "global::App.BaseContext.Rows");
+        Assert.Contains(mappings, e => e.SourceSymbolId == rows &&
+            e.SourceDocumentPath!.EndsWith("AppContext.cs", StringComparison.Ordinal));
+        Assert.DoesNotContain(mappings, e => e.TargetSymbolId.Contains(":App.Hidden|", StringComparison.Ordinal));
+        Assert.DoesNotContain(mappings, e => (e.SourceSymbolId == context || e.SourceSymbolId == caller) &&
+            e.TargetSymbolId.Contains(":App.Ignored|", StringComparison.Ordinal));
+
+        WriteFile("App", "Entities.cs",
+            entities.Replace("public Leaf Child { get; set; } = null!;", "public Replacement Child { get; set; } = null!;")
+            + "\npublic class Replacement;\n");
+        var incremental = await RunIncrementalIndexAsync();
+        var cleanDb = DbPath + ".clean";
+        var clean = await RunFullIndexAsync(cleanDb);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, incremental, cleanDb, clean);
+        var updatedMappings = QueryEdges(incremental, "MapsTo", Provenance.FrameworkDerived);
+        Assert.DoesNotContain(updatedMappings, e => e.TargetSymbolId.Contains(":App.Leaf|", StringComparison.Ordinal));
+        Assert.Contains(updatedMappings, e => e.TargetSymbolId.Contains(":App.Replacement|", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Phase3_Serialization_RecordsConstructorsAndCallbacks()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Dto.cs"] = """
+                using System.Runtime.Serialization;
+                namespace App;
+                public class Dto
+                {
+                    [System.Text.Json.Serialization.JsonConstructor] internal Dto(string value) { }
+                    [Newtonsoft.Json.JsonConstructor] private Dto(int value) { }
+                    [OnSerializing] private void BeforeWrite(StreamingContext context) { }
+                    [OnSerialized] private void AfterWrite(StreamingContext context) { }
+                    [OnDeserializing] private void BeforeRead(StreamingContext context) { }
+                    [OnDeserialized] private void AfterRead(StreamingContext context) { }
+                    private void Unused(StreamingContext context) { }
+                }
+                """
+        }, ["Newtonsoft.Json@13.0.3"]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        var annotations = store.GetAnnotations(snapshot).Where(a => a.Kind == "serialization_contract").ToArray();
+        Assert.Equal(6, annotations.Length);
+        Assert.All(annotations, a => Assert.Equal("included", a.Value));
+        Assert.Equal(2, annotations.Count(a => a.SymbolId.Contains(".#ctor(", StringComparison.Ordinal)));
+        foreach (var name in new[] { "BeforeWrite", "AfterWrite", "BeforeRead", "AfterRead" })
+            Assert.Contains(annotations, a => a.SymbolId == ResolveSymbolId(snapshot, "global::App.Dto." + name));
+    }
+
+    [Fact]
+    public async Task Phase3_AspNetCore_MapsMiddlewareAndCustomHttpVerbs()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Web.cs"] = """
+                using Microsoft.AspNetCore.Builder;
+                using Microsoft.AspNetCore.Http;
+                using Microsoft.AspNetCore.Mvc;
+                using Microsoft.AspNetCore.Mvc.Routing;
+                namespace App;
+                public static class Boot
+                {
+                    public static void Generic(IApplicationBuilder app) => app.UseMiddleware<Middleware>();
+                    public static void NonGeneric(IApplicationBuilder app) => app.UseMiddleware(typeof(Middleware));
+                }
+                internal sealed class Middleware
+                {
+                    public Middleware(RequestDelegate next) { }
+                    public Task InvokeAsync(HttpContext context) => Task.CompletedTask;
+                }
+                public sealed class HttpPurgeAttribute : HttpMethodAttribute
+                {
+                    private static readonly string[] Verbs = ["PURGE", "BAN"];
+                    public HttpPurgeAttribute(string pattern) : base(Verbs, pattern) { }
+                }
+                public sealed class HttpLinkAttribute(string template) : HttpMethodAttribute(new[] { "LINK" }, template);
+                [Route("api/[controller]")]
+                public class DemoController : ControllerBase
+                {
+                    [HttpPurge("cache/{id}")] public int Purge(int id) => id;
+                    [HttpLink("link/{id}")] public int Link(int id) => id;
+                }
+                """
+        }, frameworkReferences: [AspNetCoreFramework]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var routes = QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived);
+        Assert.Equal(["route://BAN /api/Demo/cache/{id}", "route://LINK /api/Demo/link/{id}", "route://PURGE /api/Demo/cache/{id}"],
+            routes.Select(e => e.SourceSymbolId).Order(StringComparer.Ordinal));
+        var constructs = QueryEdges(snapshot, "Constructs", Provenance.FrameworkDerived);
+        var calls = QueryEdges(snapshot, "Calls", Provenance.FrameworkDerived);
+        foreach (var method in new[] { "Generic", "NonGeneric" })
+        {
+            var owner = ResolveSymbolId(snapshot, "global::App.Boot." + method);
+            var middleware = ResolveSymbolId(snapshot, "global::App.Middleware");
+            Assert.Contains(constructs, e => e.SourceSymbolId == owner && e.TargetSymbolId == middleware);
+            Assert.Contains(calls, e => e.SourceSymbolId == owner &&
+                e.TargetSymbolId == ResolveSymbolId(snapshot, "global::App.Middleware.InvokeAsync"));
+            Assert.Contains(calls, e => e.SourceSymbolId == owner &&
+                e.TargetSymbolId.Contains(":App.Middleware.#ctor(", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task Phase3_DI_SeparatesAssemblyScansFromTypeClaimsAndOptions()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Services.cs"] = """
+                using FluentValidation;
+                using Microsoft.Extensions.DependencyInjection;
+                namespace App;
+                public class Client(HttpClient http);
+                public class Options;
+                public static class Services
+                {
+                    public static void Scan(IServiceCollection services)
+                        => services.AddValidatorsFromAssembly(typeof(Options).Assembly);
+                    public static void ScanGeneric(IServiceCollection services)
+                        => services.AddValidatorsFromAssemblyContaining<Options>();
+                    public static void Single(IServiceCollection services) => services.AddHttpClient<Client>();
+                    public static void Bind(IServiceCollection services) => services.Configure<Options>(_ => { });
+                    public static void Add(IServiceCollection services) => services.AddOptions<Client>();
+                }
+                """
+        }, ["FluentValidation.DependencyInjectionExtensions@12.2.0"], frameworkReferences: [AspNetCoreFramework]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var edges = QueryEdges(snapshot, "Registers", Provenance.RuntimeUnknown);
+        foreach (var method in new[] { "Scan", "ScanGeneric" })
+        {
+            var owner = ResolveSymbolId(snapshot, "global::App.Services." + method);
+            Assert.Contains(QueryEdges(snapshot, "Registers", Provenance.Convention), e =>
+                e.SourceSymbolId == owner && e.TargetSymbolId == GraphNodeIds.AssemblyScanConventionPrefix + SymbolId.Parse(owner).AssemblyIdentity);
+        }
+
+        var single = ResolveSymbolId(snapshot, "global::App.Services.Single");
+        var client = ResolveSymbolId(snapshot, "global::App.Client");
+        Assert.Contains(edges, e => e.SourceSymbolId == single && e.TargetSymbolId == client);
+        Assert.DoesNotContain(edges, e => e.SourceSymbolId == single &&
+            e.TargetSymbolId.StartsWith("convention:assembly_scan:", StringComparison.Ordinal));
+        using var store = OpenStore(DbPath);
+        var options = store.GetAnnotations(snapshot).Where(a => a.Kind == "options_binding").ToArray();
+        Assert.Equal(2, options.Length);
+        Assert.Contains(options, a => a.SymbolId == client && a.Value == "configured");
+        Assert.Contains(options, a => a.SymbolId == ResolveSymbolId(snapshot, "global::App.Options") && a.Value == "configured");
+    }
+
+    [Fact]
+    public async Task Phase3_TestAdapter_FollowsDataSourcesAndFixtureSetup()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                namespace App;
+                public class Member;
+                public class Class;
+                public class NUnitData;
+                public class MSTestData;
+                public class FixtureCtor;
+                public class FixtureInit;
+                public class CollectionInit;
+                """
+        });
+        const string collectionFixture = """
+            using Xunit;
+            public class SharedFixture : IAsyncLifetime
+            {
+                public Task InitializeAsync() { _ = new App.CollectionInit(); return Task.CompletedTask; }
+                public Task DisposeAsync() => Task.CompletedTask;
+            }
+            [CollectionDefinition("shared")] public class Shared : ICollectionFixture<SharedFixture>;
+            """;
+        CreateProject("Checks", new Dictionary<string, string>
+        {
+            ["Collection.cs"] = collectionFixture,
+            ["Checks.cs"] = """
+                using System.Collections;
+                using Xunit;
+                public class DataRows : IEnumerable<object[]>
+                {
+                    public IEnumerator<object[]> GetEnumerator() { yield return [new App.Class()]; }
+                    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+                }
+                public class LocalFixture : IAsyncLifetime
+                {
+                    public LocalFixture() { _ = new App.FixtureCtor(); }
+                    Task IAsyncLifetime.InitializeAsync() { _ = new App.FixtureInit(); return Task.CompletedTask; }
+                    public Task DisposeAsync() => Task.CompletedTask;
+                }
+                [Collection("shared")]
+                public class X : IClassFixture<LocalFixture>
+                {
+                    public static IEnumerable<object[]> Rows => [[new App.Member()]];
+                    [Theory, MemberData(nameof(Rows))] public void Member(object _) { }
+                    [Theory, ClassData(typeof(DataRows))] public void Class(object _) { }
+                }
+                public class N
+                {
+                    public static object[] Rows() => [new App.NUnitData()];
+                    [NUnit.Framework.TestCaseSource(nameof(Rows))] public void Test(object _) { }
+                }
+                [Microsoft.VisualStudio.TestTools.UnitTesting.TestClass]
+                public class M
+                {
+                    public static IEnumerable<object[]> Rows => [[new App.MSTestData()]];
+                    [Microsoft.VisualStudio.TestTools.UnitTesting.TestMethod]
+                    [Microsoft.VisualStudio.TestTools.UnitTesting.DynamicData(nameof(Rows))]
+                    public void Test(object _) { }
+                }
+                """
+        }, ["xunit@2.9.3", "NUnit@5.0.0", "MSTest.TestFramework@4.5.2"], projectReferences: ["App"]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var edges = QueryEdges(snapshot, "TestedBy", Provenance.FrameworkDerived);
+        foreach (var (model, test) in new[]
+        {
+            ("Member", "X.Member"), ("Class", "X.Class"), ("NUnitData", "N.Test"), ("MSTestData", "M.Test"),
+            ("FixtureCtor", "X.Member"), ("FixtureInit", "X.Member"), ("CollectionInit", "X.Class")
+        })
+        {
+            var source = ResolveSymbolId(snapshot, "global::App." + model);
+            var target = ResolveSymbolId(snapshot, "global::" + test);
+            Assert.Contains(edges, e => e.SourceSymbolId == source && e.TargetSymbolId == target);
+        }
+
+        WriteFile("Checks", "Collection.cs", collectionFixture.Replace("new App.CollectionInit()", "new App.Member()"));
+        var incremental = await RunIncrementalIndexAsync();
+        var cleanDb = DbPath + ".clean";
+        var clean = await RunFullIndexAsync(cleanDb);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, incremental, cleanDb, clean);
+    }
+}
