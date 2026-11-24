@@ -218,9 +218,7 @@ internal sealed class ContextAssembler
                 continue;
 
             var metadata = context.GetSymbolMetadata(candidate.SymbolId);
-            var exposed = PublicSurface.IsExposed(info.Kind.ToString(), info.SymbolId.DocCommentId,
-                SymbolMetadata.GetString(metadata, SymbolMetadataKeys.AccessorKind),
-                SymbolMetadata.GetString(metadata, SymbolMetadataKeys.Accessibility),
+            var exposed = PublicSurface.IsExposed(SymbolMetadata.GetString(metadata, SymbolMetadataKeys.Accessibility),
                 SymbolMetadata.GetString(metadata, SymbolMetadataKeys.EffectiveAccessibility),
                 MetadataReferenceIdentity.SimpleName(info.SymbolId.AssemblyIdentity), projects);
             if (exposed == true)

@@ -18,7 +18,7 @@ public sealed class DeadCandidateClassificationTests
         var ex = Assert.Throws<InvalidOperationException>(() => DeadCandidateStore.ClassifyCandidate(
             cand, decl, incoming, false, false, false,
             overlapsBinding: false, bindingRecords: [], projectFacts: null!,
-            factsById: [], subtreeByType: [], efTypes: new([], []), serializationOptInTargets: []));
+            factsById: [], subtreeByType: [], conventions: new()));
 
         Assert.Contains("src", ex.Message);
         Assert.Contains("sym", ex.Message);
@@ -41,7 +41,7 @@ public sealed class DeadCandidateClassificationTests
         var verdict = DeadCandidateStore.ClassifyCandidate(
             cand, decl, incoming, false, false, false,
             overlapsBinding: false, bindingRecords: [], projectFacts: null!,
-            factsById: [], subtreeByType: [], efTypes: new([], []), serializationOptInTargets: []);
+            factsById: [], subtreeByType: [], conventions: new());
 
         Assert.NotNull(verdict);
         Assert.Equal(DeadCandidateStatus.UncertainDead, verdict.Status);
@@ -68,7 +68,7 @@ public sealed class DeadCandidateClassificationTests
         var verdict = DeadCandidateStore.ClassifyCandidate(
             cand, decl, incoming, false, false, false,
             overlapsBinding: false, bindingRecords: [], projectFacts: null!,
-            factsById: [], subtreeByType: [], efTypes: new([], []), serializationOptInTargets: []);
+            factsById: [], subtreeByType: [], conventions: new());
 
         Assert.NotNull(verdict);
         Assert.Equal(DeadCandidateStatus.UncertainDead, verdict.Status);
@@ -85,7 +85,7 @@ public sealed class DeadCandidateClassificationTests
         var verdict = DeadCandidateStore.ClassifyCandidate(
             cand, decl, incoming, false, false, false,
             overlapsBinding: false, bindingRecords: [], projectFacts: null!,
-            factsById: [], subtreeByType: [], efTypes: new([], []), serializationOptInTargets: []);
+            factsById: [], subtreeByType: [], conventions: new());
 
         Assert.NotNull(verdict);
         Assert.Equal(DeadCandidateStatus.UncertainDead, verdict.Status);

@@ -4,10 +4,20 @@ using System.Security.Cryptography;
 
 namespace Lurp.Storage;
 
-internal sealed class DeclarationReadStore(SqliteConnection connection)
+internal sealed class DeclarationReadStore
 {
     private static readonly byte[] DeclaredNamePlaceholder = "<DECLARED_NAME>"u8.ToArray();
-    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+    private const string AssemblySimpleNameCollation = "lurp_assembly_simple_name";
+    private readonly SqliteConnection _connection;
+
+    internal DeclarationReadStore(SqliteConnection connection)
+    {
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _connection.CreateCollation(AssemblySimpleNameCollation, static (left, right) =>
+            ProjectFacts.AssemblyNameComparer.Compare(
+                left == null ? null : MetadataReferenceIdentity.SimpleName(left),
+                right == null ? null : MetadataReferenceIdentity.SimpleName(right)));
+    }
 
     internal static string SymbolDeclarationAggregateColumns() => $"""
                    (SELECT COUNT(*) FROM declarations d2
@@ -456,52 +466,58 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             lineStarts = SourceLineMap.ParseLineStarts(reader.IsDBNull(1) ? null : reader.GetString(1), docVersionId);
         }
 
-        // Total count (without cursor/limit) for the header.
+        var owners = ProjectFacts.Load(_connection, snapshotId).GetDocumentOwners(relativePath);
+        // Pick one representative for each declaration before counting or applying the cursor.
+        var outlineRows = $"""
+            WITH outline_rows AS (
+                SELECT d.symbol_id, s.kind, ss.fqn, d.full_start, d.full_end, d.signature_start, d.name_start,
+                       COALESCE(d.is_partial, 0) AS is_partial, COALESCE(d.is_generated, 0) AS is_generated,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY d.full_start, d.full_end, s.doc_comment_id
+                           ORDER BY (
+                               s.assembly_identity COLLATE {AssemblySimpleNameCollation}
+                               IN (SELECT value FROM json_each(@owners))
+                           ) DESC, d.symbol_id
+                       ) AS copy_rank
+                FROM declarations d
+                {SnapshotDeclarationLink.Join("d", "sdecl")}
+                JOIN symbols s ON s.symbol_id = d.symbol_id
+                JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id AND ss.snapshot_id = sdecl.snapshot_id
+                WHERE d.document_version_id = @docVersionId
+                  AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
+                  AND {SymbolMetadata.NotImplicitlyDeclaredSql("ss")}
+                  {(includeGenerated ? string.Empty : "AND COALESCE(d.is_generated, 0) = 0")}
+            )
+            """;
+
+        void BindOutlineParameters(SqliteCommand command)
+        {
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.Parameters.AddWithValue("@docVersionId", docVersionId);
+            SqlIdList.Bind(command, "@owners", owners);
+        }
+
         int totalCount;
         using (var countCmd = _connection.CreateCommand())
         {
-            countCmd.CommandText = $"""
-                SELECT COUNT(*)
-                FROM declarations d
-                {SnapshotDeclarationLink.Join("d", "sdecl")}
-                JOIN document_versions dv ON dv.document_version_id = d.document_version_id
-                JOIN documents doc ON doc.document_id = dv.document_id
-                JOIN snapshot_symbols ss ON ss.symbol_id = d.symbol_id AND ss.snapshot_id = sdecl.snapshot_id
-                WHERE doc.relative_path = @relativePath
-                  AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
-                """;
-            if (!includeGenerated)
-                countCmd.CommandText += " AND COALESCE(d.is_generated, 0) = 0";
-            countCmd.CommandText += $" AND {SymbolMetadata.NotImplicitlyDeclaredSql("ss")}";
-            countCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-            countCmd.Parameters.AddWithValue("@relativePath", relativePath);
+            countCmd.CommandText = outlineRows + " SELECT COUNT(*) FROM outline_rows WHERE copy_rank = 1;";
+            BindOutlineParameters(countCmd);
             totalCount = Convert.ToInt32(countCmd.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
 
-        // Fetch page (limit+1 to detect hasMore).
         using var cmd = _connection.CreateCommand();
         var whereCursor = cursor != null
-            ? " AND ((d.full_start > @lastFullStart) OR (d.full_start = @lastFullStart AND d.symbol_id > @lastSymbolId))"
+            ? "AND (full_start > @lastFullStart OR (full_start = @lastFullStart AND symbol_id > @lastSymbolId))"
             : string.Empty;
-        cmd.CommandText = $"""
-            SELECT d.symbol_id, s.kind, ss.fqn, d.full_start, d.full_end, d.signature_start, d.name_start,
-                   COALESCE(d.is_partial, 0), COALESCE(d.is_generated, 0)
-            FROM declarations d
-            {SnapshotDeclarationLink.Join("d", "sdecl")}
-            JOIN document_versions dv ON dv.document_version_id = d.document_version_id
-            JOIN documents doc ON doc.document_id = dv.document_id
-            JOIN symbols s ON s.symbol_id = d.symbol_id
-            JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id AND ss.snapshot_id = sdecl.snapshot_id
-            WHERE doc.relative_path = @relativePath
-              AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
-              AND {SymbolMetadata.NotImplicitlyDeclaredSql("ss")}
-            {(includeGenerated ? string.Empty : " AND COALESCE(d.is_generated, 0) = 0")}
+        cmd.CommandText = outlineRows + "\n" + $"""
+            SELECT symbol_id, kind, fqn, full_start, full_end, signature_start, name_start, is_partial, is_generated
+            FROM outline_rows
+            WHERE copy_rank = 1
             {whereCursor}
-            ORDER BY d.full_start ASC, d.symbol_id ASC
+            ORDER BY full_start, symbol_id
             LIMIT @limitPlusOne;
             """;
-        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-        cmd.Parameters.AddWithValue("@relativePath", relativePath);
+        BindOutlineParameters(cmd);
         cmd.Parameters.AddWithValue("@limitPlusOne", limit + 1);
         if (cursor != null)
         {

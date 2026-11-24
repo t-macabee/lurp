@@ -17,16 +17,19 @@ internal sealed class ProjectFacts
     private readonly HashSet<string> _snapshotAssemblyNames;
     private readonly Dictionary<string, HashSet<string>> _referenceSimpleNamesByAssemblyName;
     private readonly Dictionary<string, HashSet<string>> _internalsVisibleToByAssemblyName;
+    private readonly Dictionary<string, HashSet<string>> _assembliesByProjectDirectory;
 
     private ProjectFacts(
         Dictionary<string, string> assemblyNameByProjectName,
         Dictionary<string, HashSet<string>> referenceSimpleNamesByAssemblyName,
-        Dictionary<string, HashSet<string>> internalsVisibleToByAssemblyName)
+        Dictionary<string, HashSet<string>> internalsVisibleToByAssemblyName,
+        Dictionary<string, HashSet<string>> assembliesByProjectDirectory)
     {
         _assemblyNameByProjectName = assemblyNameByProjectName;
         _snapshotAssemblyNames = new HashSet<string>(assemblyNameByProjectName.Values, AssemblyNameComparer);
         _referenceSimpleNamesByAssemblyName = referenceSimpleNamesByAssemblyName;
         _internalsVisibleToByAssemblyName = internalsVisibleToByAssemblyName;
+        _assembliesByProjectDirectory = assembliesByProjectDirectory;
     }
 
     /// <summary>
@@ -44,7 +47,7 @@ internal sealed class ProjectFacts
 
         var projects = new List<ProjectRow>();
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT name, metadata_reference_identities, assembly_name, internals_visible_to FROM projects WHERE snapshot_id = @snapshotId;";
+        cmd.CommandText = "SELECT name, metadata_reference_identities, assembly_name, internals_visible_to, project_path FROM projects WHERE snapshot_id = @snapshotId;";
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -54,7 +57,8 @@ internal sealed class ProjectFacts
                 Name = reader.GetString(0),
                 MetadataReferenceIdentitiesJson = reader.IsDBNull(1) ? null : reader.GetString(1),
                 AssemblyName = reader.IsDBNull(2) ? null : reader.GetString(2),
-                InternalsVisibleToJson = reader.IsDBNull(3) ? null : reader.GetString(3)
+                InternalsVisibleToJson = reader.IsDBNull(3) ? null : reader.GetString(3),
+                ProjectPath = reader.IsDBNull(4) ? null : reader.GetString(4)
             });
         }
 
@@ -66,6 +70,7 @@ internal sealed class ProjectFacts
         var assemblyNameByProjectName = new Dictionary<string, string>(StringComparer.Ordinal);
         var referenceSimpleNamesByAssemblyName = new Dictionary<string, HashSet<string>>(AssemblyNameComparer);
         var internalsVisibleToByAssemblyName = new Dictionary<string, HashSet<string>>(AssemblyNameComparer);
+        var assembliesByProjectDirectory = new Dictionary<string, HashSet<string>>(PathNormalizer.PathComparer);
 
         foreach (var project in projects)
         {
@@ -75,6 +80,15 @@ internal sealed class ProjectFacts
             var internalsVisibleToJson = project.InternalsVisibleToJson;
 
             assemblyNameByProjectName[projectName] = assemblyName;
+            if (!string.IsNullOrEmpty(project.ProjectPath))
+            {
+                var path = PathNormalizer.ToForwardSlash(project.ProjectPath);
+                var directory = path[..(path.LastIndexOf('/') + 1)];
+                if (!assembliesByProjectDirectory.TryGetValue(directory, out var assemblies))
+                    assembliesByProjectDirectory[directory] = assemblies = new HashSet<string>(AssemblyNameComparer);
+                assemblies.Add(assemblyName);
+            }
+
             if (!referenceSimpleNamesByAssemblyName.TryGetValue(assemblyName, out var simpleNames))
             {
                 simpleNames = new HashSet<string>(StringComparer.Ordinal);
@@ -128,7 +142,31 @@ internal sealed class ProjectFacts
             }
         }
 
-        return new ProjectFacts(assemblyNameByProjectName, referenceSimpleNamesByAssemblyName, internalsVisibleToByAssemblyName);
+        return new ProjectFacts(assemblyNameByProjectName, referenceSimpleNamesByAssemblyName,
+            internalsVisibleToByAssemblyName, assembliesByProjectDirectory);
+    }
+
+    internal bool IsOwnedDocument(string assemblyName, string relativePath) =>
+        GetDocumentOwners(relativePath).Contains(assemblyName, AssemblyNameComparer);
+
+    internal IReadOnlyCollection<string> GetDocumentOwners(string relativePath)
+    {
+        var path = PathNormalizer.ToForwardSlash(relativePath);
+        // Walk from the file's directory toward the root. A slash at the end of each
+        // prefix keeps similarly named sibling directories distinct.
+        for (var end = path.LastIndexOf('/'); end >= 0; end = path.LastIndexOf('/', end - 1))
+        {
+            if (_assembliesByProjectDirectory.TryGetValue(path[..(end + 1)], out var owners))
+                return owners;
+            if (end == 0)
+                break;
+        }
+
+        if (!path.StartsWith("../", StringComparison.Ordinal) &&
+            _assembliesByProjectDirectory.TryGetValue(string.Empty, out var rootOwners))
+            return rootOwners;
+
+        return [];
     }
 
     internal bool HasAssembly(string assemblyName) => _snapshotAssemblyNames.Contains(assemblyName);

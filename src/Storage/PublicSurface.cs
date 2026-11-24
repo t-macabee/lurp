@@ -12,12 +12,10 @@ internal static class PublicSurface
     }
 
     // A null result means the symbol needs friend facts that are unavailable.
-    internal static bool? IsExposed(string kind, string docId, string? role, string? declaredAccess,
-        string? effectiveAccess, string assemblyName, ProjectFacts? projects)
+    internal static bool? IsExposed(string? declaredAccess, string? effectiveAccess,
+        string assemblyName, ProjectFacts? projects)
     {
-        var useDeclaredAccess = kind is nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field) ||
-                                role is "get" or "set" or "init" || IsInstanceConstructor(kind, docId);
-        var access = useDeclaredAccess ? declaredAccess : effectiveAccess ?? declaredAccess;
+        var access = effectiveAccess ?? declaredAccess;
         if (access is "Public" or "Protected" or "ProtectedOrInternal")
             return true;
         if (access is not ("Internal" or "ProtectedAndInternal"))

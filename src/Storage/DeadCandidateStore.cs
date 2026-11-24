@@ -92,15 +92,15 @@ internal sealed class DeadCandidateStore
         var allCandidates = FetchCandidateRows(snapshotId);
 
         // Fetch auxiliary persisted facts once
-        var efTypes = FetchEfConventionTypes(snapshotId);
-        var serializationOptInTargets = FetchSerializationOptInTargets(snapshotId);
+        var conventions = FetchConventionFacts(snapshotId);
         var assemblyScanOwners = FetchAssemblyScanOwners(snapshotId);
         var bindingRecords = FetchBindingIncompleteness(snapshotId);
         var projectFacts = ProjectFacts.Load(_connection, snapshotId);
         var incompletenessByDocument = BuildUnobservableByDocument(bindingRecords);
         var incompletenessProjects = BuildUnobservableProjects(bindingRecords, projectFacts);
         // Pre-fetch declarations for all candidates in batches
-        var declInfo = FetchDeclarationInfo(snapshotId, allCandidates.Select(c => c.SymbolId).ToList());
+        var candidateIds = allCandidates.Where(c => CandidateKinds.Contains(c.Kind)).Select(c => c.SymbolId).ToList();
+        var declInfo = FetchDeclarationInfo(snapshotId, candidateIds, out var coDeclaredPeers);
 
         // Apply candidate-universe filters (kind, project, document, generated, tests) in-memory.
         // Metadata is parsed once per candidate row into CandidateFacts and reused by the filter
@@ -164,9 +164,19 @@ internal sealed class DeadCandidateStore
         var fetchIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var f in filteredCandidates)
         {
-            fetchIds.Add(f.SymbolId);
-            if (f.AssociatedSymbolId != null)
-                fetchIds.Add(f.AssociatedSymbolId);
+            AddIncomingTargets(f);
+            if (coDeclaredPeers.TryGetValue(f.SymbolId, out var peers))
+            {
+                foreach (var peerId in peers)
+                    AddIncomingTargets(factsById[peerId]);
+            }
+        }
+
+        void AddIncomingTargets(CandidateFacts facts)
+        {
+            fetchIds.Add(facts.SymbolId);
+            if (facts.AssociatedSymbolId != null)
+                fetchIds.Add(facts.AssociatedSymbolId);
         }
 
         // D145: map associated symbol (property/event) -> its accessor ids once per call, so a
@@ -220,11 +230,16 @@ internal sealed class DeadCandidateStore
         var subtreeByType = new Dictionary<string, TypeSubtree>(StringComparer.Ordinal);
         if (hasTypeCandidate)
         {
-            var typeIds = filteredCandidates
-                .Where(static f => f.Kind == nameof(IndexedSymbolKind.Type))
-                .Select(static f => f.SymbolId)
-                .ToList();
-            typeUseByTarget = FetchIncomingEdgesBatched(snapshotId, typeIds, DeadCandidateLiveness.TypeUseEdgeKinds);
+            var typeIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var candidate in filteredCandidates)
+            {
+                if (candidate.Kind != nameof(IndexedSymbolKind.Type))
+                    continue;
+                typeIds.Add(candidate.SymbolId);
+                if (coDeclaredPeers.TryGetValue(candidate.SymbolId, out var peers))
+                    typeIds.UnionWith(peers);
+            }
+            typeUseByTarget = FetchIncomingEdgesBatched(snapshotId, typeIds.ToList(), DeadCandidateLiveness.TypeUseEdgeKinds);
             foreach (var typeId in typeIds)
                 subtreeByType[typeId] = CollectSubtree(typeId, membersByContainingType, containsChildren);
         }
@@ -238,6 +253,14 @@ internal sealed class DeadCandidateStore
             var assemblyName = cand.AssemblyName;
 
             var incoming = BuildEffectiveIncoming(cand, incomingByTarget, typeUseByTarget, subtreeByType, accessorsByAssociatedSymbol);
+            if (coDeclaredPeers.TryGetValue(cand.SymbolId, out var peers))
+            {
+                // Apply each compilation's own self-source and accessor-role filters before merging.
+                foreach (var peerId in peers)
+                    incoming.AddRange(BuildEffectiveIncoming(factsById[peerId], incomingByTarget, typeUseByTarget,
+                        subtreeByType, accessorsByAssociatedSymbol));
+                incoming = incoming.Distinct().ToList();
+            }
             var hasStrong = incoming.Any(e => StrongProvenance.Contains(e.Provenance));
             if (hasStrong)
                 continue;
@@ -251,7 +274,7 @@ internal sealed class DeadCandidateStore
             var verdict = ClassifyCandidate(
                 cand, decl, incoming, includePublic, includeGenerated, includeTests,
                 overlapsBinding, bindingRecords, projectFacts,
-                factsById, subtreeByType, efTypes, serializationOptInTargets, assemblyScanOwners);
+                factsById, subtreeByType, conventions, assemblyScanOwners);
             if (verdict is null)
                 continue;
 
@@ -337,8 +360,7 @@ internal sealed class DeadCandidateStore
         ProjectFacts projectFacts,
         Dictionary<string, CandidateFacts> factsById,
         Dictionary<string, TypeSubtree> subtreeByType,
-        EfConventionTypes efTypes,
-        HashSet<string> serializationOptInTargets,
+        ConventionFacts conventions,
         Dictionary<string, List<string>>? assemblyScanOwners = null)
     {
         string status;
@@ -377,8 +399,7 @@ internal sealed class DeadCandidateStore
             reason = DeadCandidateReason.ExternalInterfaceImplementation;
             uncertainties = [MakeExternalInterfaceImplementationUncertainty(cand.SymbolId)];
         }
-        else if (PublicSurface.IsExposed(cand.Kind, cand.Row.DocCommentId, cand.AccessorKind,
-                     cand.Accessibility, cand.EffectiveAccessibility, cand.AssemblyName, projectFacts) == true)
+        else if (PublicSurface.IsExposed(cand.Accessibility, cand.EffectiveAccessibility, cand.AssemblyName, projectFacts) == true)
         {
             if (!includePublic)
                 return null;
@@ -431,9 +452,9 @@ internal sealed class DeadCandidateStore
         }
         else
         {
-            // B34: the candidate's own EF or serialization verdict comes first, then the
+            // B34: the candidate's own convention verdict comes first, then the
             // verdict inherited from its associated symbol or descendants.
-            if (TryConventionVerdict(cand, factsById, subtreeByType, efTypes, serializationOptInTargets, out var conventionReason, out var conventionSymbolId))
+            if (TryConventionVerdict(cand, factsById, subtreeByType, conventions, out var conventionReason, out var conventionSymbolId))
             {
                 status = DeadCandidateStatus.UncertainDead;
                 reason = conventionReason;
@@ -450,60 +471,82 @@ internal sealed class DeadCandidateStore
         return new CandidateVerdict(status, reason, uncertainties);
     }
 
-    internal sealed record EfConventionTypes(HashSet<string> DirectTargets, HashSet<string> MemberTypes);
-
-    private EfConventionTypes FetchEfConventionTypes(string snapshotId)
+    internal sealed class ConventionFacts
     {
+        public HashSet<string> EfSources { get; } = [];
+        public HashSet<string> EfDirectTargets { get; } = [];
+        public HashSet<string> EfMemberTypes { get; } = [];
+        public HashSet<string> SerializationTargets { get; } = [];
+        public HashSet<string> OptionsTypes { get; } = [];
+        public HashSet<string> UnmodeledMediatRTypes { get; } = [];
+        public HashSet<string> FrameworkActivatedTypes { get; } = [];
+    }
+
+    private ConventionFacts FetchConventionFacts(string snapshotId)
+    {
+        var facts = new ConventionFacts();
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             WITH RECURSIVE
-                direct_targets(symbol_id) AS MATERIALIZED (
-                    SELECT DISTINCT target_symbol_id
+                convention_edges(kind, source_id, target_id) AS MATERIALIZED (
+                    SELECT kind, source_symbol_id, target_symbol_id
                     FROM edges
-                    WHERE snapshot_id = @snapshotId AND kind = @mapsTo
+                    WHERE snapshot_id = @snapshotId AND kind IN (@mapsTo, @registers, @handles, @routesTo)
+                ),
+                mappings(source_id, target_id) AS MATERIALIZED (
+                    SELECT source_id, target_id FROM convention_edges WHERE kind = @mapsTo
                 ),
                 member_types(symbol_id) AS (
-                    SELECT symbol_id FROM direct_targets
+                    SELECT target_id FROM mappings
                     UNION
                     SELECT e.target_symbol_id
                     FROM member_types m
                     JOIN edges e ON e.source_symbol_id = m.symbol_id
                     WHERE e.snapshot_id = @snapshotId AND e.kind = @inherits
                 )
-            SELECT symbol_id, symbol_id IN (SELECT symbol_id FROM direct_targets)
-            FROM member_types;
+            SELECT 'ef_source', source_id FROM mappings
+            UNION
+            SELECT 'ef_target', target_id FROM mappings
+            UNION ALL
+            SELECT 'ef_member_type', symbol_id FROM member_types
+            UNION ALL
+            SELECT kind, symbol_id FROM annotations
+            WHERE snapshot_id = @snapshotId AND (
+                (kind = 'serialization_contract' AND (value = 'included' OR value LIKE 'name=%'))
+                OR (kind = 'options_binding' AND value = 'configured')
+                OR kind = 'unmodeled_mediatr_pattern'
+            )
+            UNION ALL
+            SELECT DISTINCT kind, target_id FROM convention_edges WHERE kind <> @mapsTo;
             """;
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         cmd.Parameters.AddWithValue("@mapsTo", nameof(EdgeKind.MapsTo));
         cmd.Parameters.AddWithValue("@inherits", nameof(EdgeKind.Inherits));
-        var directTargets = new HashSet<string>(StringComparer.Ordinal);
-        var memberTypes = new HashSet<string>(StringComparer.Ordinal);
+        cmd.Parameters.AddWithValue("@registers", nameof(EdgeKind.Registers));
+        cmd.Parameters.AddWithValue("@handles", nameof(EdgeKind.Handles));
+        cmd.Parameters.AddWithValue("@routesTo", nameof(EdgeKind.RoutesTo));
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            var symbolId = reader.GetString(0);
-            memberTypes.Add(symbolId);
-            if (reader.GetBoolean(1))
-                directTargets.Add(symbolId);
+            var symbolId = reader.GetString(1);
+            switch (reader.GetString(0))
+            {
+                case "ef_source": facts.EfSources.Add(symbolId); break;
+                case "ef_target": facts.EfDirectTargets.Add(symbolId); break;
+                case "ef_member_type": facts.EfMemberTypes.Add(symbolId); break;
+                case "serialization_contract": facts.SerializationTargets.Add(symbolId); break;
+                case "options_binding": facts.OptionsTypes.Add(symbolId); break;
+                case "unmodeled_mediatr_pattern": facts.UnmodeledMediatRTypes.Add(symbolId); break;
+                case nameof(EdgeKind.Registers) when symbolId.StartsWith("T:", StringComparison.Ordinal):
+                    facts.FrameworkActivatedTypes.Add(symbolId);
+                    break;
+                case nameof(EdgeKind.Handles) or nameof(EdgeKind.RoutesTo):
+                    if (SymbolId.DeriveContainingTypeSymbolId(symbolId) is { } typeId)
+                        facts.FrameworkActivatedTypes.Add(typeId);
+                    break;
+            }
         }
-        return new EfConventionTypes(directTargets, memberTypes);
-    }
-
-    private HashSet<string> FetchSerializationOptInTargets(string snapshotId)
-    {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            SELECT DISTINCT symbol_id
-            FROM annotations
-            WHERE snapshot_id = @snapshotId
-              AND kind = 'serialization_contract'
-              AND (value = 'included' OR value LIKE 'name=%');
-            """;
-        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-        var set = new HashSet<string>(StringComparer.Ordinal);
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read()) set.Add(reader.GetString(0));
-        return set;
+        return facts;
     }
 
     private Dictionary<string, List<string>> FetchAssemblyScanOwners(string snapshotId)
@@ -555,7 +598,7 @@ internal sealed class DeadCandidateStore
 
         if (cand.Kind == nameof(IndexedSymbolKind.Type))
         {
-            if (!IsScrutorRegisterableType(cand))
+            if (!IsAssemblyScanCandidateType(cand))
                 return false;
             owners = found;
             return true;
@@ -566,7 +609,7 @@ internal sealed class DeadCandidateStore
             var enclosing = SymbolId.DeriveContainingTypeSymbolId(cand.SymbolId);
             if (enclosing != null &&
                 factsById.TryGetValue(enclosing, out var enclosingFacts) &&
-                IsScrutorRegisterableType(enclosingFacts))
+                IsAssemblyScanCandidateType(enclosingFacts))
             {
                 owners = found;
                 return true;
@@ -576,7 +619,7 @@ internal sealed class DeadCandidateStore
         return false;
     }
 
-    private static bool IsScrutorRegisterableType(CandidateFacts typeFacts)
+    private static bool IsAssemblyScanCandidateType(CandidateFacts typeFacts)
     {
         if (typeFacts.Kind != nameof(IndexedSymbolKind.Type))
             return false;
@@ -595,7 +638,7 @@ internal sealed class DeadCandidateStore
         return new DeadCandidateUncertainty(
             symbolIds,
             "binding_incompleteness",
-            $"An unmodeled Scrutor assembly scan of {assemblyName} may register this type; the registration is not in the index.");
+            $"An unmodeled dependency injection assembly scan of {assemblyName} may register this type. The index cannot resolve its registrations.");
     }
 
     private List<BindingIncompletenessRecord> FetchBindingIncompleteness(string snapshotId)
@@ -701,8 +744,10 @@ internal sealed class DeadCandidateStore
         return result;
     }
 
-    private Dictionary<string, DeclInfo> FetchDeclarationInfo(string snapshotId, List<string> symbolIds)
+    private Dictionary<string, DeclInfo> FetchDeclarationInfo(string snapshotId, List<string> symbolIds,
+        out Dictionary<string, HashSet<string>> coDeclaredPeers)
     {
+        coDeclaredPeers = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         var result = new Dictionary<string, DeclInfo>(StringComparer.Ordinal);
         if (symbolIds.Count == 0) return result;
         // document_version_id -> (relative_path, line_starts, content), filled once per distinct
@@ -736,6 +781,45 @@ internal sealed class DeadCandidateStore
                     perSymbol[sid] = lst;
                 }
                 lst.Add((docVersionId, fs, fe, isGen));
+            }
+        }
+
+        // Match physical spans and symbol identity within the document. Distinct symbols can
+        // share a span, such as synthesized declarations or members of a field declaration.
+        var declarationsBySpan = new Dictionary<(string DocumentVersionId, int Start, int End, string DocId),
+            (string First, List<string>? Shared)>();
+        foreach (var (symbolId, rows) in perSymbol)
+        {
+            var docId = SymbolId.DocCommentIdOf(symbolId);
+            foreach (var row in rows)
+            {
+                if (row.FullStart is not { } start || row.FullEnd is not { } end)
+                    continue;
+                var key = (row.DocVersionId, start, end, docId);
+                if (!declarationsBySpan.TryGetValue(key, out var group))
+                    declarationsBySpan[key] = (symbolId, null);
+                else if (group.First != symbolId)
+                {
+                    if (group.Shared == null)
+                    {
+                        group.Shared = [group.First];
+                        declarationsBySpan[key] = group;
+                    }
+                    group.Shared.Add(symbolId);
+                }
+            }
+        }
+
+        foreach (var (_, shared) in declarationsBySpan.Values)
+        {
+            if (shared == null)
+                continue;
+            foreach (var symbolId in shared)
+            {
+                if (!coDeclaredPeers.TryGetValue(symbolId, out var peers))
+                    coDeclaredPeers[symbolId] = peers = new HashSet<string>(StringComparer.Ordinal);
+                peers.UnionWith(shared);
+                peers.Remove(symbolId);
             }
         }
 
@@ -988,60 +1072,59 @@ internal sealed class DeadCandidateStore
         return false;
     }
 
-    private static bool IsEfPrivateMember(CandidateFacts cand, EfConventionTypes efTypes)
+    private static bool IsEfConventionMember(CandidateFacts cand, ConventionFacts conventions)
     {
-        // EF Core can use a property accessor by reflection even if the property is public.
+        if (conventions.EfSources.Contains(cand.SymbolId))
+            return true;
+
         var isPropertyAccessor = cand.AccessorKind is "get" or "set" or "init";
         var isInstanceConstructor = PublicSurface.IsInstanceConstructor(cand.Kind, cand.Row.DocCommentId);
-        if (isPropertyAccessor)
-        {
-            if (cand.Accessibility is not ("Private" or "PrivateProtected" or "ProtectedAndInternal" or "Internal"))
-                return false;
-        }
-        else
-        {
-            if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)) &&
-                !isInstanceConstructor)
-                return false;
-            if (cand.Accessibility is not ("Private" or "PrivateProtected"))
-                return false;
-        }
+        if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)) &&
+            !isPropertyAccessor && !isInstanceConstructor)
+            return false;
 
         var memberId = isPropertyAccessor ? cand.AssociatedSymbolId ?? cand.SymbolId : cand.SymbolId;
-        var enclosing = SymbolId.DeriveContainingTypeSymbolId(memberId);
-        if (enclosing == null) return false;
-        var eligibleTypes = isInstanceConstructor ? efTypes.DirectTargets : efTypes.MemberTypes;
-        return eligibleTypes.Contains(enclosing);
+        var eligibleTypes = isInstanceConstructor ? conventions.EfDirectTargets : conventions.EfMemberTypes;
+        return SymbolId.DeriveContainingTypeSymbolId(memberId) is { } enclosing && eligibleTypes.Contains(enclosing);
     }
 
-    private static bool IsSerializationConvention(CandidateFacts cand, HashSet<string> serializationOptInTargets)
+    private static bool IsFrameworkConvention(CandidateFacts cand, ConventionFacts conventions)
     {
-        if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)))
+        if (conventions.UnmodeledMediatRTypes.Contains(cand.SymbolId))
+            return true;
+
+        var memberId = cand.AssociatedSymbolId ?? cand.SymbolId;
+        if (SymbolId.DeriveContainingTypeSymbolId(memberId) is not { } enclosing)
             return false;
-        // D53 / D169.2: read the serialization_contract annotation (included or name=...).
-        return serializationOptInTargets.Contains(cand.SymbolId);
+
+        var isConstructor = PublicSurface.IsInstanceConstructor(cand.Kind, cand.Row.DocCommentId);
+        if (isConstructor &&
+            (conventions.FrameworkActivatedTypes.Contains(enclosing) || conventions.UnmodeledMediatRTypes.Contains(enclosing)))
+            return true;
+
+        return conventions.OptionsTypes.Contains(enclosing) &&
+               (isConstructor || cand.AccessorKind is "get" or "set" or "init" ||
+                cand.Kind is nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field));
     }
 
     /// <summary>
     ///     B34: the convention verdict for a candidate that inherits it from another symbol. An
     ///     accessor inherits its associated property's or event's verdict; a type inherits the
-    ///     first verdict among its descendant members (EF before serialization, in the subtree's
-    ///     ordinal member order). Returns the reason and the symbol id the uncertainty is made
-    ///     with.
+    ///     first convention verdict among its descendants in ordinal member order. Returns the
+    ///     reason and the symbol id supporting the verdict.
     /// </summary>
     private static bool TryInheritedConvention(
         CandidateFacts cand,
         Dictionary<string, CandidateFacts> factsById,
         Dictionary<string, TypeSubtree> subtreeByType,
-        EfConventionTypes efTypes,
-        HashSet<string> serializationOptInTargets,
+        ConventionFacts conventions,
         out string reason,
         out string symbolId)
     {
         if (cand.AssociatedSymbolId != null)
         {
             if (factsById.TryGetValue(cand.AssociatedSymbolId, out var associated) &&
-                TryConvention(associated, efTypes, serializationOptInTargets, out reason))
+                TryConvention(associated, conventions, out reason))
             {
                 symbolId = cand.AssociatedSymbolId;
                 return true;
@@ -1054,7 +1137,7 @@ internal sealed class DeadCandidateStore
             foreach (var memberId in subtree.Descendants)
             {
                 if (factsById.TryGetValue(memberId, out var member) &&
-                    TryConvention(member, efTypes, serializationOptInTargets, out reason))
+                    TryConvention(member, conventions, out reason))
                 {
                     symbolId = memberId;
                     return true;
@@ -1074,35 +1157,40 @@ internal sealed class DeadCandidateStore
         CandidateFacts cand,
         Dictionary<string, CandidateFacts> factsById,
         Dictionary<string, TypeSubtree> subtreeByType,
-        EfConventionTypes efTypes,
-        HashSet<string> serializationOptInTargets,
+        ConventionFacts conventions,
         out string reason,
         out string symbolId)
     {
-        if (TryConvention(cand, efTypes, serializationOptInTargets, out reason))
+        if (TryConvention(cand, conventions, out reason))
         {
             symbolId = cand.SymbolId;
             return true;
         }
 
-        return TryInheritedConvention(cand, factsById, subtreeByType, efTypes, serializationOptInTargets, out reason, out symbolId);
+        return TryInheritedConvention(cand, factsById, subtreeByType, conventions, out reason, out symbolId);
     }
 
     private static bool TryConvention(
         CandidateFacts cand,
-        EfConventionTypes efTypes,
-        HashSet<string> serializationOptInTargets,
+        ConventionFacts conventions,
         out string reason)
     {
-        if (IsEfPrivateMember(cand, efTypes))
+        if (IsEfConventionMember(cand, conventions))
         {
             reason = DeadCandidateReason.EfConvention;
             return true;
         }
 
-        if (IsSerializationConvention(cand, serializationOptInTargets))
+        if (cand.Kind is nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field) or nameof(IndexedSymbolKind.Method) &&
+            conventions.SerializationTargets.Contains(cand.SymbolId))
         {
             reason = DeadCandidateReason.SerializationConvention;
+            return true;
+        }
+
+        if (IsFrameworkConvention(cand, conventions))
+        {
+            reason = DeadCandidateReason.FrameworkConvention;
             return true;
         }
 
@@ -1221,19 +1309,23 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakeEfConventionUncertainty(string symbolId)
     {
-        return new DeadCandidateUncertainty([symbolId], "ef_convention", "EF Core can use fields, properties and property accessors of an EF-mapped entity or a base class of one by reflection. Instance constructors must belong to the entity type itself. The index does not track all of these uses. See DeclaredBoundaries.ef_convention.", "ef_convention");
+        return new DeadCandidateUncertainty([symbolId], "ef_convention", "EF Core can discover mapping sources, fields, properties and accessors by convention. It can also invoke instance constructors of mapped entities. The index does not track all of these uses. See DeclaredBoundaries.ef_convention.", "ef_convention");
     }
 
     private static DeadCandidateUncertainty MakeSerializationConventionUncertainty(string symbolId)
     {
-        return new DeadCandidateUncertainty([symbolId], "serialization_convention", "Serialization opt-in: the member is not public, has no LIVE incoming edge, and carries a serializer opt-in (JsonInclude, Newtonsoft JsonProperty, or DataMember on a [DataContract] type), so a serializer may read or write it by reflection. Verify no serialization contract depends on it before removing.");
+        return new DeadCandidateUncertainty([symbolId], "serialization_convention", "A serializer may use this member by reflection through an explicit serialization contract, constructor attribute, or callback attribute.");
     }
 
     private static DeadCandidateUncertainty MakeConventionUncertainty(string reason, string symbolId)
     {
-        return reason == DeadCandidateReason.EfConvention
-            ? MakeEfConventionUncertainty(symbolId)
-            : MakeSerializationConventionUncertainty(symbolId);
+        return reason switch
+        {
+            DeadCandidateReason.EfConvention => MakeEfConventionUncertainty(symbolId),
+            DeadCandidateReason.SerializationConvention => MakeSerializationConventionUncertainty(symbolId),
+            _ => new DeadCandidateUncertainty([symbolId], "framework_convention",
+                "A framework may use this symbol through runtime activation or options binding.")
+        };
     }
 
     internal sealed record CandidateRow(string SymbolId, string Kind, string? Fqn, string? MetadataJson, string DocCommentId, string AssemblyIdentity);

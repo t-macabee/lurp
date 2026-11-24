@@ -22,7 +22,9 @@ public sealed class ContextCapsuleSurfaceTests : IntegrationTestBase
         Check("Outside.Hidden.Run", true);
         Check("Inside.Hidden.Run", false);
         Check("Wildcard.Hidden.InternalRun", true);
-        Check("NoFriend.Hidden.Value", true);
+        Check("NoFriend.Hidden.Value", false);
+        Check("Outside.Hidden.Value", true);
+        Check("Outside.Hidden.Nested.Value", false);
         Check("Outside.Hidden.Run", false, omitProjectFacts: true);
 
         var legacy = ResolveSymbolId(snapshot, "global::NoFriend.Hidden.Run");
@@ -53,6 +55,10 @@ public sealed class ContextCapsuleSurfaceTests : IntegrationTestBase
                                     public void Run() { }
                                     internal void InternalRun() { }
                                     public int Value { get; }
+                                    private class Nested
+                                    {
+                                        public int Value { get; }
+                                    }
                                 }
                                 """
             }, msbuildProperties: new Dictionary<string, string> { ["AssemblyName"] = $"{project}Assembly" });

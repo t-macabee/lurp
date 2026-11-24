@@ -104,7 +104,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         using var command = _connection.CreateCommand();
         command.CommandText = $"""
             SELECT d.symbol_id, d.full_start, d.full_end, d.name_start, d.name_end,
-                   doc.relative_path, d.document_version_id, s.doc_comment_id, ss.metadata_json
+                   doc.relative_path, d.document_version_id, s.doc_comment_id, ss.metadata_json, s.assembly_identity
             FROM declarations d
             {SnapshotDeclarationLink.Join("d", "sdecl")}
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
@@ -125,6 +125,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@lineStart", lineStart);
         command.Parameters.AddWithValue("@lineEnd", lineEnd);
 
+        var projects = ProjectFacts.Load(_connection, snapshotId);
         var candidates = new List<NavigateCandidate>();
         using (var reader = command.ExecuteReader())
         {
@@ -150,7 +151,8 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
                     nameStart,
                     nameEnd,
                     SymbolMetadata.IsImplicitlyDeclared(metadata),
-                    ClassifyKind(docCommentId, metadata)));
+                    ClassifyKind(docCommentId, metadata),
+                    projects.IsOwnedDocument(MetadataReferenceIdentity.SimpleName(reader.GetString(9)), docPath)));
             }
         }
 
@@ -180,6 +182,8 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         cmp = a.IsImplicitlyDeclared.CompareTo(b.IsImplicitlyDeclared);
         if (cmp != 0) return cmp;
         cmp = a.KindClass.CompareTo(b.KindClass);
+        if (cmp != 0) return cmp;
+        cmp = b.IsOwnedDocument.CompareTo(a.IsOwnedDocument);
         if (cmp != 0) return cmp;
         return string.CompareOrdinal(a.SymbolId, b.SymbolId);
     }
@@ -247,7 +251,8 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         int NameStart,
         int NameEnd,
         bool IsImplicitlyDeclared,
-        int KindClass)
+        int KindClass,
+        bool IsOwnedDocument)
     {
         public int SpanLength => FullEnd - FullStart;
     }

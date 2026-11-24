@@ -1214,6 +1214,9 @@ public static class Api { public static void Go() => Host.Run(null!); }
                                  private class Nested
                                  {
                                      public void NestedPublic() { }
+                                     public Nested() { }
+                                     public int Value { get; }
+
                                  }
                              }
 
@@ -1255,11 +1258,19 @@ public static class Api { public static void Go() => Host.Run(null!); }
             var removeChanged = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.remove_Changed(System.Action)");
             Assert.Equal(DeadCandidateStatus.ProvedDead, removeChanged.Status);
 
-            // Declared Public properties, their accessors, and fields remain public surface (D168.2).
-            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "P:TestProject.Hidden.Prop");
-            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.get_Prop");
-            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.set_Prop(System.Int32)");
-            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "F:TestProject.Hidden.Field");
+            foreach (var docId in new[]
+                     {
+                         "P:TestProject.Hidden.Prop",
+                         "M:TestProject.Hidden.get_Prop",
+                         "M:TestProject.Hidden.set_Prop(System.Int32)",
+                         "F:TestProject.Hidden.Field",
+                         "P:TestProject.Outer.Nested.Value",
+                         "M:TestProject.Outer.Nested.#ctor"
+                     })
+            {
+                var candidate = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == docId);
+                Assert.Equal(DeadCandidateStatus.ProvedDead, candidate.Status);
+            }
 
             // Hidden.#ctor is live via Constructs from Consumer.Use.
             Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.#ctor");
@@ -2672,13 +2683,11 @@ internal sealed class Serialized
             Assert.Equal(DeadCandidateStatus.ProvedDead, hook.Status);
             Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, hook.Reason);
 
-            // Step 5 checks declared accessibility before step 9 checks EF conventions.
             const string protectedSetter = "M:TestProject.Order.set_ProtectedValue(System.Int32)";
-            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == protectedSetter);
-            var publicMethods = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", true, false, false, 200, null);
-            var setter = Assert.Single(publicMethods.Candidates, c => c.SymbolId.Split('|')[0] == protectedSetter);
+            var setter = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == protectedSetter);
+            Assert.Equal("ProtectedAndInternal", setter.EffectiveAccessibility);
             Assert.Equal(DeadCandidateStatus.UncertainDead, setter.Status);
-            Assert.Equal(DeadCandidateReason.PublicSurface, setter.Reason);
+            Assert.Equal(DeadCandidateReason.EfConvention, setter.Reason);
         }
         finally
         {
