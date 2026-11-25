@@ -1477,6 +1477,10 @@ public static class Api { public static void Go() => Host.Run(null!); }
                               internal Job() { }
                           }
 
+                          public class PublicJob { public PublicJob() { } }
+
+                          internal class Program { public static void Main() { } }
+
                           internal abstract class AbstractJob { }
 
                           internal static class Helpers
@@ -1484,7 +1488,7 @@ public static class Api { public static void Go() => Host.Run(null!); }
                               internal static void H() { }
                           }
                           """
-        });
+        }, msbuildProperties: new Dictionary<string, string> { ["OutputType"] = "Exe" });
 
         CreateProject("Di", new Dictionary<string, string>
         {
@@ -1517,6 +1521,12 @@ public static class Api { public static void Go() => Host.Run(null!); }
                      e.TargetSymbolId.StartsWith($"{GraphNodeIds.AssemblyScanConventionPrefix}Lib", StringComparison.Ordinal));
 
             var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: false, false, false, 200, null);
+
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] is "T:Lib.PublicJob" or "M:Lib.PublicJob.#ctor");
+            var publicPage = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: true, false, false, 200, null);
+            Assert.Equal(DeadCandidateReason.PublicSurface, Assert.Single(publicPage.Candidates, c => c.SymbolId.Split('|')[0] == "T:Lib.PublicJob").Reason);
+
+            Assert.Equal(DeadCandidateReason.EntryPointConvention, Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:Lib.Program.Main").Reason);
 
             var job = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:Lib.Job");
             Assert.Equal(DeadCandidateStatus.Unresolved, job.Status);

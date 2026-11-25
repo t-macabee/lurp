@@ -373,12 +373,6 @@ internal sealed class DeadCandidateStore
             reason = DeadCandidateReason.BindingIncompleteness;
             uncertainties = [MakeBindingIncompletenessUncertainty(cand.SymbolId, bindingRecords, projectFacts, decl.DocumentPaths, cand.AssemblyName)];
         }
-        else if (IsInUnmodeledScanScope(cand, factsById, assemblyScanOwners, out var scanOwners))
-        {
-            status = DeadCandidateStatus.Unresolved;
-            reason = DeadCandidateReason.BindingIncompleteness;
-            uncertainties = [MakeAssemblyScanUncertainty(cand.SymbolId, cand.AssemblyName, scanOwners)];
-        }
         else if (IsProcessEntryPoint(cand))
         {
             // Checked ahead of the public/protected suppression below: the entry point's own
@@ -407,6 +401,12 @@ internal sealed class DeadCandidateStore
             status = DeadCandidateStatus.UncertainDead;
             reason = DeadCandidateReason.PublicSurface;
             uncertainties = [MakePublicSurfaceUncertainty(cand.SymbolId)];
+        }
+        else if (IsInUnmodeledScanScope(cand, factsById, assemblyScanOwners, out var scanOwners))
+        {
+            status = DeadCandidateStatus.Unresolved;
+            reason = DeadCandidateReason.BindingIncompleteness;
+            uncertainties = [MakeAssemblyScanUncertainty(cand.SymbolId, cand.AssemblyName, scanOwners)];
         }
         else if (decl.IsGenerated && includeGenerated)
         {

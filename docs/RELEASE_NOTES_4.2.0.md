@@ -4,6 +4,10 @@ Run a full index after the upgrade to schema v53. Extractor 1.14.0 and the adapt
 
 ## Breaking changes (CLI/MCP contract version 9)
 
+### Dead-candidate classification
+
+Entry points and public surface take precedence over unmodeled dependency injection assembly scans. Public candidates in scanned assemblies are excluded by default and reported as `public_surface` with `include_public`; entry points retain `entry_point_convention`. This also changes verdicts for existing snapshots.
+
 ### Workspace load failures
 
 Indexing and solution-backed `--mode=status` exit 2 when the solution cannot be opened. MCP indexing reports `workspace_unreadable` with remediation that names the solution file. An index-write error during extraction fails the run with `full_index_failure` and exit 1, or `index_failed` in MCP.
@@ -88,7 +92,7 @@ Every adapter version moves, so 4.1.0 snapshots are not reused.
 
 ## Dead-code candidates
 
-A linked declaration takes the incoming edges of its copies in other projects, including when a project filter is set, so one project's use keeps every copy alive. Public surface uses effective accessibility for every symbol, with declared accessibility only as the fallback. An unmodeled DI assembly scan makes a class, delegate and instance constructor unresolved. Constructors of EF mapping source types get `ef_convention`. An instance field, an instance property (not an indexer) or its getter of a record gets `framework_convention`, because the compiler reads it in the synthesized record members; the record type does not inherit that verdict. Annotations on external types are not stored.
+A linked declaration takes the incoming edges of its copies in other projects, including when a project filter is set, so one project's use keeps every copy alive. Public surface uses effective accessibility for every symbol, with declared accessibility only as the fallback. An unmodeled DI assembly scan makes a non-public class, delegate and instance constructor unresolved after entry-point and public-surface checks. Constructors of EF mapping source types get `ef_convention`. An instance field, an instance property (not an indexer) or its getter of a record gets `framework_convention`, because the compiler reads it in the synthesized record members; the record type does not inherit that verdict. Annotations on external types are not stored.
 
 ## Versions
 
