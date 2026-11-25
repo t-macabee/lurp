@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace Lurp.Workspace;
 
-public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
+public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, HashSet<string> skipAdapters, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
 {
     private readonly DocumentChangeDetector _changeDetector = new(gitRoot, output ?? ConsoleOutputSink.Instance);
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
@@ -147,16 +147,16 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         sw3.Stop();
         timings.Add(new SnapshotTimingRow("compilation_load", sw3.ElapsedMilliseconds));
 
-        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), skipAdapters);
+        var isRebuild = disposition == ExistingSnapshotDisposition.Rebuild;
+        var buildId = isRebuild ? new SnapshotId(Guid.NewGuid()) : snapshotId;
+        var buildSnapshotId = buildId.ToString();
+        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, buildId, SnapshotId.Parse(previousSnapshotId), skipAdapters);
         // Step 4: Manifest Creation
         cancellationToken.ThrowIfCancellationRequested();
         var sw4 = Stopwatch.StartNew();
         _output.Write("Saving new snapshot manifest... ");
-        newManifest.Save(_store, SnapshotBuildStrategies.Incremental, workspaceInfo.DocumentContents, jsonExportPath,
-            replaceExisting: disposition != ExistingSnapshotDisposition.Fresh);
-        _output.WriteLine("done.");
-        sw4.Stop();
-        timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds));
+        newManifest.Save(_store, SnapshotBuildStrategies.Incremental, workspaceInfo.DocumentContents,
+            replaceExisting: disposition == ExistingSnapshotDisposition.Retry);
 
         int totalDeclarations;
         int totalEdges;
@@ -165,6 +165,10 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
         try
         {
+            _output.WriteLine("done.");
+            sw4.Stop();
+            timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds));
+
             // Step 5: Stale-Data Removal
             cancellationToken.ThrowIfCancellationRequested();
             var sw5 = Stopwatch.StartNew();
@@ -187,7 +191,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
                 }
             }
 
-            var pruneCandidates = PrepareSnapshotData(previousSnapshotId, newSnapshotIdStr, affectedProjects, extractionScopePaths);
+            var pruneCandidates = PrepareSnapshotData(previousSnapshotId, buildSnapshotId, affectedProjects, extractionScopePaths, copySearchIndex: !isRebuild);
             sw5.Stop();
             timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds));
 
@@ -195,7 +199,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             cancellationToken.ThrowIfCancellationRequested();
             var sw6 = Stopwatch.StartNew();
             (totalDeclarations, totalEdges, totalDiagnostics) =
-                ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations, extractionScopeAbsolutePaths, extractionScopePaths);
+                ExtractReplacementFacts(workspaceInfo, buildSnapshotId, affectedCompilations, extractionScopeAbsolutePaths, extractionScopePaths);
             sw6.Stop();
             timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds));
 
@@ -203,14 +207,14 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             // and no longer have any declaration linked in the new snapshot.
             var swScope = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
-            var prunedSymbolIds = _store.PruneUnlinkedSnapshotSymbols(newSnapshotIdStr, pruneCandidates);
+            var prunedSymbolIds = _store.PruneUnlinkedSnapshotSymbols(buildSnapshotId, pruneCandidates);
             if (prunedSymbolIds.Count > 0)
                 _output.WriteLine($"Pruned {prunedSymbolIds.Count} removed symbols.");
 
             // Compute the set of symbol IDs that need their FTS entries refreshed and
             // semantic diff evaluated: all symbols currently declared in the extraction
             // scope after re-extraction, plus any symbols that were pruned.
-            var diffAndSearchSymbolIds = ComputeChangedSymbolIds(newSnapshotIdStr, extractionScopePaths);
+            var diffAndSearchSymbolIds = ComputeChangedSymbolIds(buildSnapshotId, extractionScopePaths);
             foreach (var id in prunedSymbolIds)
                 diffAndSearchSymbolIds.Add(id);
 
@@ -220,7 +224,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
                 diffAndSearchSymbolIds);
 
             var finalizationContext = new SnapshotFinalizationContext(
-                new SnapshotPair(previousSnapshotId, newSnapshotIdStr),
+                new SnapshotPair(previousSnapshotId, buildSnapshotId),
                 changeScope);
 
             swScope.Stop();
@@ -229,7 +233,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             // Step 7: Orphan cleanup + FTS Rebuild + Diff + Complete
             cancellationToken.ThrowIfCancellationRequested();
             var excludedSymbolIds = await ExcludedDocumentSymbols.CollectAsync(solution, workspaceInfo, cancellationToken);
-            orphanEdgesDropped = FinalizeSnapshot(finalizationContext, excludedSymbolIds, timings, cancellationToken);
+            orphanEdgesDropped = FinalizeSnapshot(finalizationContext, excludedSymbolIds, timings, isRebuild ? newSnapshotIdStr : null, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -237,16 +241,17 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             var markedFailed = false;
             try
             {
-                markedFailed = _store.TryMarkSnapshotFailed(newSnapshotIdStr, reasonCode, ex.Message);
+                markedFailed = _store.TryMarkSnapshotFailed(buildSnapshotId, reasonCode, ex.Message);
             }
             catch (Exception markEx)
             {
                 _output.WriteErrorLine($"WARNING: Failed to mark snapshot '{newSnapshotIdStr}' as failed: {markEx.Message}");
             }
 
+            var operation = isRebuild ? $"rebuild attempt for snapshot {newSnapshotIdStr}" : $"snapshot {newSnapshotIdStr}";
             _output.WriteErrorLine(markedFailed
-                ? $"ERROR: Incremental index failed mid-operation, snapshot {newSnapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}"
-                : $"ERROR: Incremental index failed mid-operation, and snapshot {newSnapshotIdStr} was left unmarked ({reasonCode}): {ex.Message}");
+                ? $"ERROR: Incremental index failed mid-operation, {operation} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}"
+                : $"ERROR: Incremental index failed mid-operation, and {operation} was left unmarked ({reasonCode}): {ex.Message}");
             throw;
         }
 
@@ -289,7 +294,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         return result;
     }
 
-    private List<string> PrepareSnapshotData(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> extractionScopePaths)
+    private List<string> PrepareSnapshotData(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> extractionScopePaths, bool copySearchIndex)
     {
         _output.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
@@ -327,11 +332,10 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // are removed here and written back by the extraction.
         _store.DeleteSymbolTargetFrameworksBySymbolIds(newSnapshotIdStr, changedSymbolIds);
 
-        // Mandatory incremental seed: copy every FTS row from the previous
-        // snapshot into the new snapshot so the subsequent refresh in
-        // RebuildSearchIndex only needs to delete and re-insert the changed
-        // document/symbol subset.
-        _store.CopySearchIndexToSnapshot(previousSnapshotId, newSnapshotIdStr);
+        // A fresh incremental snapshot refreshes only the changed FTS rows.
+        // A staged replacement instead builds FTS during promotion.
+        if (copySearchIndex)
+            _store.CopySearchIndexToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.DeleteDiagnosticsByProjectNames(newSnapshotIdStr, affectedProjects);
 
         _output.WriteLine("done.");
@@ -411,9 +415,9 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         SnapshotFinalizationContext context,
         IReadOnlyCollection<string> excludedSymbolIds,
         List<SnapshotTimingRow> timings,
+        string? rebuildTargetId,
         CancellationToken cancellationToken)
     {
-        // Phase order is load-bearing: orphan cleanup → FTS → semantic diff → complete.
         cancellationToken.ThrowIfCancellationRequested();
 
         // Remove edges targeting symbols not declared in this snapshot
@@ -430,8 +434,8 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         swOrphans.Stop();
         timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.OrphanEdgeCleanup, swOrphans.ElapsedMilliseconds));
 
-        // FTS Rebuild (incremental)
-        RebuildSearchIndex(context, timings);
+        if (rebuildTargetId is null)
+            RebuildSearchIndex(context, timings);
 
         // Semantic diff persistence — skipped when the caller passed
         // --skip-diff. Only --mode=diff (which recomputes live) and --mode=impact's
@@ -443,7 +447,20 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
         // Completion must be last : all preceding phases must succeed.
         cancellationToken.ThrowIfCancellationRequested();
-        _store.CompleteIndex(context.Snapshots.ToSnapshotId, context.Snapshots.FromSnapshotId);
+        if (rebuildTargetId is null)
+        {
+            _store.CompleteIndex(context.Snapshots.ToSnapshotId, context.Snapshots.FromSnapshotId);
+        }
+        else
+        {
+            var swFts = Stopwatch.StartNew();
+            _output.Write("Building search index for the replacement snapshot... ");
+            _store.PromoteAndCompleteIndex(context.Snapshots.ToSnapshotId, rebuildTargetId,
+                context.Snapshots.FromSnapshotId, cancellationToken);
+            _output.WriteLine("done.");
+            swFts.Stop();
+            timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds));
+        }
 
         IndexFinalization.RefreshPlannerStatistics(_store, _output, timings);
         return orphanEdgesDropped;

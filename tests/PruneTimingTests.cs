@@ -135,7 +135,7 @@ public sealed class PruneTimingTests : IntegrationTestBase
 
         await IndexRunner.RunAsync(
             store, SolutionPath,
-            [], null, "incremental",
+            [], "incremental",
             false, output, false, false, CancellationToken.None);
 
         var snapshot = store.LoadLatestSnapshot()

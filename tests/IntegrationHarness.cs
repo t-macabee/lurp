@@ -43,7 +43,7 @@ internal static class IntegrationHarness
         {
             await IndexRunner.RunAsync(
                 store, solutionPath,
-                [], null, "full",
+                [], "full",
                 false, null, false, false, CancellationToken.None);
 
             return store.LoadLatestSnapshot()?.SnapshotId

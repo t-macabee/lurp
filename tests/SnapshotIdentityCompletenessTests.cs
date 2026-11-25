@@ -395,7 +395,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         using var store = OpenStore(DbPath);
         await IndexRunner.RunAsync(
             store, SolutionPath,
-            [], null, "full",
+            [], "full",
             false, sink, false, false, CancellationToken.None);
 
         Assert.Contains("Identical complete snapshot", sink.Output.ToString());

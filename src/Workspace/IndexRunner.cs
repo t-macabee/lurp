@@ -8,7 +8,7 @@ public static class IndexRunner
 {
     internal static readonly string[] Strategies = [SnapshotBuildStrategies.Full, SnapshotBuildStrategies.Incremental];
 
-    public static async Task<string> RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
+    public static async Task<string> RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
         bool force = false, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -91,7 +91,7 @@ public static class IndexRunner
             {
                 try
                 {
-                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath, verbose, sink, skipDiff, force);
+                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, verbose, sink, skipDiff, force);
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, loadElapsed, cancellationToken);
 
                     WriteIncrementalSummary(store, sink, result);
@@ -123,7 +123,7 @@ public static class IndexRunner
         };
         if (precheckMs is { } fullPrecheckElapsed)
             setupTimings.Add(new SnapshotTimingRow(SnapshotTimingSteps.IncrementalPrecheck, fullPrecheckElapsed));
-        var (selectedId, built) = await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
+        var (selectedId, built) = await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
         var newSnapshotId = built ? selectedId : null;
         store.MarkSnapshotSelected(selectedId, runStartedAtUtc);
 
@@ -136,7 +136,7 @@ public static class IndexRunner
         return selectedId;
     }
 
-    private static async Task<(string SelectedSnapshotId, bool Built)> RunFullIndexAsync(SqliteIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
+    private static async Task<(string SelectedSnapshotId, bool Built)> RunFullIndexAsync(SqliteIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
         bool skipDiff = false, bool force = false, CancellationToken cancellationToken = default)
     {
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
@@ -147,29 +147,30 @@ public static class IndexRunner
         if (disposition == ExistingSnapshotDisposition.Reuse)
             return (snapshotIdStr, false);
 
+        var isRebuild = disposition == ExistingSnapshotDisposition.Rebuild;
         // A same-ID rebuild keeps the existing user annotations in place.
-        var annotationSourceId = disposition == ExistingSnapshotDisposition.Rebuild
-            ? null
-            : store.GetSelectedLatestSnapshotId(workspaceId);
-        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
+        var annotationSourceId = isRebuild ? null : store.GetSelectedLatestSnapshotId(workspaceId);
+        var buildId = isRebuild ? new SnapshotId(Guid.NewGuid()) : snapshotId;
+        var buildSnapshotId = buildId.ToString();
+        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, buildId, skipAdapters: skipAdapters);
         var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();
 
-        // Step: Manifest Save (includes initial FTS build)
+        // Step: Manifest Save
         var swManifest = Stopwatch.StartNew();
         sink.Write("Saving snapshot to database... ");
 
-        manifest.Save(store, SnapshotBuildStrategies.Full, workspaceInfo.DocumentContents, jsonExportPath,
-            replaceExisting: disposition != ExistingSnapshotDisposition.Fresh);
-
-        sink.WriteLine("done.");
-        swManifest.Stop();
-        timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds));
-
-        // Populate extractor registry (idempotent : no-op on re-runs)
-        store.UpsertExtractors(ExtractorRegistry.All);
+        manifest.Save(store, SnapshotBuildStrategies.Full, workspaceInfo.DocumentContents,
+            replaceExisting: disposition == ExistingSnapshotDisposition.Retry);
 
         try
         {
+            sink.WriteLine("done.");
+            swManifest.Stop();
+            timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds));
+
+            // Populate extractor registry (idempotent : no-op on re-runs)
+            store.UpsertExtractors(ExtractorRegistry.All);
+
             var totalDeclarations = 0;
             int totalEdges;
             var totalDiagnostics = 0;
@@ -183,7 +184,7 @@ public static class IndexRunner
 
             if (workspaceInfo.UnloadedProjects.Count > 0)
             {
-                store.SaveBindingIncompleteness(snapshotIdStr, workspaceInfo.UnloadedProjects.Select(path =>
+                store.SaveBindingIncompleteness(buildSnapshotId, workspaceInfo.UnloadedProjects.Select(path =>
                     new BindingIncompletenessRecord(path, null, BindingIncompletenessReason.ProjectUnreadable, 1, VersionConstants.ExtractorVersion)));
             }
 
@@ -204,7 +205,7 @@ public static class IndexRunner
                 {
                     blindProjects.Add(projectName);
                     store.SaveBindingIncompleteness(
-                        snapshotIdStr,
+                        buildSnapshotId,
                         WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
                     sink.WriteLine("UNREADABLE: no metadata references resolved; skipped.");
                     continue;
@@ -214,7 +215,7 @@ public static class IndexRunner
                 CompilationFactExtractor.ExtractionResult result;
                 try
                 {
-                    result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, project, options);
+                    result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, buildSnapshotId, projectName, project, options);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -226,17 +227,17 @@ public static class IndexRunner
                     sink.WriteErrorLine($"FAILED: {ex.Message}");
                     blindProjects.Add(projectName);
                     store.SaveBindingIncompleteness(
-                        snapshotIdStr,
+                        buildSnapshotId,
                         WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
                     continue;
                 }
 
-                store.SaveDeclarations(snapshotIdStr, result.Declarations);
+                store.SaveDeclarations(buildSnapshotId, result.Declarations);
                 totalDeclarations += result.Declarations.Count;
                 allEdges.AddRange(result.Edges);
-                store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
+                store.SaveDiagnostics(buildSnapshotId, result.Diagnostics);
                 totalDiagnostics += result.Diagnostics.Count;
-                store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
+                store.SaveBindingIncompleteness(buildSnapshotId, result.BindingIncompleteness);
                 allAnnotations.AddRange(result.Annotations);
                 foreach (var measurement in result.Measurements.Where(_ => verbose))
                     sink.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
@@ -245,9 +246,9 @@ public static class IndexRunner
                 sink.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }
 
-            totalEdges = store.SaveEdges(snapshotIdStr, allEdges);
+            totalEdges = store.SaveEdges(buildSnapshotId, allEdges);
             if (allAnnotations.Count > 0)
-                store.SaveAnnotations(snapshotIdStr, allAnnotations);
+                store.SaveAnnotations(buildSnapshotId, allAnnotations);
 
             // Hard stop only when nothing was readable. There is no lit ground to stand
             // on, so every capsule the snapshot could serve would be an empty graph
@@ -276,7 +277,7 @@ public static class IndexRunner
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds));
 
-            var previousManifest = store.LoadSelectedLatestSnapshot(manifest.WorkspaceId.Value);
+            var previousManifest = store.LoadSelectedLatestSnapshot(workspaceId, excludedSnapshotId: snapshotIdStr);
 
             // Step: Remove edges targeting symbols not declared in this snapshot
             // Runs before the semantic diff so the diff compares the new snapshot's
@@ -285,28 +286,27 @@ public static class IndexRunner
             var swOrphans = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
             var excludedSymbolIds = await ExcludedDocumentSymbols.CollectAsync(solution, workspaceInfo, cancellationToken);
-            var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr, excludedSymbolIds);
-            store.PruneSnapshotGraphNodes(snapshotIdStr);
+            var orphanEdgesDropped = store.DeleteOrphanEdges(buildSnapshotId, excludedSymbolIds);
+            store.PruneSnapshotGraphNodes(buildSnapshotId);
             swOrphans.Stop();
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.OrphanEdgeCleanup, swOrphans.ElapsedMilliseconds));
 
-            if (!skipDiff && previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
+            if (!skipDiff && previousManifest != null)
             {
                 // Step: Semantic Diff — skipped when the caller passed --skip-diff.
                 cancellationToken.ThrowIfCancellationRequested();
                 sink.WriteLine();
                 SemanticDiffStep.ComputeAndPersist(
-                    store, sink, previousManifest.SnapshotId, snapshotIdStr,
+                    store, sink, previousManifest.SnapshotId, buildSnapshotId,
                     null, timings);
             }
 
             var totalProjects = extractedProjects + blindProjects.Count;
-            var symbolsInSnapshot = store.CountSymbolsInSnapshot(snapshotIdStr);
-            var edgesInSnapshot = store.CountEdges(snapshotIdStr);
-            var diagnosticsInSnapshot = store.CountDiagnostics(snapshotIdStr);
+            var symbolsInSnapshot = store.CountSymbolsInSnapshot(buildSnapshotId);
+            var edgesInSnapshot = store.CountEdges(buildSnapshotId);
+            var diagnosticsInSnapshot = store.CountDiagnostics(buildSnapshotId);
 
             sink.WriteLine();
-            sink.WriteLine($"Index complete for snapshot {snapshotIdStr}");
             sink.WriteLine($"  projects_reextracted_this_run:       {extractedProjects}/{totalProjects}");
             sink.WriteLine(FormatIndexSummary(totalDeclarations, symbolsInSnapshot));
             sink.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edges_dropped_outside_snapshot_scope: {orphanEdgesDropped.FormatDropSummary()}");
@@ -317,19 +317,24 @@ public static class IndexRunner
             sink.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
             sink.WriteLine($"  Schema v{MigrationRunner.LatestVersion}");
 
-            // Step: Build FTS search index
-            // Preconditions: declarations, document/symbol snapshot membership,
-            // semantic diff, and orphan cleanup are all persisted. Full FTS must
-            // finish before MarkSnapshotComplete below.
             var swFts = Stopwatch.StartNew();
             sink.Write("Building search index... ");
-            store.BuildSearchIndex(snapshotIdStr);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (isRebuild)
+            {
+                store.PromoteAndCompleteIndex(buildSnapshotId, snapshotIdStr, annotationSourceId, cancellationToken);
+            }
+            else
+            {
+                store.BuildSearchIndex(snapshotIdStr);
+                cancellationToken.ThrowIfCancellationRequested();
+                store.CompleteIndex(snapshotIdStr, annotationSourceId);
+            }
+
             sink.WriteLine("done.");
             swFts.Stop();
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds));
-
-            cancellationToken.ThrowIfCancellationRequested();
-            store.CompleteIndex(snapshotIdStr, annotationSourceId);
+            sink.WriteLine($"Index complete for snapshot {snapshotIdStr}");
 
             IndexFinalization.RefreshPlannerStatistics(store, sink, timings);
 
@@ -357,26 +362,30 @@ public static class IndexRunner
             var markedFailed = false;
             try
             {
-                markedFailed = store.TryMarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message);
+                markedFailed = store.TryMarkSnapshotFailed(buildSnapshotId, reasonCode, ex.Message);
             }
             catch (Exception markEx)
             {
                 sink.WriteErrorLine($"WARNING: Failed to mark snapshot '{snapshotIdStr}' as failed: {markEx.Message}");
             }
 
+            var operation = isRebuild ? $"rebuild attempt for snapshot {snapshotIdStr}" : $"snapshot {snapshotIdStr}";
             sink.WriteErrorLine(markedFailed
-                ? $"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}"
-                : $"ERROR: Full index failed, and snapshot {snapshotIdStr} was left unmarked ({reasonCode}): {ex.Message}");
+                ? $"ERROR: Full index failed, {operation} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}"
+                : $"ERROR: Full index failed, and {operation} was left unmarked ({reasonCode}): {ex.Message}");
 
-            // Try to save whatever timings we have
-            try
+            // A failed rebuild must leave the target's previous measurements intact.
+            if (!isRebuild)
             {
-                store.SaveMetrics(snapshotIdStr, ProcessMetrics.PeakWorkingSetSnapshotMetrics());
-                store.SaveTimings(snapshotIdStr, timings);
-            }
-            catch (Exception tex)
-            {
-                sink.WriteErrorLine($"WARNING: Failed to save timings: {tex.Message}");
+                try
+                {
+                    store.SaveMetrics(snapshotIdStr, ProcessMetrics.PeakWorkingSetSnapshotMetrics());
+                    store.SaveTimings(snapshotIdStr, timings);
+                }
+                catch (Exception tex)
+                {
+                    sink.WriteErrorLine($"WARNING: Failed to save timings: {tex.Message}");
+                }
             }
 
             throw;

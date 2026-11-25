@@ -19,38 +19,37 @@ internal sealed class SearchIndexMaintenance
     public void BuildSearchIndex(string snapshotId)
     {
         using var transaction = _connection.BeginTransaction();
-        try
-        {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.CommandText = """
+            DELETE FROM source_fts WHERE snapshot_id = @snapshotId;
+            DELETE FROM symbol_fts WHERE snapshot_id = @snapshotId;
+            """;
+        command.ExecuteNonQuery();
 
-            command.CommandText = "DELETE FROM source_fts WHERE snapshot_id = @snapshotId;";
-            command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            command.ExecuteNonQuery();
+        InsertSearchIndex(snapshotId, transaction);
+        transaction.Commit();
+    }
 
-            command.CommandText = "DELETE FROM symbol_fts WHERE snapshot_id = @snapshotId;";
-            command.ExecuteNonQuery();
+    internal void InsertSearchIndex(string snapshotId, SqliteTransaction transaction)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
-            command.CommandText = """
-                INSERT INTO source_fts (document_path, content, snapshot_id, document_version_id)
-                SELECT d.relative_path, CAST(dv.content AS TEXT), sd.snapshot_id, dv.document_version_id
-                FROM snapshot_documents sd
-                JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
-                JOIN documents d ON d.document_id = dv.document_id
-                WHERE sd.snapshot_id = @snapshotId
-                  AND dv.content IS NOT NULL;
-                """;
-            command.ExecuteNonQuery();
+        command.CommandText = """
+            INSERT INTO source_fts (document_path, content, snapshot_id, document_version_id)
+            SELECT d.relative_path, CAST(dv.content AS TEXT), sd.snapshot_id, dv.document_version_id
+            FROM snapshot_documents sd
+            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+            JOIN documents d ON d.document_id = dv.document_id
+            WHERE sd.snapshot_id = @snapshotId
+              AND dv.content IS NOT NULL;
+            """;
+        command.ExecuteNonQuery();
 
-            InsertSymbolRows(_connection, snapshotId);
-
-            transaction.Commit();
-        }
-        catch
-        {
-            transaction.Rollback();
-            throw;
-        }
+        InsertSymbolRows(_connection, snapshotId);
     }
 
     /// <summary>Seeds the new snapshot's FTS rows from the previous snapshot; see <see cref="SqliteIndexStore.CopySearchIndexToSnapshot" />.</summary>

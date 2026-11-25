@@ -42,7 +42,11 @@ The context capsule's `OutputSchemaVersion` moves from 7 to 8. The capsule field
 
 ### Annotation lifecycle
 
-User annotations now survive full and `--strategy=full --force` re-indexes: the new snapshot copies them forward. An annotation whose symbol no longer exists in the new snapshot is pruned. Extractor-derived annotations are written again from the new snapshot. A same-ID rebuild keeps existing user annotations in storage through an interruption and retry.
+User annotations now survive full and `--strategy=full --force` re-indexes: the new snapshot copies them forward. An annotation whose symbol no longer exists in the new snapshot is pruned. Extractor-derived annotations are written again from the new snapshot. A same-ID rebuild keeps the complete snapshot readable until it can publish the replacement in one transaction. Cancellation or failure leaves the complete snapshot available, and existing user annotation IDs survive a successful replacement.
+
+### Snapshot manifest export
+
+`--output-json` exports the selected snapshot after indexing, including reused snapshots and incremental runs that skip the workspace load. If the export fails, the command exits 1 and the selected snapshot stays complete.
 
 ### Changed descriptions
 
@@ -50,7 +54,8 @@ User annotations now survive full and `--strategy=full --force` re-indexes: the 
 - `--cursor=` (search): continues across all symbol match tiers.
 - `lurp_search`: the new ranking order.
 - `--direction=` (impact) and `lurp_impact`: both directions exclude `Declares`, `Contains` and `TestedBy` by default.
-- `--force`: user annotations survive a full forced re-index, and orphan annotations are pruned.
+- `--force` keeps the complete snapshot readable until its replacement is ready. User annotations survive the rebuild and orphan annotations are pruned.
+- `--output-json=` writes the selected snapshot manifest after indexing, including on reuse.
 - `--provenance=`: excludes `ReflectionNameCandidate` and `ReflectionTargetUnknown` (not every `Reflection*` kind) and follows adapter-emitted `framework_derived` edges, including middleware `Calls`/`Constructs`.
 - `lurp_outline`: linked-file copies of one span collapse to one row, preferring the owning project.
 - `lurp_refresh`: `ack` must equal the `new_snapshot_id` of a call without `ack` (the literal `latest` is not accepted); a valid `ack` checks the database schema version and advances the session pin without closing or reopening a store.

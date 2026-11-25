@@ -139,7 +139,7 @@ public sealed class IndexLoadFailureTests : IntegrationTestBase
         var sink = new ProjectWriteLockSink(DbPath, afterFirstProject ? "Second" : "First");
         using var store = OpenStore(DbPath);
         var failure = await Record.ExceptionAsync(() => IndexRunner.RunAsync(
-            store, SolutionPath, [], null, "full", output: sink));
+            store, SolutionPath, [], "full", output: sink));
         Assert.NotNull(sink.Release);
         await sink.Release;
 
@@ -164,7 +164,7 @@ public sealed class IndexLoadFailureTests : IntegrationTestBase
         var connection = Assert.IsType<SqliteConnection>(field.GetValue(store));
         var sink = new PageLimitSink(connection);
         var failure = await Record.ExceptionAsync(() => IndexRunner.RunAsync(
-            store, SolutionPath, [], null, "full", output: sink));
+            store, SolutionPath, [], "full", output: sink));
 
         Assert.True(sink.LimitApplied);
         var failureText = failure?.Message ?? string.Join(Environment.NewLine, sink.Errors);

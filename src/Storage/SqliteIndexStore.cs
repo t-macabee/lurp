@@ -209,11 +209,28 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         using var transaction = _connection!.BeginTransaction();
+        CompleteIndex(snapshotId, annotationSourceId, transaction);
+        transaction.Commit();
+    }
+
+    internal void PromoteAndCompleteIndex(string stagingId, string targetId, string? annotationSourceId,
+        CancellationToken cancellationToken)
+    {
+        EnsureOpen();
+        using var transaction = _connection!.BeginTransaction();
+        _pruner!.PromoteSnapshot(stagingId, targetId, transaction);
+        _searchMaintenance!.InsertSearchIndex(targetId, transaction);
+        cancellationToken.ThrowIfCancellationRequested();
+        CompleteIndex(targetId, annotationSourceId, transaction);
+        transaction.Commit();
+    }
+
+    private void CompleteIndex(string snapshotId, string? annotationSourceId, SqliteTransaction transaction)
+    {
         if (annotationSourceId is not null)
             _annotations!.CopyUserAnnotationsIfMissing(annotationSourceId, snapshotId, transaction);
         _annotations!.PruneOrphanAnnotations(snapshotId, transaction);
         _lifecycle!.MarkSnapshotComplete(snapshotId, transaction);
-        transaction.Commit();
     }
 
     public void MarkSnapshotComplete(string snapshotId)
@@ -256,10 +273,10 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _lifecycle!.LoadLatestSnapshot(workspaceId);
     }
 
-    public SnapshotRow? LoadSelectedLatestSnapshot(string? workspaceId = null)
+    public SnapshotRow? LoadSelectedLatestSnapshot(string? workspaceId = null, string? excludedSnapshotId = null)
     {
         EnsureOpen();
-        return _lifecycle!.LoadLatestSnapshot(workspaceId);
+        return _lifecycle!.LoadLatestSnapshot(workspaceId, excludedSnapshotId);
     }
 
     public SnapshotRow? LoadSnapshotMetadata(string snapshotId)

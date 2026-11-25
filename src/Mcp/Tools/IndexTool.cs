@@ -109,7 +109,7 @@ internal sealed class IndexTool
 
                             var skipAdapters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                            var selectedSnapshotId = await IndexRunner.RunAsync(store, solutionPath, skipAdapters, null, strategy, output: opSink, force: force ?? false, cancellationToken: opCts.Token);
+                            var selectedSnapshotId = await IndexRunner.RunAsync(store, solutionPath, skipAdapters, strategy, output: opSink, force: force ?? false, cancellationToken: opCts.Token);
                             opSink.WriteLine($"index operation {operationId} completed. snapshot: {selectedSnapshotId}");
                             publish = () => opRef.Complete(selectedSnapshotId);
                         }

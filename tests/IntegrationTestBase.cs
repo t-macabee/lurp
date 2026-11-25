@@ -216,7 +216,7 @@ public abstract class IntegrationTestBase : IDisposable
 
         await IndexRunner.RunAsync(
             store, SolutionPath,
-            [], null, "full",
+            [], "full",
             false, null, false, force, CancellationToken.None);
 
         var snapshot = store.LoadLatestSnapshot()
@@ -230,7 +230,7 @@ public abstract class IntegrationTestBase : IDisposable
         var sink = new CapturingOutputSink();
         await IndexRunner.RunAsync(
             store, SolutionPath,
-            [], null, strategy,
+            [], strategy,
             false, sink, false, force, CancellationToken.None);
 
         var workspaceId = WorkspaceId.Create(TestDir, Path.GetFullPath(SolutionPath)).Value;
@@ -256,7 +256,7 @@ public abstract class IntegrationTestBase : IDisposable
                                ?? throw new InvalidOperationException(
                                    "No previous snapshot found. Cannot run incremental index.");
 
-        var incrementalIndexer = new IncrementalIndexer(store, TestDir, [], null);
+        var incrementalIndexer = new IncrementalIndexer(store, TestDir, []);
 
         var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousManifest);
 

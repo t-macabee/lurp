@@ -421,7 +421,7 @@ public sealed class McpIndexTests : IntegrationTestBase
 
         using var store = OpenStore(DbPath);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            IndexRunner.RunAsync(store, SolutionPath, [], null, "full", false, sink, false, false, cts.Token));
+            IndexRunner.RunAsync(store, SolutionPath, [], "full", false, sink, false, false, cts.Token));
 
         Assert.True(sink.CancelledAfterSnapshotRow,
             $"the run never reached the point after the snapshot row was written; lines: {sink.DescribeLines()}");

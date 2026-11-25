@@ -62,10 +62,11 @@ public sealed class AnnotationLifecycleTests : IntegrationTestBase
         await SeedAnnotationsAsync();
         WriteFile("P", "Types.cs", EditedSource);
         var (incremental, _) = await RunIndexAsync(strategy: "incremental");
+        long annotationId;
         using (var store = OpenStore(DbPath))
         {
             var addedId = HandlerBootstrap.ResolveSymbolArg(store, "P.Added", incremental);
-            store.SaveUserAnnotation(incremental, addedId, "note", "added after incremental index");
+            annotationId = store.SaveUserAnnotation(incremental, addedId, "note", "added after incremental index");
         }
 
         var (rebuilt, output) = await RunIndexAsync(strategy: "full");
@@ -74,7 +75,9 @@ public sealed class AnnotationLifecycleTests : IntegrationTestBase
         Assert.Contains("full rebuild", output);
         using var rebuiltStore = OpenStore(DbPath);
         var rebuiltAddedId = HandlerBootstrap.ResolveSymbolArg(rebuiltStore, "P.Added", rebuilt);
-        Assert.Equal("added after incremental index", Assert.Single(rebuiltStore.GetAnnotations(rebuilt, rebuiltAddedId)).Value);
+        var annotation = Assert.Single(rebuiltStore.GetAnnotations(rebuilt, rebuiltAddedId));
+        Assert.Equal("added after incremental index", annotation.Value);
+        Assert.Equal(annotationId, annotation.AnnotationId);
     }
 
     [Theory]
@@ -86,7 +89,7 @@ public sealed class AnnotationLifecycleTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
         {
             await Assert.ThrowsAsync<IOException>(() => IndexRunner.RunAsync(
-                store, SolutionPath, [], null, "full", output: new InterruptRebuildSink(beforeExtraction), force: true));
+                store, SolutionPath, [], "full", output: new InterruptRebuildSink(beforeExtraction), force: true));
         }
 
         // A different successful build cleans up incomplete payloads and superseded failures.
@@ -95,12 +98,13 @@ public sealed class AnnotationLifecycleTests : IntegrationTestBase
         Assert.NotEqual(original, different);
         using (var store = OpenStore(DbPath))
         {
-            Assert.Equal(["keep", "keep"], store.GetAnnotations(original, retainedId).Select(a => a.Value));
+            Assert.Equal(["keep", "keep", "document annotation"],
+                store.GetAnnotations(original, retainedId).Select(a => a.Value));
             store.SaveUserAnnotation(different, retainedId, "note", "only on the other snapshot");
         }
 
         WriteFile("P", "Types.cs", OriginalSource);
-        var (retried, _) = await RunIndexAsync(strategy: "full");
+        var (retried, _) = await RunIndexAsync(strategy: "full", force: true);
 
         Assert.Equal(original, retried);
         using var rebuilt = OpenStore(DbPath);

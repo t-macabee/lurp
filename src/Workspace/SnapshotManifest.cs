@@ -123,25 +123,22 @@ public sealed partial class SnapshotManifest
         };
     }
 
-    public void Save(SqliteIndexStore snapshotStore, string buildStrategy, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
-        string? jsonExportPath = null)
-        => Save(snapshotStore, buildStrategy, contents, jsonExportPath, replaceExisting: false);
+    public void Save(SqliteIndexStore snapshotStore, string buildStrategy,
+        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
+        => Save(snapshotStore, buildStrategy, contents, replaceExisting: false);
 
     internal void Save(SqliteIndexStore snapshotStore, string buildStrategy,
         IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents,
-        string? jsonExportPath, bool replaceExisting)
+        bool replaceExisting)
     {
         ArgumentNullException.ThrowIfNull(snapshotStore);
         ArgumentException.ThrowIfNullOrWhiteSpace(buildStrategy);
 
         snapshotStore.SaveSnapshot(ToStorageManifest(buildStrategy, contents), replaceExisting);
-
-        if (jsonExportPath != null)
-        {
-            var json = JsonSerializer.Serialize(this, _jsonOptions);
-            File.WriteAllText(jsonExportPath, json);
-        }
     }
+
+    internal void ExportJson(string path) =>
+        File.WriteAllText(path, JsonSerializer.Serialize(this, _jsonOptions));
 
     internal SnapshotRow ToStorageManifest(string buildStrategy, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {

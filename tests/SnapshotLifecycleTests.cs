@@ -1,6 +1,11 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Lurp.Handlers;
+using Lurp.Mcp;
+using Lurp.Mcp.Tools;
+using Lurp.Storage;
 using Lurp.Workspace;
+using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -99,7 +104,7 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
     public async Task FullStrategy_RebuildsAWrongIncrementalSnapshot()
     {
         CreateProject("P", new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateA });
-        await RunIndexAsync("full");
+        var (idA, _) = await RunIndexAsync("full");
 
         WriteFile("P", "Svc.cs", RecoveryStateB);
         var (idB, _) = await RunIndexAsync("incremental");
@@ -129,16 +134,18 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
         }
 
         var (rebuiltId, rebuildOutput) = await RunIndexAsync("full");
-        Assert.Contains("an incremental run built it; --strategy=full deletes it and rebuilds it.", rebuildOutput, StringComparison.Ordinal);
+        Assert.Contains("an incremental run built it; --strategy=full rebuilds it while the existing snapshot remains readable.", rebuildOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("reusing it", rebuildOutput, StringComparison.Ordinal);
         Assert.Equal(idB, rebuiltId);
 
-        var expectedEdges = await IndexFreshEdgeSetAsync(new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateB });
+        await AssertMatchesFreshIndexAsync(idB);
         DateTime builtAtAfterRebuild;
         using (var store = OpenStore(DbPath))
         {
-            Assert.Equal(expectedEdges, ReadEdgeSet(store, idB));
-            builtAtAfterRebuild = store.LoadSnapshot(idB)!.CreatedAtUtc;
+            var rebuilt = store.LoadSnapshot(idB)!;
+            Assert.Equal(SnapshotBuildStrategies.Full, rebuilt.BuildStrategy);
+            Assert.NotEmpty(store.GetSemanticChanges(idA, idB));
+            builtAtAfterRebuild = rebuilt.CreatedAtUtc;
         }
 
         var (_, reuseOutput) = await RunIndexAsync("full");
@@ -163,12 +170,17 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
 
         WriteFile("P", "Svc.cs", RecoveryStateB);
         var (idB, _) = await RunIndexAsync("incremental");
+        using (var store = OpenStore(DbPath))
+        {
+            store.SetPinnedSnapshot(idA);
+            store.SetPinnedSnapshot(idB);
+        }
 
         WriteFile("P", "Svc.cs", RecoveryStateA);
         var (rebuiltId, _) = await RunIndexAsync("incremental", force: true);
         Assert.Equal(idA, rebuiltId);
 
-        var expectedEdges = await IndexFreshEdgeSetAsync(new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateA });
+        await AssertMatchesFreshIndexAsync(idA);
         var ws = WorkspaceId.Create(TestDir, Path.GetFullPath(SolutionPath)).Value;
         using (var store = OpenStore(DbPath))
         {
@@ -177,7 +189,7 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
             var rebuiltRow = store.LoadSnapshot(idA)!;
             Assert.True(rebuiltRow.CreatedAtUtc > builtAtBefore);
             Assert.Equal(idB, rebuiltRow.PreviousSnapshotId);
-            Assert.Equal(expectedEdges, ReadEdgeSet(store, idA));
+            Assert.Equal(idA, store.GetPinnedSnapshot(ws)?.PreviousPinnedSnapshotId);
         }
     }
 
@@ -199,13 +211,13 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
         {
             ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                IndexRunner.RunAsync(store, SolutionPath, [], null, "full", false, sink, false, true, CancellationToken.None));
+                IndexRunner.RunAsync(store, SolutionPath, [], "full", false, sink, false, true, CancellationToken.None));
         }
 
         Assert.Equal(
             $"snapshot '{idA}' is pinned; --force cannot rebuild it. Clear the pin with --mode=pin-snapshot --clear, or run without --force.",
             ex.Message);
-        Assert.DoesNotContain("deleting", sink.Output.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("rebuilding it", sink.Output.ToString(), StringComparison.OrdinalIgnoreCase);
 
         var ws = WorkspaceId.Create(TestDir, Path.GetFullPath(SolutionPath)).Value;
         using (var store = OpenStore(DbPath))
@@ -216,31 +228,171 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
         }
     }
 
-    private static HashSet<(string Source, string Target, string Kind)> ReadEdgeSet(Lurp.Storage.SqliteIndexStore store, string snapshotId)
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CancelledRebuild_KeepsTheCompleteSnapshotReadable(bool force)
     {
-        return store.GetEdges(snapshotId)
-            .Select(static e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind))
-            .ToHashSet();
+        CreateProject("P", new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateA });
+        await RunIndexAsync("full");
+        WriteFile("P", "Svc.cs", RecoveryStateB);
+        var (target, _) = await RunIndexAsync("incremental");
+        await using var session = McpSessionContext.Create(
+            [$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)}"]);
+        var symbol = new GetSymbolTool(session);
+        var impact = new ImpactTool(session);
+        string[] ReadSnapshotQueries() =>
+        [
+            WithoutFreshnessTimestamp(symbol.LurpGetSymbol("P.Svc")),
+            WithoutFreshnessTimestamp(impact.LurpImpact("P.Svc"))
+        ];
+        var before = ReadSnapshotQueries();
+        string[]? during = null;
+        Exception? readFailure = null;
+        using var cancellation = new CancellationTokenSource();
+        using var store = OpenStore(DbPath);
+        var sink = new DuringExtractionSink(() =>
+        {
+            readFailure = Record.Exception(() => during = ReadSnapshotQueries());
+            cancellation.Cancel();
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => IndexRunner.RunAsync(
+            store, SolutionPath, [], "full", output: sink, force: force, cancellationToken: cancellation.Token));
+
+        Assert.Null(readFailure);
+        Assert.Equal(target, store.GetSelectedLatestSnapshotId());
+        Assert.Equal(before, during);
+        Assert.Equal(before, ReadSnapshotQueries());
+        Assert.Equal("cancelled", store.GetLatestSnapshotFailure()?.ReasonCode);
     }
 
-    private static async Task<HashSet<(string Source, string Target, string Kind)>> IndexFreshEdgeSetAsync(IReadOnlyDictionary<string, string> sourceFiles)
+    [Fact]
+    public async Task Rebuild_PinnedDuringExtraction_KeepsBaselineAndRecordsFailureUntilSuccess()
     {
-        var freshDir = Path.Combine(Path.GetTempPath(), $"lurp-fresh-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(freshDir);
-        var freshSolution = Path.Combine(freshDir, "Test.slnx");
-        var freshDb = Path.Combine(freshDir, "index.db");
-        try
+        CreateProject("P", new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateA });
+        var (target, _) = await RunIndexAsync("full");
+        using var store = OpenStore(DbPath);
+        var baseline = store.LoadSnapshot(target)!;
+        string? selectedDuring = null;
+        var sink = new DuringExtractionSink(() =>
         {
-            WriteSolution(freshDir, "P", sourceFiles);
-            using var store = OpenStore(freshDb);
-            await IndexRunner.RunAsync(store, freshSolution, [], null, "full", false, new CapturingOutputSink(), false, false, CancellationToken.None);
-            var id = store.GetSelectedLatestSnapshotId()!;
-            return ReadEdgeSet(store, id);
-        }
-        finally
+            using var reader = OpenStore(DbPath);
+            selectedDuring = reader.GetSelectedLatestSnapshotId();
+            if (selectedDuring == target)
+                reader.SetPinnedSnapshot(target);
+        });
+
+        var error = await Record.ExceptionAsync(() =>
+            IndexRunner.RunAsync(store, SolutionPath, [], "full", output: sink, force: true));
+
+        Assert.Equal(target, selectedDuring);
+        Assert.Contains("pinned", Assert.IsType<InvalidOperationException>(error).Message);
+        Assert.Equal(target, store.GetSelectedLatestSnapshotId());
+        Assert.Equal(baseline.CreatedAtUtc, store.LoadSnapshot(target)!.CreatedAtUtc);
+        var failure = Assert.IsType<SnapshotFailureRow>(store.GetLatestSnapshotFailure());
+        Assert.NotEqual(target, failure.SnapshotId);
+        Assert.Equal("full_index_failure", failure.ReasonCode);
+
+        store.ClearPinnedSnapshot(baseline.WorkspaceId);
+        await RunIndexAsync("full", force: true);
+        Assert.Null(store.LoadSnapshotMetadata(failure.SnapshotId));
+        Assert.Null(store.GetLatestSnapshotFailure());
+    }
+
+    [Fact]
+    public async Task Rebuild_PromotionWriteFailure_RollsBackTheReplacement()
+    {
+        CreateProject("P", new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateA });
+        var (target, _) = await RunIndexAsync("full");
+        using var store = OpenStore(DbPath);
+        var before = store.LoadSnapshot(target)!;
+        using var connection = OpenDbConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TRIGGER reject_snapshot_promotion BEFORE UPDATE OF snapshot_id ON snapshot_symbols
+            BEGIN
+                SELECT RAISE(ABORT, 'injected promotion write failure');
+            END;
+            """;
+        command.ExecuteNonQuery();
+
+        var error = await Assert.ThrowsAsync<SqliteException>(() => RunIndexAsync("full", force: true));
+
+        Assert.Contains("injected promotion write failure", error.Message);
+        Assert.Equal(target, store.GetSelectedLatestSnapshotId());
+        Assert.Equal(before.CreatedAtUtc, store.LoadSnapshot(target)!.CreatedAtUtc);
+        await AssertMatchesFreshIndexAsync(target);
+        var failure = Assert.IsType<SnapshotFailureRow>(store.GetLatestSnapshotFailure());
+        Assert.NotEqual(target, failure.SnapshotId);
+        Assert.Equal("full_index_failure", failure.ReasonCode);
+    }
+
+    [Theory]
+    [InlineData("full", false, true)]
+    [InlineData("full", true, true)]
+    [InlineData("incremental", false, true)]
+    [InlineData("full", true, false)]
+    public async Task OutputJson_UsesCompletedSnapshot(string strategy, bool force, bool writable)
+    {
+        CreateProject("P", new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateA });
+        var (target, _) = await RunIndexAsync("full");
+        using var store = OpenStore(DbPath);
+        var before = store.LoadSnapshot(target)!.CreatedAtUtc;
+        var destination = writable ? Path.Combine(TestDir, "manifest.json") : TestDir;
+
+        List<string> args = ["--mode=index", $"--solution={SolutionPath}", $"--strategy={strategy}", $"--output-json={destination}"];
+        if (force)
+            args.Add("--force");
+        var result = RunCli([.. args]);
+
+        Assert.Equal(writable ? 0 : 1, result.ExitCode);
+        Assert.Equal(target, store.GetSelectedLatestSnapshotId());
+        Assert.Null(store.GetLatestSnapshotFailure());
+        var selected = store.LoadSnapshot(target)!;
+        Assert.Equal(force, selected.CreatedAtUtc > before);
+        if (writable)
         {
-            TestDatabase.DeleteSolutionCache(freshSolution);
-            TestDatabase.DeleteDirectory(freshDir);
+            Assert.True(File.Exists(destination));
+            using var json = JsonDocument.Parse(File.ReadAllText(destination));
+            Assert.Equal(target, json.RootElement.GetProperty("snapshot_id").GetString());
         }
+        else
+        {
+            var error = Assert.Single(result.Stderr.Split('\n'), line => line.StartsWith("ERROR:", StringComparison.Ordinal));
+            Assert.StartsWith("ERROR: Could not export snapshot manifest.", error);
+        }
+    }
+
+    private static string WithoutFreshnessTimestamp(string response)
+    {
+        var json = JsonNode.Parse(response)!.AsObject();
+        json["freshness"]!.AsObject().Remove("checked_at_utc");
+        return json.ToJsonString();
+    }
+
+    private (int ExitCode, string Stdout, string Stderr) RunCli(params string[] args)
+    {
+        var argv = LurpTool.Argv([.. args, $"--output-dir={Path.GetDirectoryName(DbPath)}"]);
+        return TestProcess.Run(argv[0], argv[1..], TimeSpan.FromMinutes(2));
+    }
+
+    private sealed class DuringExtractionSink(Action onExtraction) : IOutputSink
+    {
+        public void Write(string message)
+        {
+            if (message == "  [P] ")
+                onExtraction();
+        }
+
+        public void WriteLine(string message = "") { }
+        public void WriteErrorLine(string message = "") { }
+    }
+
+    private async Task AssertMatchesFreshIndexAsync(string promotedSnapshotId)
+    {
+        var freshDb = Path.Combine(TestDir, "fresh.db");
+        var freshId = await RunFullIndexAsync(freshDb);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, promotedSnapshotId, freshDb, freshId);
     }
 }

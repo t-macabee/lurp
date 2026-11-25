@@ -25,7 +25,7 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
     {
         using var store = OpenStore(DbPath);
         var sink = new CapturingOutputSink();
-        await IndexRunner.RunAsync(store, SolutionPath, [], null, "incremental", false, sink, false, force, CancellationToken.None);
+        await IndexRunner.RunAsync(store, SolutionPath, [], "incremental", false, sink, false, force, CancellationToken.None);
         return sink.Output.ToString();
     }
 

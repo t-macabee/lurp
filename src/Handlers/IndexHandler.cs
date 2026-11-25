@@ -70,7 +70,21 @@ internal static class IndexHandler
                 HandlerBootstrap.Fail("ERROR: " + ex.Message);
             }
 
-            await IndexRunner.RunAsync(store, solutionPathArg, skipAdapters, jsonExportPath, strategyArg, verbose, null, skipDiff, force, cancellationToken);
+            var selectedId = await IndexRunner.RunAsync(store, solutionPathArg, skipAdapters, strategyArg,
+                verbose, output, skipDiff, force, cancellationToken);
+            if (jsonExportPath is not null)
+            {
+                var snapshot = store.LoadSnapshot(selectedId)
+                    ?? throw new InvalidOperationException($"Could not load selected snapshot '{selectedId}' for JSON export.");
+                try
+                {
+                    SnapshotManifest.FromStorageManifest(snapshot).ExportJson(jsonExportPath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+                {
+                    HandlerBootstrap.Fail($"ERROR: Could not export snapshot manifest. {ex.Message}");
+                }
+            }
         }
         finally
         {

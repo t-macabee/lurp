@@ -262,10 +262,10 @@ public sealed class FlagSpecTests
     }
 
     [Fact]
-    public void Help_ShowsSnapshotPinAndForceDeletion()
+    public void Help_ShowsSnapshotPinAndForceReplacement()
     {
         Assert.Contains("The literal latest means the same.", HelpBlock("search"));
-        Assert.Contains("deletes the existing complete snapshot", HelpBlock("index"));
+        Assert.Contains("The existing snapshot remains readable until its replacement completes.", HelpBlock("index"));
         Assert.Contains("The 3 newest complete snapshots are retained; older ones are pruned automatically.", CaptureHelp());
     }
 

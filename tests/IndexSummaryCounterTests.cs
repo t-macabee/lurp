@@ -17,7 +17,7 @@ public sealed class IndexSummaryCounterTests : IntegrationTestBase
 
         using var store = OpenStore(DbPath);
         var sink = new CapturingOutputSink();
-        await IndexRunner.RunAsync(store, SolutionPath, [], null, "full", false, sink, false, false, CancellationToken.None);
+        await IndexRunner.RunAsync(store, SolutionPath, [], "full", false, sink, false, false, CancellationToken.None);
         var output = sink.Output.ToString();
 
         var summary = Assert.Single(output.Split('\n'), line => line.Contains("declarations_extracted_this_run:", StringComparison.Ordinal));
@@ -93,7 +93,7 @@ public sealed class IndexSummaryCounterTests : IntegrationTestBase
 
         using var store = OpenStore(DbPath);
         var sink = new CapturingOutputSink();
-        await IndexRunner.RunAsync(store, SolutionPath, [], null, "full", false, sink, false, false, CancellationToken.None);
+        await IndexRunner.RunAsync(store, SolutionPath, [], "full", false, sink, false, false, CancellationToken.None);
 
         var snapshotId = store.LoadLatestSnapshot()!.SnapshotId;
         var docPaths = store.GetDocumentVersionIdsByPath(snapshotId).Keys;

@@ -112,7 +112,7 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
         Assert.Equal(ExistingSnapshotDisposition.Rebuild, disposition);
         Assert.Equal(SnapshotStatusValues.Complete, store.GetSnapshotStatus(SnapshotId, WorkspaceId));
         Assert.Equal(
-            $"Snapshot {SnapshotId} exists and an incremental run built it; --strategy=full deletes it and rebuilds it.",
+            $"Snapshot {SnapshotId} exists and an incremental run built it; --strategy=full rebuilds it while the existing snapshot remains readable.",
             sink.Output.ToString().TrimEnd());
     }
 
@@ -129,7 +129,7 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
         Assert.Equal(ExistingSnapshotDisposition.Rebuild, disposition);
         Assert.Equal(SnapshotStatusValues.Complete, store.GetSnapshotStatus(SnapshotId, WorkspaceId));
         Assert.Equal(
-            $"Identical complete snapshot {SnapshotId} already exists; --force given, deleting it and rebuilding it.",
+            $"Identical complete snapshot {SnapshotId} already exists; --force given, rebuilding it while the existing snapshot remains readable.",
             sink.Output.ToString().TrimEnd());
     }
 
@@ -146,7 +146,7 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
         Assert.Equal(ExistingSnapshotDisposition.Rebuild, disposition);
         Assert.Equal(SnapshotStatusValues.Complete, store.GetSnapshotStatus(SnapshotId, WorkspaceId));
         Assert.Equal(
-            $"Identical complete snapshot {SnapshotId} already exists; --force given, deleting it and rebuilding it.",
+            $"Identical complete snapshot {SnapshotId} already exists; --force given, rebuilding it while the existing snapshot remains readable.",
             sink.Output.ToString().TrimEnd());
     }
 

@@ -4,6 +4,13 @@ namespace Lurp.Storage;
 
 internal sealed class SnapshotPruner(SqliteConnection connection)
 {
+    private static readonly string[] SnapshotChildTables =
+    [
+        "edges", "diagnostics", "snapshot_declarations", "snapshot_symbols", "symbol_target_frameworks",
+        "projects", "snapshot_documents", "source_fts", "symbol_fts",
+        "annotations", "snapshot_timings", "snapshot_metrics", "snapshot_graph_nodes", "binding_incompleteness"
+    ];
+
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal void PruneOldSnapshots(int keep = 3)
@@ -188,24 +195,55 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         }
     }
 
-    internal void DeleteSnapshotForRebuild(string snapshotId, SqliteTransaction transaction)
+    internal void DeleteSnapshotForRebuild(string snapshotId, SqliteTransaction transaction, bool preservePreviousPin = false)
     {
         if (IsPinnedSnapshot(snapshotId, transaction))
             throw new InvalidOperationException($"snapshot '{snapshotId}' is pinned and cannot be deleted. Clear the pin first with --mode=pin-snapshot --clear.");
 
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = transaction;
-        DeleteSnapshotData(cmd, snapshotId, preserveUserAnnotations: true);
+        DeleteSnapshotData(cmd, snapshotId, preserveUserAnnotations: true, preservePreviousPin: preservePreviousPin);
     }
 
-    private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId, bool preserveUserAnnotations = false)
+    internal void PromoteSnapshot(string stagingId, string targetId, SqliteTransaction transaction)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.Transaction = transaction;
+        // The target id is restored before commit, so references to it remain valid.
+        cmd.CommandText = "PRAGMA defer_foreign_keys = ON;";
+        cmd.ExecuteNonQuery();
+
+        DeleteSnapshotForRebuild(targetId, transaction, preservePreviousPin: true);
+
+        cmd.Parameters.AddWithValue("@stagingId", stagingId);
+        cmd.Parameters.AddWithValue("@targetId", targetId);
+        cmd.CommandText = "UPDATE snapshots SET snapshot_id = @targetId WHERE snapshot_id = @stagingId;";
+        cmd.ExecuteNonQuery();
+
+        foreach (var table in SnapshotChildTables)
+        {
+            // Search indexes are built directly under the target id.
+            if (table is "source_fts" or "symbol_fts")
+                continue;
+            cmd.CommandText = $"UPDATE {table} SET snapshot_id = @targetId WHERE snapshot_id = @stagingId;";
+            cmd.ExecuteNonQuery();
+        }
+
+        cmd.CommandText = "UPDATE semantic_changes SET to_snapshot_id = @targetId WHERE to_snapshot_id = @stagingId;";
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId, bool preserveUserAnnotations = false, bool preservePreviousPin = false)
     {
         DeleteSnapshotPayload(cmd, snapshotId, preserveUserAnnotations);
 
-        cmd.CommandText = "UPDATE snapshot_pins SET previous_pinned_snapshot_id = NULL WHERE previous_pinned_snapshot_id = @sid;";
-        cmd.Parameters.Clear();
-        cmd.Parameters.AddWithValue("@sid", snapshotId);
-        cmd.ExecuteNonQuery();
+        if (!preservePreviousPin)
+        {
+            cmd.CommandText = "UPDATE snapshot_pins SET previous_pinned_snapshot_id = NULL WHERE previous_pinned_snapshot_id = @sid;";
+            cmd.Parameters.Clear();
+            cmd.Parameters.AddWithValue("@sid", snapshotId);
+            cmd.ExecuteNonQuery();
+        }
 
         cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
         cmd.Parameters.Clear();
@@ -215,13 +253,6 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
     private static void DeleteSnapshotPayload(SqliteCommand cmd, string snapshotId, bool preserveUserAnnotations)
     {
-        string[] tables =
-        [
-            "edges", "diagnostics", "snapshot_declarations", "snapshot_symbols", "symbol_target_frameworks",
-            "projects", "snapshot_documents", "source_fts", "symbol_fts",
-            "snapshot_timings", "snapshot_metrics", "snapshot_graph_nodes", "binding_incompleteness"
-        ];
-
         // project_references point at projects by row id, so this snapshot's
         // reference rows must go before the projects rows themselves.
         cmd.CommandText = """
@@ -237,23 +268,12 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         cmd.Parameters.AddWithValue("@sid", snapshotId);
         cmd.ExecuteNonQuery();
 
-        cmd.CommandText = """
-            DELETE FROM annotations
-            WHERE snapshot_id = @sid AND (NOT @preserveUserAnnotations OR document_path IS NOT NULL);
-            """;
-        cmd.Parameters.Clear();
-        cmd.Parameters.AddWithValue("@sid", snapshotId);
-        cmd.Parameters.AddWithValue("@preserveUserAnnotations", preserveUserAnnotations);
-        cmd.ExecuteNonQuery();
-
-        foreach (var table in tables)
+        foreach (var table in SnapshotChildTables)
         {
-            // Not SQL injection: table is drawn only from the hardcoded literal array
-            // above (never external input), and DELETE cannot bind a table name via a
-            // parameter in SQL - only values (snapshot_id, bound as @sid) can be.
-            cmd.CommandText = $"DELETE FROM {table} WHERE snapshot_id = @sid;";
-            cmd.Parameters.Clear();
-            cmd.Parameters.AddWithValue("@sid", snapshotId);
+            // Table names come from the fixed list above. Only the id is bound.
+            cmd.CommandText = table == "annotations" && preserveUserAnnotations
+                ? "DELETE FROM annotations WHERE snapshot_id = @sid AND document_path IS NOT NULL;"
+                : $"DELETE FROM {table} WHERE snapshot_id = @sid;";
             cmd.ExecuteNonQuery();
         }
 

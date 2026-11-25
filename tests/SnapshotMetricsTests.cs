@@ -96,7 +96,7 @@ public sealed class SnapshotMetricsTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
         {
             await IndexRunner.RunAsync(
-                store, SolutionPath, [], null, "incremental",
+                store, SolutionPath, [], "incremental",
                 false, null, false, false, CancellationToken.None);
         }
 

@@ -149,7 +149,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
         await IndexRunner.RunAsync(
             store, _solutionPath,
-            [], null, "full",
+            [], "full",
             false, null, false, cancellationToken: CancellationToken.None);
 
         var snapshot = store.LoadLatestSnapshot()
@@ -171,7 +171,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
         await IndexRunner.RunAsync(
             store, _solutionPath,
-            [], null, "full",
+            [], "full",
             false, null, false, cancellationToken: CancellationToken.None);
 
         var snapshot = store.LoadLatestSnapshot()
@@ -198,8 +198,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
             throw new InvalidOperationException("No previous snapshot found. Cannot run incremental index.");
 
         var incrementalIndexer = new IncrementalIndexer(
-            store, _testDir, [],
-            null);
+            store, _testDir, []);
 
         var result = await incrementalIndexer.RunIncrementalAsync(
             solution, workspaceInfo, previousManifest);

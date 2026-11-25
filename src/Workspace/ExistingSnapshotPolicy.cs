@@ -52,9 +52,9 @@ internal static class ExistingSnapshotPolicy
         }
 
         if (force)
-            sink.WriteLine($"Identical complete snapshot {snapshotId} already exists; --force given, deleting it and rebuilding it.");
+            sink.WriteLine($"Identical complete snapshot {snapshotId} already exists; --force given, rebuilding it while the existing snapshot remains readable.");
         else
-            sink.WriteLine($"Snapshot {snapshotId} exists and an incremental run built it; --strategy=full deletes it and rebuilds it.");
+            sink.WriteLine($"Snapshot {snapshotId} exists and an incremental run built it; --strategy=full rebuilds it while the existing snapshot remains readable.");
 
         return ExistingSnapshotDisposition.Rebuild;
     }

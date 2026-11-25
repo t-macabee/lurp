@@ -295,7 +295,7 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
         {
             var sink = new CapturingOutputSink();
-            await IndexRunner.RunAsync(store, SolutionPath, [], null, "incremental", false, sink, false, false, CancellationToken.None);
+            await IndexRunner.RunAsync(store, SolutionPath, [], "incremental", false, sink, false, false, CancellationToken.None);
             var snapshot2 = store.GetLatestSnapshotId()!;
             Assert.Equal(snapshot1, snapshot2);
 

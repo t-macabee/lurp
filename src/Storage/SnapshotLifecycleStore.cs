@@ -270,7 +270,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             DateTime.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
     }
 
-    internal SnapshotRow? LoadLatestSnapshot(string? workspaceId = null)
+    internal SnapshotRow? LoadLatestSnapshot(string? workspaceId = null, string? excludedSnapshotId = null)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = string.IsNullOrEmpty(workspaceId)
@@ -283,6 +283,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.status = @status
+                  AND (@excludedSnapshotId IS NULL OR s.snapshot_id <> @excludedSnapshotId)
                 ORDER BY s.selected_at_utc DESC
                 LIMIT 1;
                 """
@@ -296,10 +297,12 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.workspace_id = @workspaceId
                   AND s.status = @status
+                  AND (@excludedSnapshotId IS NULL OR s.snapshot_id <> @excludedSnapshotId)
                 ORDER BY s.selected_at_utc DESC
                 LIMIT 1;
                 """;
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
+        command.Parameters.AddWithValue("@excludedSnapshotId", (object?)excludedSnapshotId ?? DBNull.Value);
         if (!string.IsNullOrEmpty(workspaceId))
             command.Parameters.AddWithValue("@workspaceId", workspaceId);
 
