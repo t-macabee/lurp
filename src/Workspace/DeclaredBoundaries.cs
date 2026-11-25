@@ -28,7 +28,9 @@ internal static class DeclaredBoundaries
             "ef_convention",
             "The index does not model all EF Core conventions. EF Core can use fields, properties and " +
             "property accessors of an EF-mapped entity or a base class of one by reflection. " +
-            "Instance constructors must belong to the entity type itself or to an EF mapping source type."
+            "Instance constructors must belong to the entity type itself or to an EF mapping source type. " +
+            "Configuration assembly scans are modeled only for typeof(T).Assembly, Assembly.GetExecutingAssembly(), " +
+            "or the context's GetType().Assembly, with an omitted or null predicate."
         ),
         new(
             "shape_similarity",

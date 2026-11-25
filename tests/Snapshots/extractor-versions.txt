@@ -1,10 +1,10 @@
 # Extractor version gate (D103). Columns: name, version, rows, SHA-256 of the sorted rows.
 # Written by ExtractorVersionGateTests. Review the diff; see VERSIONING.md.
-ExtractorVersion	1.14.0	2578	33edbb7a6fc7f7ee0f1b07126fdec3b8dd9a3a2baa69509dc1bbb8c8c90cce21
+ExtractorVersion	1.14.0	2578	735f0d4e4fbf68dc7737c46ee7779e8f848f5bd53269ea0ca337717239a2c354
 ASP.NET Core	aspnetcore-v4	4	41f6ba55157c86f28cd321e3e12d2b0eb23e53369dfe3e9237ba11ab96d3ccba
 Declares	declares-v2	420	41ba3c930f9708c1de29c7640fd9f6efc67c225e47a9830e98bff63494fb0a63
 Dependency Injection	di-v3	47	85fde7069e93a52b0a2d4a1f68de6442c517d6f8a2d8de8eb99558742040abb9
-EF Core	efcore-v4	8	30a945663baa5e62a4ff7403d4db24f244b3bca5f1a352d07923ecb21cbf48d4
+EF Core	efcore-v4	8	2e18437abbf16357b89f41ec487f8071b3fc7ca2506834ac6712b48ad2ac4dd9
 Hides	hides-v2	3	984450e7e029acd22ab9003d4af8f706af805073558de1d9e4e5fa3548a9f312
 MediatR	mediatr-v3	3	0cfd2f76f8c7f2b90a3a2bf14c3b2cc3d656be1a41f43ace9ff0ae28765eb2e2
 OperationShapes	operation-shapes-v2	604	ac5e7a8c83e257385a34d5804a546b498b1fd0ce42a9a1d1e523f15dee777ab7

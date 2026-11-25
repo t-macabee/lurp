@@ -717,10 +717,15 @@ public sealed partial class GoldenAdapterTests : IntegrationTestBase
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var mapsTo = QueryEdges(snapshotId, "MapsTo", Provenance.FrameworkDerived);
-        var edge = Assert.Single(mapsTo);
-        Assert.Equal(ResolveSymbolId(snapshotId, "global::App.AppDbContext.Blogs"), edge.SourceSymbolId);
-        Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Blog"), edge.TargetSymbolId);
-        Assert.Equal(new EfCoreAdapter().Version, edge.ExtractorVersion);
+        var blog = ResolveSymbolId(snapshotId, "global::App.Blog");
+        Assert.Equal(2, mapsTo.Count);
+        Assert.Contains(mapsTo, edge => edge.SourceSymbolId == ResolveSymbolId(snapshotId, "global::App.AppDbContext.Blogs"));
+        Assert.Contains(mapsTo, edge => edge.SourceSymbolId == ResolveSymbolId(snapshotId, "global::App.AppDbContext"));
+        Assert.All(mapsTo, edge =>
+        {
+            Assert.Equal(blog, edge.TargetSymbolId);
+            Assert.Equal(new EfCoreAdapter().Version, edge.ExtractorVersion);
+        });
     }
 
     [Fact]
@@ -759,7 +764,8 @@ public sealed partial class GoldenAdapterTests : IntegrationTestBase
 
         var dbSetId = ResolveSymbolId(snapshotId, "global::App.BaseContext<T>.Items");
         var mapsTo = QueryEdges(snapshotId, "MapsTo", Provenance.FrameworkDerived);
-        var edge = Assert.Single(mapsTo, e => e.SourceSymbolId == dbSetId);
+        Assert.DoesNotContain(mapsTo, e => e.SourceSymbolId == dbSetId);
+        var edge = Assert.Single(mapsTo, e => e.SourceSymbolId == ResolveSymbolId(snapshotId, "global::App.AppContext"));
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Widget"), edge.TargetSymbolId);
         Assert.EndsWith("AppContext.cs", edge.SourceDocumentPath, StringComparison.Ordinal);
         Assert.Equal(2, edge.SourceStartLine);
@@ -917,8 +923,7 @@ public sealed partial class GoldenAdapterTests : IntegrationTestBase
                 (appDbId, blogId),
                 (twoConfigId, tagId),
                 (twoConfigId, authorId),
-                (blogConfigId, blogId),
-                (blogConfigId, postId)
+                (blogConfigId, blogId)
             }
             .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
             .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)

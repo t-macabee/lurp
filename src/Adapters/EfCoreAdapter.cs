@@ -1,3 +1,4 @@
+using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
@@ -42,31 +43,43 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         AdapterExtractionContext Adapter,
         string ExtractorVersion,
         List<EdgeRecord> Edges,
-        List<AnnotationRecord> Annotations);
+        List<AnnotationRecord> Annotations)
+    {
+        internal Dictionary<AssemblyIdentity, INamedTypeSymbol[]> ScannableConfigurations { get; } = [];
+    }
 
     private sealed class ModelMappings
     {
-        internal List<(INamedTypeSymbol Type, string Source, (string? path, int? sl, int? sc, int? el, int? ec) Location)> Explicit { get; } = [];
+        internal List<Mapping> Explicit { get; } = [];
         internal HashSet<INamedTypeSymbol> IgnoredTypes { get; } = new(SymbolEqualityComparer.Default);
-        internal HashSet<(INamedTypeSymbol Type, string Name)> IgnoredProperties { get; } = new(TypeMemberComparer.Instance);
+        internal HashSet<(INamedTypeSymbol Type, string? Name)> IgnoredProperties { get; } = new(TypeMemberComparer.Instance);
+        internal Dictionary<(INamedTypeSymbol Type, string? Name), string> QueryFilters { get; } = new(TypeMemberComparer.Instance);
     }
 
-    private sealed class TypeMemberComparer : IEqualityComparer<(INamedTypeSymbol Type, string Name)>
+    private readonly record struct Mapping(
+        INamedTypeSymbol Type,
+        string Source,
+        (string? path, int? sl, int? sc, int? el, int? ec) Location,
+        INamedTypeSymbol? NavigationOwner = null,
+        string? NavigationName = null);
+
+    private sealed class TypeMemberComparer : IEqualityComparer<(INamedTypeSymbol Type, string? Name)>
     {
         internal static readonly TypeMemberComparer Instance = new();
 
-        public bool Equals((INamedTypeSymbol Type, string Name) x, (INamedTypeSymbol Type, string Name) y)
+        public bool Equals((INamedTypeSymbol Type, string? Name) x, (INamedTypeSymbol Type, string? Name) y)
             => SymbolEqualityComparer.Default.Equals(x.Type, y.Type) && StringComparer.Ordinal.Equals(x.Name, y.Name);
 
-        public int GetHashCode((INamedTypeSymbol Type, string Name) item)
-            => HashCode.Combine(SymbolEqualityComparer.Default.GetHashCode(item.Type), StringComparer.Ordinal.GetHashCode(item.Name));
+        public int GetHashCode((INamedTypeSymbol Type, string? Name) item)
+            => HashCode.Combine(SymbolEqualityComparer.Default.GetHashCode(item.Type), item.Name == null ? 0 : StringComparer.Ordinal.GetHashCode(item.Name));
     }
 
     private static void ExtractDbContextMappings(List<INamedTypeSymbol> allTypes, EfEmitContext ctx)
     {
         foreach (var type in allTypes)
         {
-            if (type.TypeKind != TypeKind.Class || type.IsAbstract || !FrameworkTypes.DerivesFrom(type, DbContextMetadataName))
+            if (type.TypeKind != TypeKind.Class || type.IsAbstract || ContainsTypeParameter(type) ||
+                !FrameworkTypes.DerivesFrom(type, DbContextMetadataName))
                 continue;
 
             if (!ctx.Adapter.IsSymbolInScope(type) || ctx.Adapter.MakeSymbolId(type) is not { } dbContextId)
@@ -74,7 +87,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
             var anchorLocation = ctx.Adapter.LocationResolver.Resolve(type);
             var mappings = new ModelMappings();
-            ExtractDbSetProperties(type, anchorLocation, ctx, mappings);
+            ExtractDbSetProperties(type, dbContextId, anchorLocation, ctx, mappings);
 
             for (var current = type; current != null && !FrameworkTypes.Is(current, DbContextMetadataName); current = current.BaseType)
             {
@@ -86,7 +99,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 break;
             }
 
-            EmitMappings(mappings, dbContextId, anchorLocation, ctx);
+            EmitMappings(mappings, dbContextId, anchorLocation, ctx, expandNavigations: true);
         }
     }
 
@@ -103,6 +116,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
     private static void ExtractDbSetProperties(
         INamedTypeSymbol type,
+        string dbContextId,
         (string? path, int? sl, int? sc, int? el, int? ec) anchorLocation,
         EfEmitContext ctx,
         ModelMappings mappings)
@@ -121,11 +135,13 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     propType.TypeArguments is not [INamedTypeSymbol entityType])
                     continue;
 
-                if (ctx.Adapter.MakeSymbolId(prop) is not { } propId)
+                mappings.Explicit.Add(new Mapping(entityType, dbContextId, anchorLocation));
+                if (ContainsTypeParameter(prop.OriginalDefinition.Type) ||
+                    !ctx.Adapter.IsSolutionSymbol(prop) || ctx.Adapter.MakeSymbolId(prop) is not { } propId)
                     continue;
 
                 var location = inherited ? anchorLocation : ctx.Adapter.LocationResolver.Resolve(prop);
-                mappings.Explicit.Add((entityType, propId, location));
+                mappings.Explicit.Add(new Mapping(entityType, propId, location));
             }
         }
     }
@@ -134,34 +150,61 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     {
         foreach (var type in allTypes)
         {
-            if (type.TypeKind != TypeKind.Class || type.IsAbstract)
-                continue;
-
-            if (!ctx.Adapter.IsSymbolInScope(type))
-                continue;
-
-            var configId = ctx.Adapter.MakeSymbolId(type);
-            if (configId == null)
+            if (!IsConfigurationType(type) || !ctx.Adapter.IsSymbolInScope(type) ||
+                !HasConfigurationInterface(type) || ctx.Adapter.MakeSymbolId(type) is not { } configId)
                 continue;
 
             var anchorLocation = ctx.Adapter.LocationResolver.Resolve(type);
-
-            foreach (var iface in type.AllInterfaces)
+            var mappings = new ModelMappings();
+            foreach (var (entity, configure) in ConfigurationEntries(type))
             {
-                if (!FrameworkTypes.Is(iface, EntityTypeConfigMetadataName) ||
-                    iface.TypeArguments is not [INamedTypeSymbol entityType])
-                    continue;
-
-                var mappings = new ModelMappings();
-                mappings.Explicit.Add((entityType, configId, anchorLocation));
-
-                var ifaceConfigure = iface.GetMembers("Configure").OfType<IMethodSymbol>().FirstOrDefault();
-                if (ifaceConfigure != null && type.FindImplementationForInterfaceMember(ifaceConfigure) is IMethodSymbol configureImpl)
-                    WalkRootMethod(configureImpl, type, configId, anchorLocation, entityType, ctx, mappings);
-
-                EmitMappings(mappings, configId, anchorLocation, ctx);
+                mappings.Explicit.Add(new Mapping(entity, configId, anchorLocation));
+                if (configure != null)
+                    WalkRootMethod(configure, type, configId, anchorLocation, entity, ctx, mappings);
             }
+
+            EmitMappings(mappings, configId, anchorLocation, ctx, expandNavigations: false);
         }
+    }
+
+    private static IEnumerable<(INamedTypeSymbol Entity, IMethodSymbol? Configure)> ConfigurationEntries(
+        INamedTypeSymbol type)
+    {
+        foreach (var iface in type.AllInterfaces)
+        {
+            if (!FrameworkTypes.Is(iface, EntityTypeConfigMetadataName) ||
+                iface.TypeArguments is not [INamedTypeSymbol entity] || ContainsTypeParameter(entity))
+                continue;
+
+            var member = iface.GetMembers("Configure").OfType<IMethodSymbol>().FirstOrDefault();
+            yield return (entity, member == null ? null : type.FindImplementationForInterfaceMember(member) as IMethodSymbol);
+        }
+    }
+
+    private static bool HasConfigurationInterface(INamedTypeSymbol type)
+        => type.AllInterfaces.Any(iface => FrameworkTypes.Is(iface, EntityTypeConfigMetadataName));
+
+    private static bool IsConfigurationType(INamedTypeSymbol type)
+        => type is { TypeKind: TypeKind.Class or TypeKind.Struct, IsAbstract: false, IsRefLikeType: false };
+
+    private static bool HasParameterlessConstructor(INamedTypeSymbol type)
+    {
+        // Reflection does not see the implicit default constructor of a struct.
+        return type.InstanceConstructors.Any(ctor => ctor.Parameters.IsEmpty &&
+                                                    (!type.IsValueType || !ctor.IsImplicitlyDeclared));
+    }
+
+    private static bool ContainsTypeParameter(ITypeSymbol? type)
+    {
+        return type switch
+        {
+            ITypeParameterSymbol => true,
+            IArrayTypeSymbol array => ContainsTypeParameter(array.ElementType),
+            INamedTypeSymbol named => named.IsUnboundGenericType ||
+                                      named.TypeArguments.Any(ContainsTypeParameter) ||
+                                      ContainsTypeParameter(named.ContainingType),
+            _ => false
+        };
     }
 
     private static void WalkRootMethod(
@@ -173,107 +216,355 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         EfEmitContext ctx,
         ModelMappings mappings)
     {
-        var declaredInAnchor = SymbolEqualityComparer.Default.Equals(method.ContainingType, anchorType);
-        var evidencePath = anchorLocation.path;
+        var walk = new ModelWalk(anchorType, anchorId, anchorLocation, ctx, mappings, configEntityType == null);
+        walk.VisitMethod(method, configEntityType, builderArguments: null,
+            mappingsOnly: false, onContextInstance: configEntityType == null);
+    }
 
-        foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+    private sealed class ModelWalk(
+        INamedTypeSymbol anchorType,
+        string anchorId,
+        (string? path, int? sl, int? sc, int? el, int? ec) anchorLocation,
+        EfEmitContext ctx,
+        ModelMappings mappings,
+        bool contextRoot)
+    {
+        private readonly Dictionary<IMethodSymbol, HashSet<INamedTypeSymbol?>> _activeMethods =
+            new(SymbolEqualityComparer.Default);
+
+        internal void VisitMethod(
+            IMethodSymbol method,
+            INamedTypeSymbol? configEntity,
+            IReadOnlyDictionary<int, INamedTypeSymbol>? builderArguments,
+            bool mappingsOnly,
+            bool onContextInstance)
         {
-            var syntax = syntaxRef.GetSyntax();
-            var semanticModel = ctx.Adapter.GetDeclaringSemanticModel(syntax.SyntaxTree);
-            var rootOp = semanticModel?.GetOperation(syntax);
-            if (rootOp == null)
-                continue;
+            // Use definitions to bound recursion even if a helper constructs a deeper generic type on each call.
+            var definition = method.OriginalDefinition;
+            var entity = (configEntity ?? builderArguments?.Values.FirstOrDefault() ??
+                method.TypeArguments.OfType<INamedTypeSymbol>().FirstOrDefault())?.OriginalDefinition;
+            if (!_activeMethods.TryGetValue(definition, out var entities))
+                _activeMethods[definition] = entities = new HashSet<INamedTypeSymbol?>(SymbolEqualityComparer.Default);
+            if (!entities.Add(entity))
+                return;
 
-            foreach (var operation in rootOp.DescendantsAndSelf())
+            foreach (var syntaxRef in method.DeclaringSyntaxReferences)
             {
-                if (operation is not IInvocationOperation invocation)
+                var syntax = syntaxRef.GetSyntax();
+                var model = ctx.Adapter.GetDeclaringSemanticModel(syntax.SyntaxTree);
+                if (model?.GetOperation(syntax) is not { } root ||
+                    model.GetDeclaredSymbol(syntax) is not IMethodSymbol declaration)
                     continue;
 
-                var target = invocation.TargetMethod;
-                if (method.OverriddenMethod is { } overridden && OverridesOnModelCreating(overridden) &&
-                    invocation.Syntax is InvocationExpressionSyntax
-                    { Expression: MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax } } &&
-                    SymbolEqualityComparer.Default.Equals(target.OriginalDefinition, overridden.OriginalDefinition))
+                var body = new MethodBody(method, declaration, ctx.Adapter.Compilation, configEntity, builderArguments,
+                    onContextInstance);
+                var walker = new InvocationWalker(invocation => VisitInvocation(invocation, body, mappingsOnly));
+                walker.Visit(root is ILocalFunctionOperation local ? local.Body : root);
+            }
+
+            entities.Remove(entity);
+        }
+
+        private void VisitInvocation(IInvocationOperation invocation, MethodBody body, bool mappingsOnly)
+        {
+            var target = invocation.TargetMethod;
+            var declaredInAnchor = SymbolEqualityComparer.Default.Equals(body.Method.ContainingType, anchorType);
+            var location = !mappingsOnly && declaredInAnchor
+                ? ctx.Adapter.LocationResolver.Resolve(invocation.Syntax.GetLocation())
+                : anchorLocation;
+
+            if (FollowSolutionCall(invocation, body, mappingsOnly))
+                return;
+
+            var rawType = target.TypeArguments.FirstOrDefault() ??
+                invocation.Arguments.Select(a => UnwrapConversionAndDelegate(a.Value))
+                    .OfType<ITypeOfOperation>().FirstOrDefault()?.TypeOperand;
+            var explicitType = body.ResolveEntityType(rawType);
+
+            if (FrameworkTypes.Is(target.ContainingType, ModelBuilderMetadataName))
+            {
+                if (contextRoot && target.Name == "Entity" && explicitType != null)
+                    mappings.Explicit.Add(new Mapping(explicitType, anchorId, location));
+                if (target.Name == "Ignore" && explicitType != null)
+                    mappings.IgnoredTypes.Add(explicitType);
+                if (contextRoot && !mappingsOnly)
+                    ApplyConfigurations(invocation, body);
+                return;
+            }
+
+            var builder = target.ContainingType;
+            var entityBuilder = IsBuilder(builder, "EntityTypeBuilder", 1);
+            if (!entityBuilder && !IsEntityBuilderType(builder))
+                return;
+
+            var builderEntity = body.ResolveEntityType(builder.TypeArguments.LastOrDefault()) ??
+                                GetBuilderEntity(invocation.Instance, body);
+
+            if (target.Name is "OwnsOne" or "OwnsMany" or "ComplexProperty" or "ComplexCollection")
+            {
+                var property = FindConfiguredProperty(invocation, builderEntity);
+                var mapped = explicitType ?? NavigationType(body.ResolveType(property?.Type));
+                if (mapped != null)
                 {
-                    WalkRootMethod(overridden, anchorType, anchorId, anchorLocation, configEntityType, ctx, mappings);
-                    continue;
+                    mappings.Explicit.Add(new Mapping(mapped, anchorId, location, builderEntity,
+                        property?.Name ?? ReadMemberName(invocation)));
+                }
+                return;
+            }
+
+            if (target.Name == "Ignore" && builderEntity != null)
+            {
+                var name = FindConfiguredProperty(invocation, builderEntity)?.Name ?? ReadMemberName(invocation);
+                if (name != null)
+                    mappings.IgnoredProperties.Add((builderEntity, name));
+                return;
+            }
+
+            if (!entityBuilder || mappingsOnly)
+                return;
+
+            if (target.Name is "HasOne" or "HasMany" && target.TypeArguments is [var rawRel])
+            {
+                var rel = body.ResolveEntityType(rawRel);
+                if (rel != null && ctx.Adapter.MakeSymbolId(rel) is { } relId)
+                {
+                    ctx.Edges.Add(ctx.Adapter.MakeEdge(anchorId, relId, nameof(EdgeKind.References),
+                        Provenance.FrameworkDerived, ctx.ExtractorVersion, location));
                 }
 
-                var location = declaredInAnchor
-                    ? ctx.Adapter.LocationResolver.Resolve(invocation.Syntax.GetLocation())
-                    : anchorLocation;
+                return;
+            }
 
-                var rawType = target.TypeArguments.FirstOrDefault() ??
-                    invocation.Arguments.Select(a => UnwrapConversionAndDelegate(a.Value))
-                        .OfType<ITypeOfOperation>().FirstOrDefault()?.TypeOperand;
-                var explicitType = ResolveEntityType(rawType, method, configEntityType);
+            if (builderEntity == null)
+                return;
 
-                if (FrameworkTypes.Is(target.ContainingType, ModelBuilderMetadataName))
+            if (target.Name == "HasQueryFilter")
+                EmitQueryFilter(invocation, builderEntity, mappings);
+            else if (target.Name == "HasIndex" && ctx.Adapter.MakeSymbolId(builderEntity) is { } id)
+                EmitUniqueIndexIfUnique(invocation, builderEntity, id, anchorLocation.path, ctx);
+        }
+
+        private bool FollowSolutionCall(IInvocationOperation invocation, MethodBody body, bool mappingsOnly)
+        {
+            var target = invocation.TargetMethod;
+            if (!ctx.Adapter.IsSolutionSymbol(target) || target.DeclaringSyntaxReferences.Length == 0)
+                return false;
+
+            var passesBuilder = false;
+            Dictionary<int, INamedTypeSymbol>? builderArguments = null;
+            foreach (var argument in invocation.Arguments)
+            {
+                var value = UnwrapConversionAndDelegate(argument.Value);
+                if (FrameworkTypes.Is(value.Type, ModelBuilderMetadataName))
                 {
-                    if (target.Name == "Entity" && explicitType != null)
-                        mappings.Explicit.Add((explicitType, anchorId, location));
-                    if (target.Name == "Ignore" && explicitType != null)
-                        mappings.IgnoredTypes.Add(explicitType);
-                    continue;
+                    passesBuilder = true;
                 }
-
-                var builder = target.ContainingType;
-                var entityBuilder = IsBuilder(builder, "EntityTypeBuilder", 1);
-                if (!entityBuilder && !IsBuilder(builder, "OwnedNavigationBuilder", 2) &&
-                    !IsBuilder(builder, "ComplexPropertyBuilder", 1) && !IsBuilder(builder, "ComplexCollectionBuilder", 1))
-                    continue;
-
-                var builderEntity = ResolveEntityType(builder.TypeArguments.LastOrDefault(), method, configEntityType)
-                    ?? GetBuilderEntity(invocation.Instance, method, configEntityType);
-
-                if (target.Name is "OwnsOne" or "OwnsMany" or "ComplexProperty" or "ComplexCollection")
+                else if (value.Type is INamedTypeSymbol named && IsEntityBuilderType(named))
                 {
-                    var mapped = explicitType ?? NavigationType(FindConfiguredProperty(invocation, builderEntity)?.Type);
-                    if (mapped != null)
-                        mappings.Explicit.Add((mapped, anchorId, location));
-                    continue;
-                }
-
-                if (target.Name == "Ignore" && builderEntity != null)
-                {
-                    var name = FindConfiguredProperty(invocation, builderEntity)?.Name ?? ReadMemberName(invocation);
-                    if (name != null)
-                        mappings.IgnoredProperties.Add((builderEntity, name));
-                    continue;
-                }
-
-                if (!entityBuilder)
-                    continue;
-
-                if (target.Name is "HasOne" or "HasMany" && target.TypeArguments is [var rawRel])
-                {
-                    var relEntity = ResolveEntityType(rawRel, method, configEntityType);
-                    var relId = relEntity != null ? ctx.Adapter.MakeSymbolId(relEntity) : null;
-                    if (relId != null)
-                    {
-                        ctx.Edges.Add(ctx.Adapter.MakeEdge(anchorId, relId, nameof(EdgeKind.References),
-                            Provenance.FrameworkDerived, ctx.ExtractorVersion, location));
-                    }
-
-                    continue;
-                }
-
-                if (builderEntity == null)
-                    continue;
-
-                var builderEntityId = ctx.Adapter.MakeSymbolId(builderEntity);
-                if (builderEntityId == null)
-                    continue;
-
-                if (target.Name == "HasQueryFilter")
-                {
-                    EmitQueryFilter(invocation, builderEntity, builderEntityId, evidencePath, ctx);
-                }
-                else if (target.Name == "HasIndex")
-                {
-                    EmitUniqueIndexIfUnique(invocation, builderEntity, builderEntityId, evidencePath, ctx);
+                    passesBuilder = true;
+                    if (argument.Parameter != null && GetBuilderEntity(value, body) is { } entity)
+                        (builderArguments ??= [])[argument.Parameter.Ordinal] = entity;
                 }
             }
+
+            var callsBaseOverride = invocation.Syntax is InvocationExpressionSyntax
+                { Expression: MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax } } &&
+                OverridesOnModelCreating(target);
+            if (!passesBuilder && !callsBaseOverride)
+                return false;
+
+            var onContextInstance = body.OnContextInstance &&
+                (IsThisReference(invocation.Instance) || target is { MethodKind: MethodKind.LocalFunction, IsStatic: false });
+            VisitMethod(body.BindMethod(target), configEntity: null, builderArguments, mappingsOnly, onContextInstance);
+            return true;
+        }
+
+        private void ApplyConfigurations(IInvocationOperation invocation, MethodBody body)
+        {
+            switch (invocation.TargetMethod.Name)
+            {
+                case "ApplyConfiguration":
+                    if (invocation.Arguments is [var argument] &&
+                        body.ResolveEntityType(UnwrapConversionAndDelegate(argument.Value).Type) is { } config &&
+                        IsConfigurationType(config) &&
+                        body.ResolveEntityType(invocation.TargetMethod.TypeArguments.FirstOrDefault()) is { } entity)
+                    {
+                        ApplyConfiguration(config, entity);
+                    }
+
+                    break;
+                case "ApplyConfigurationsFromAssembly":
+                    var predicate = invocation.Arguments.FirstOrDefault(a => a.Parameter?.Name == "predicate");
+                    if (predicate != null && !IsNullOrDefault(predicate.Value))
+                        return;
+
+                    var assembly = invocation.Arguments.FirstOrDefault(a => a.Parameter?.Name == "assembly");
+                    if (assembly != null && ResolveConfigurationAssembly(assembly.Value, body) is { } resolved)
+                    {
+                        foreach (var type in ScannableConfigurations(resolved))
+                            ApplyConfiguration(type);
+                    }
+
+                    break;
+            }
+        }
+
+        private INamedTypeSymbol[] ScannableConfigurations(IAssemblySymbol assembly)
+        {
+            if (!ctx.ScannableConfigurations.TryGetValue(assembly.Identity, out var types))
+            {
+                types = assembly.Identity.Equals(ctx.Adapter.Compilation.Assembly.Identity) ||
+                        ctx.Adapter.Inputs.SolutionAssemblyIdentities?.Contains(assembly.Identity) == true
+                    ? ExtractionUtils.GetAllNamedTypes(assembly.GlobalNamespace)
+                        .Where(type => IsConfigurationType(type) && !ContainsTypeParameter(type) &&
+                                       HasConfigurationInterface(type) && HasParameterlessConstructor(type))
+                        .OrderBy(ExtractionUtils.FullMetadataName, StringComparer.Ordinal)
+                        .ToArray()
+                    : [];
+                ctx.ScannableConfigurations.Add(assembly.Identity, types);
+            }
+
+            return types;
+        }
+
+        private IAssemblySymbol? ResolveConfigurationAssembly(IOperation expression, MethodBody body)
+        {
+            expression = UnwrapConversionAndDelegate(expression);
+            if (expression is IInvocationOperation executing &&
+                executing.TargetMethod.Name == "GetExecutingAssembly" &&
+                FrameworkTypes.Is(executing.TargetMethod.ContainingType, "System.Reflection.Assembly"))
+                return body.Method.ContainingAssembly;
+
+            if (expression is not IPropertyReferenceOperation property || property.Property.Name != "Assembly" ||
+                !FrameworkTypes.Is(property.Property.ContainingType, "System.Type") || property.Instance == null)
+                return null;
+
+            var receiver = UnwrapConversionAndDelegate(property.Instance);
+            if (receiver is ITypeOfOperation typeOf)
+            {
+                var operand = body.ResolveType(typeOf.TypeOperand);
+                while (operand is IArrayTypeSymbol array)
+                    operand = array.ElementType;
+
+                return (operand as INamedTypeSymbol)?.ContainingAssembly;
+            }
+
+            if (receiver is IInvocationOperation getType &&
+                getType.TargetMethod is { Name: "GetType", ContainingType.SpecialType: SpecialType.System_Object } &&
+                body.OnContextInstance && IsThisReference(getType.Instance))
+                return anchorType.ContainingAssembly;
+
+            return null;
+        }
+
+        private static bool IsThisReference(IOperation? operation)
+            => operation is IInstanceReferenceOperation { ReferenceKind: InstanceReferenceKind.ContainingTypeInstance };
+
+        private void ApplyConfiguration(INamedTypeSymbol type, INamedTypeSymbol? selectedEntity = null)
+        {
+            if (!ctx.Adapter.IsSolutionSymbol(type) || ctx.Adapter.MakeSymbolId(type) is not { } configId)
+                return;
+
+            foreach (var (entity, configure) in ConfigurationEntries(type))
+            {
+                if (selectedEntity != null && !SymbolEqualityComparer.Default.Equals(selectedEntity, entity))
+                    continue;
+
+                ctx.Edges.Add(ctx.Adapter.MakeEdge(anchorId, configId, nameof(EdgeKind.References),
+                    Provenance.FrameworkDerived, ctx.ExtractorVersion, anchorLocation));
+                mappings.Explicit.Add(new Mapping(entity, anchorId, anchorLocation));
+                if (configure != null)
+                    VisitMethod(configure, entity, builderArguments: null, mappingsOnly: true, onContextInstance: false);
+            }
+        }
+    }
+
+    private sealed class InvocationWalker(Action<IInvocationOperation> visit) : OperationWalker
+    {
+        public override void VisitInvocation(IInvocationOperation operation)
+        {
+            base.VisitInvocation(operation);
+            visit(operation);
+        }
+
+        public override void VisitLocalFunction(ILocalFunctionOperation operation)
+        {
+            // A local function has its own body. Follow it where it is called.
+        }
+    }
+
+    private sealed record MethodBody(
+        IMethodSymbol Method,
+        IMethodSymbol Declaration,
+        Compilation Compilation,
+        INamedTypeSymbol? ConfigurationEntity,
+        IReadOnlyDictionary<int, INamedTypeSymbol>? BuilderArguments,
+        bool OnContextInstance)
+    {
+        internal INamedTypeSymbol? ResolveEntityType(ITypeSymbol? candidate)
+            => ResolveType(candidate) is INamedTypeSymbol { TypeKind: not TypeKind.Error } named &&
+               !ContainsTypeParameter(named) ? named : null;
+
+        internal ITypeSymbol? ResolveType(ITypeSymbol? candidate)
+        {
+            switch (candidate)
+            {
+                case ITypeParameterSymbol parameter:
+                    if (parameter.TypeParameterKind == TypeParameterKind.Method &&
+                        SymbolEqualityComparer.Default.Equals(parameter.DeclaringMethod, Declaration))
+                        return Method.TypeArguments[parameter.Ordinal];
+
+                    var boundType = Method.ContainingType;
+                    for (var type = Declaration.ContainingType; type != null && boundType != null;
+                         type = type.ContainingType, boundType = boundType.ContainingType)
+                    {
+                        if (SymbolEqualityComparer.Default.Equals(parameter.DeclaringType, type.OriginalDefinition))
+                            return boundType.TypeArguments[parameter.Ordinal];
+                    }
+
+                    return parameter;
+                case IArrayTypeSymbol array:
+                    var element = ResolveType(array.ElementType)!;
+                    return SymbolEqualityComparer.Default.Equals(element, array.ElementType)
+                        ? array
+                        : Compilation.CreateArrayTypeSymbol(element, array.Rank);
+                case INamedTypeSymbol { IsUnboundGenericType: false } named when ContainsTypeParameter(named):
+                    var definition = named.ConstructedFrom;
+                    if (named.ContainingType != null &&
+                        ResolveType(named.ContainingType) is INamedTypeSymbol owner &&
+                        !SymbolEqualityComparer.Default.Equals(owner, named.ContainingType))
+                    {
+                        definition = owner.GetTypeMembers(named.Name, named.Arity)
+                            .FirstOrDefault(type => SymbolEqualityComparer.Default.Equals(type.OriginalDefinition, named.OriginalDefinition))
+                            ?? definition;
+                    }
+
+                    return named.Arity == 0 ? definition : definition.Construct(named.TypeArguments.Select(t => ResolveType(t)!).ToArray());
+                default:
+                    return candidate;
+            }
+        }
+
+        internal IMethodSymbol BindMethod(IMethodSymbol target)
+        {
+            var method = target.ConstructedFrom;
+            if (ResolveType(target.ContainingType) is INamedTypeSymbol owner &&
+                !SymbolEqualityComparer.Default.Equals(owner, target.ContainingType))
+            {
+                method = owner.GetMembers(target.Name).OfType<IMethodSymbol>()
+                    .FirstOrDefault(candidate => SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, target.OriginalDefinition))
+                    ?? method;
+            }
+
+            return target.Arity == 0 ? method : method.Construct(target.TypeArguments.Select(t => ResolveType(t)!).ToArray());
+        }
+
+        internal INamedTypeSymbol? GetParameterEntity(IParameterSymbol parameter)
+        {
+            if (!SymbolEqualityComparer.Default.Equals(parameter.ContainingSymbol, Declaration))
+                return null;
+
+            return BuilderArguments?.GetValueOrDefault(parameter.Ordinal) ?? ConfigurationEntity;
         }
     }
 
@@ -284,27 +575,21 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                FrameworkTypes.Is(type, $"{prefix}{name}`{genericArity}");
     }
 
-    private static INamedTypeSymbol? ResolveEntityType(ITypeSymbol? candidate, IMethodSymbol method, INamedTypeSymbol? configEntityType)
+    private static bool IsEntityBuilderType(INamedTypeSymbol type)
+        => IsBuilder(type, "EntityTypeBuilder", 1) || IsBuilder(type, "OwnedNavigationBuilder", 2) ||
+           IsBuilder(type, "ComplexPropertyBuilder", 1) || IsBuilder(type, "ComplexCollectionBuilder", 1);
+
+    private static INamedTypeSymbol? GetBuilderEntity(IOperation? instance, MethodBody body)
     {
-        if (candidate is ITypeParameterSymbol parameter)
-        {
-            if (parameter.TypeParameterKind == TypeParameterKind.Type &&
-                SymbolEqualityComparer.Default.Equals(parameter.ContainingSymbol, method.ContainingType.OriginalDefinition))
-            {
-                candidate = method.ContainingType.TypeArguments[parameter.Ordinal];
-            }
+        if (instance?.Type is INamedTypeSymbol builder && IsEntityBuilderType(builder) &&
+            body.ResolveEntityType(builder.TypeArguments.LastOrDefault()) is { } entity)
+            return entity;
 
-            if (candidate is ITypeParameterSymbol)
-                return configEntityType;
-        }
-
-        return candidate as INamedTypeSymbol;
-    }
-
-    private static INamedTypeSymbol? GetBuilderEntity(IOperation? instance, IMethodSymbol method, INamedTypeSymbol? configEntityType)
-    {
         if (instance is IParameterReferenceOperation parameter)
         {
+            if (body.GetParameterEntity(parameter.Parameter) is { } parameterEntity)
+                return parameterEntity;
+
             for (var current = instance.Parent; current != null; current = current.Parent)
             {
                 if (current is not IAnonymousFunctionOperation lambda ||
@@ -314,33 +599,29 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
                 for (var outer = lambda.Parent; outer != null; outer = outer.Parent)
                 {
-                    if (outer is not IInvocationOperation enclosing)
-                        continue;
-
-                    if (enclosing.TargetMethod.Name != "Entity" ||
-                        !FrameworkTypes.Is(enclosing.TargetMethod.ContainingType, ModelBuilderMetadataName))
-                        return null;
-
-                    return ResolveEntityType(enclosing.Arguments.Select(a => UnwrapConversionAndDelegate(a.Value))
-                        .OfType<ITypeOfOperation>().FirstOrDefault()?.TypeOperand, method, configEntityType);
+                    if (outer is IInvocationOperation enclosing)
+                        return GetModelBuilderEntity(enclosing, body);
                 }
 
                 return null;
             }
-
-            return null;
         }
 
         if (instance is not IInvocationOperation invocation)
             return null;
 
-        if (invocation.TargetMethod.Name == "Entity" && FrameworkTypes.Is(invocation.TargetMethod.ContainingType, ModelBuilderMetadataName))
-        {
-            return ResolveEntityType(invocation.Arguments.Select(a => UnwrapConversionAndDelegate(a.Value))
-                .OfType<ITypeOfOperation>().FirstOrDefault()?.TypeOperand, method, configEntityType);
-        }
+        return GetModelBuilderEntity(invocation, body) ?? GetBuilderEntity(InvocationReceiver(invocation), body);
+    }
 
-        return GetBuilderEntity(InvocationReceiver(invocation), method, configEntityType);
+    private static INamedTypeSymbol? GetModelBuilderEntity(IInvocationOperation invocation, MethodBody body)
+    {
+        if (invocation.TargetMethod.Name != "Entity" ||
+            !FrameworkTypes.Is(invocation.TargetMethod.ContainingType, ModelBuilderMetadataName))
+            return null;
+
+        return body.ResolveEntityType(invocation.TargetMethod.TypeArguments.FirstOrDefault() ??
+            invocation.Arguments.Select(a => UnwrapConversionAndDelegate(a.Value))
+                .OfType<ITypeOfOperation>().FirstOrDefault()?.TypeOperand);
     }
 
     /// <summary>
@@ -415,20 +696,32 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         ModelMappings mappings,
         string anchorId,
         (string? path, int? sl, int? sc, int? el, int? ec) anchorLocation,
-        EfEmitContext ctx)
+        EfEmitContext ctx,
+        bool expandNavigations)
     {
+        foreach (var ((type, _), value) in mappings.QueryFilters)
+        {
+            if (ctx.Adapter.MakeSymbolId(type) is { } id)
+                AddConstraintAnnotation(id, "ef_query_filter_constraint", value, anchorLocation.path, ctx);
+        }
+
         var mappedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         var expandedDefinitions = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         var queue = new Queue<INamedTypeSymbol>();
 
-        foreach (var (type, source, location) in mappings.Explicit)
+        foreach (var mapping in mappings.Explicit)
         {
-            if (mappings.IgnoredTypes.Contains(type) || !ctx.Adapter.IsSolutionSymbol(type) ||
+            var type = mapping.Type;
+            if (ContainsTypeParameter(type) || mappings.IgnoredTypes.Contains(type) || !ctx.Adapter.IsSolutionSymbol(type) ||
                 ctx.Adapter.MakeSymbolId(type) is not { } id)
                 continue;
 
-            AddMapsToEdge(source, id, ctx, location);
-            if (mappedTypes.Add(type))
+            if (mapping.NavigationOwner is { } owner &&
+                (mappings.IgnoredTypes.Contains(owner) || mappings.IgnoredProperties.Contains((owner, mapping.NavigationName))))
+                continue;
+
+            AddMapsToEdge(mapping.Source, id, ctx, mapping.Location);
+            if (expandNavigations && mappedTypes.Add(type))
             {
                 expandedDefinitions.Add(type.OriginalDefinition);
                 queue.Enqueue(type);
@@ -452,7 +745,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     if (target is not { TypeKind: TypeKind.Class } || !ctx.Adapter.IsSolutionSymbol(target) ||
                         (property.SetMethod == null && !IsOwned(target) &&
                          SymbolEqualityComparer.Default.Equals(property.Type, target)) ||
-                        mappings.IgnoredTypes.Contains(target) || IsNotMapped(target) ||
+                        ContainsTypeParameter(target) || mappings.IgnoredTypes.Contains(target) || IsNotMapped(target) ||
                         ctx.Adapter.MakeSymbolId(target) is not { } targetId || !mappedTypes.Add(target))
                         continue;
 
@@ -468,34 +761,33 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     private static void EmitQueryFilter(
         IInvocationOperation invocation,
         INamedTypeSymbol entityType,
-        string entityTypeId,
-        string? evidencePath,
-        EfEmitContext ctx)
+        ModelMappings mappings)
     {
-        if (invocation.Arguments.Length == 1)
+        if (invocation.Arguments.Length is not (1 or 2))
+            return;
+
+        var key = invocation.Arguments.Length == 2
+            ? invocation.Arguments.FirstOrDefault(a => a.Parameter?.Ordinal == 0)?.Value
+            : null;
+        var filter = invocation.Arguments.FirstOrDefault(a => a.Parameter?.Ordinal == invocation.Arguments.Length - 1)?.Value;
+        if (filter == null)
+            return;
+
+        var filterKey = key == null ? null : key.ConstantValue is { Value: string name } ? name : key.Syntax.ToString();
+        if (IsNullOrDefault(filter))
         {
-            var filterText = invocation.Arguments[0].Value.Syntax.ToString();
-            AddConstraintAnnotation(
-                entityTypeId,
-                "ef_query_filter_constraint",
-                $"{entityType.Name}: HasQueryFilter: {filterText}",
-                evidencePath,
-                ctx);
+            mappings.QueryFilters.Remove((entityType, filterKey));
+            return;
         }
-        else if (invocation.Arguments.Length == 2)
-        {
-            var keyArg = invocation.Arguments[0].Value;
-            var keyText = keyArg.ConstantValue is { HasValue: true, Value: string s }
-                ? s
-                : keyArg.Syntax.ToString();
-            var filterText = invocation.Arguments[1].Value.Syntax.ToString();
-            AddConstraintAnnotation(
-                entityTypeId,
-                "ef_query_filter_constraint",
-                $"{entityType.Name}: HasQueryFilter {keyText}: {filterText}",
-                evidencePath,
-                ctx);
-        }
+
+        var label = filterKey == null ? "HasQueryFilter" : $"HasQueryFilter {filterKey}";
+        mappings.QueryFilters[(entityType, filterKey)] = $"{entityType.Name}: {label}: {filter.Syntax}";
+    }
+
+    private static bool IsNullOrDefault(IOperation value)
+    {
+        value = UnwrapConversionAndDelegate(value);
+        return value is IDefaultValueOperation || value.ConstantValue is { HasValue: true, Value: null };
     }
 
     private static void EmitUniqueIndexIfUnique(
