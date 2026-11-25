@@ -53,8 +53,7 @@ public static class WorkspaceFreshness
 
         try
         {
-            var (stamp, _) = CheckFreshnessCheapCore(store, metadata, mode, checkBuildInputs: false, gitRootOverride: null, checkedAt);
-            return stamp;
+            return CheckFreshnessCheapCore(store, metadata, mode, gitRootOverride: null, checkedAt);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
         {
@@ -62,11 +61,10 @@ public static class WorkspaceFreshness
         }
     }
 
-    private static (FreshnessStamp Stamp, bool HasNewerBuildInput) CheckFreshnessCheapCore(
+    private static FreshnessStamp CheckFreshnessCheapCore(
         SqliteIndexStore store,
         SnapshotRow metadata,
         FreshnessMode mode,
-        bool checkBuildInputs,
         string? gitRootOverride,
         DateTime checkedAt)
     {
@@ -114,15 +112,12 @@ public static class WorkspaceFreshness
                 changed.Add(relativePath);
         }
 
-        var (newSourceFiles, hasNewerBuildInput) = WalkUntrackedFiles(
-            gitRoot, versionsByPath.Keys, selectedAtUtc, checkBuildInputs);
-        changed.AddRange(newSourceFiles);
+        changed.AddRange(WalkUntrackedFiles(gitRoot, versionsByPath.Keys, selectedAtUtc));
         changed.Sort(StringComparer.Ordinal);
 
         var method = mode == FreshnessMode.Hash ? "stat+hash" : "stat";
         var state = changed.Count == 0 ? "fresh" : "stale";
-        var stamp = new FreshnessStamp(state, method, changed.Count, changed, checkedAt, snapshotId, "documents_only");
-        return (stamp, hasNewerBuildInput);
+        return new FreshnessStamp(state, method, changed.Count, changed, checkedAt, snapshotId, "documents_only");
     }
 
     public static FreshnessResult CheckFreshness(WorkspaceInfo current, SqliteIndexStore store)
@@ -181,21 +176,28 @@ public static class WorkspaceFreshness
 
     /// <summary>
     /// Checks whether an incremental index run can be safely skipped without loading the workspace.
-    /// Uses one shared walk with <see cref="CheckFreshnessCheap" /> in <see cref="FreshnessMode.Hash" />
-    /// mode (hashing every tracked document and checking for new source files and newer build inputs
-    /// against <see cref="SnapshotRow.SelectedAtUtc" />).
+    /// Compares build-input content and uses the read-path hash check for documents.
     /// </summary>
     public static SnapshotRow? CanSkipIncrementalIndex(SqliteIndexStore store, WorkspaceId workspaceId, string gitRoot, IOutputSink? output = null)
     {
+        var built = store.LoadSelectedLatestSnapshot(workspaceId.Value);
+        if (built is null)
+            return null;
+
+        var buildInputs = new WorkspaceBuildInputs(gitRoot, built, CancellationToken.None);
+        return CanSkipIncrementalIndex(store, built, gitRoot, buildInputs, output);
+    }
+
+    internal static SnapshotRow? CanSkipIncrementalIndex(SqliteIndexStore store, SnapshotRow built, string gitRoot,
+        WorkspaceBuildInputs buildInputs, IOutputSink? output)
+    {
         try
         {
-            var built = store.LoadSelectedLatestSnapshot(workspaceId.Value);
-            if (built == null)
+            if (!buildInputs.Matches(store.LoadBuildInputs(built.SnapshotId)))
                 return null;
 
-            var (stamp, hasNewerBuildInput) = CheckFreshnessCheapCore(
-                store, built, FreshnessMode.Hash, checkBuildInputs: true, gitRootOverride: gitRoot, DateTime.UtcNow);
-            if (stamp.State != "fresh" || hasNewerBuildInput)
+            var stamp = CheckFreshnessCheapCore(store, built, FreshnessMode.Hash, gitRoot, DateTime.UtcNow);
+            if (stamp.State != "fresh")
                 return null;
 
             if (!string.Equals(built.ExtractorVersion, VersionConstants.ExtractorVersion, StringComparison.Ordinal))
@@ -219,105 +221,59 @@ public static class WorkspaceFreshness
         }
     }
 
-    private static readonly EnumerationOptions WalkEnumerationOptions = new()
+    private static IEnumerable<string> WalkUntrackedFiles(
+        string gitRoot,
+        IEnumerable<string> knownDocumentPaths,
+        DateTime selectedAtUtc)
+    {
+        var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
+        var knownDocuments = new HashSet<string>(knownDocumentPaths, PathNormalizer.PathComparer);
+        foreach (var (currentDir, _) in WalkInputDirectories(normalizedRoot, includeObj: false))
+        {
+            var dirLastWriteUtc = Directory.GetLastWriteTimeUtc(currentDir);
+            foreach (var fullPath in Directory.EnumerateFiles(currentDir, "*", WalkEnumerationOptions))
+            {
+                var relativePath = PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
+                if (relativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) &&
+                    !knownDocuments.Contains(relativePath) &&
+                    (File.GetLastWriteTimeUtc(fullPath) > selectedAtUtc || dirLastWriteUtc > selectedAtUtc))
+                    yield return relativePath;
+            }
+        }
+    }
+
+    internal static readonly EnumerationOptions WalkEnumerationOptions = new()
     {
         IgnoreInaccessible = true,
         AttributesToSkip = FileAttributes.ReparsePoint
     };
 
-    private static readonly EnumerationOptions ObjAssetsEnumerationOptions = new()
+    internal static IEnumerable<(string Path, bool IsObj)> WalkInputDirectories(string normalizedRoot, bool includeObj)
     {
-        IgnoreInaccessible = true,
-        AttributesToSkip = FileAttributes.ReparsePoint,
-        RecurseSubdirectories = true
-    };
-
-    private static (List<string> NewSourceFiles, bool HasNewerBuildInput) WalkUntrackedFiles(
-        string gitRoot,
-        IEnumerable<string> knownDocumentPaths,
-        DateTime selectedAtUtc,
-        bool checkBuildInputs)
-    {
-        var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
-        var knownDocuments = new HashSet<string>(knownDocumentPaths, PathNormalizer.PathComparer);
-        var newSourceFiles = new List<string>();
-        var hasNewerBuildInput = false;
-
         var dirs = new Stack<string>();
-        dirs.Push(normalizedRoot);
-
+        dirs.Push(normalizedRoot + Path.DirectorySeparatorChar);
         while (dirs.Count > 0)
         {
             var currentDir = dirs.Pop();
-            var dirLastWriteUtc = Directory.GetLastWriteTimeUtc(currentDir);
-
-            foreach (var fullPath in Directory.EnumerateFiles(currentDir, "*", WalkEnumerationOptions))
-            {
-                var relativePath = PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
-
-                if (checkBuildInputs && IsBuildInputPath(relativePath))
-                {
-                    if (File.GetLastWriteTimeUtc(fullPath) > selectedAtUtc)
-                        hasNewerBuildInput = true;
-                    continue;
-                }
-
-                if (!relativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                if (knownDocuments.Contains(relativePath))
-                    continue;
-
-                if (File.GetLastWriteTimeUtc(fullPath) > selectedAtUtc || dirLastWriteUtc > selectedAtUtc)
-                    newSourceFiles.Add(relativePath);
-            }
+            yield return (currentDir, false);
 
             foreach (var subDir in Directory.EnumerateDirectories(currentDir, "*", WalkEnumerationOptions))
             {
                 var relSubDir = PathNormalizer.ToGitRelativeFromNormalizedRoot(subDir, normalizedRoot);
-
                 if (relSubDir.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
                     relSubDir.StartsWith(".git/", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 if (BuildOutputPaths.IsBuildOutputPath(relSubDir + "/"))
                 {
-                    if (checkBuildInputs && Path.GetFileName(subDir).Equals("obj", StringComparison.OrdinalIgnoreCase))
-                    {
-                        foreach (var assetsFile in Directory.EnumerateFiles(subDir, "project.assets.json", ObjAssetsEnumerationOptions))
-                        {
-                            if (IsProjectAssetsPath(assetsFile) && File.GetLastWriteTimeUtc(assetsFile) > selectedAtUtc)
-                                hasNewerBuildInput = true;
-                        }
-                    }
+                    if (includeObj && Path.GetFileName(subDir).Equals("obj", StringComparison.OrdinalIgnoreCase))
+                        yield return (subDir, true);
                     continue;
                 }
 
                 dirs.Push(subDir);
             }
         }
-
-        return (newSourceFiles, hasNewerBuildInput);
-    }
-
-    private static bool IsProjectAssetsPath(string relativePath)
-    {
-        return Path.GetFileName(relativePath).Equals("project.assets.json", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsBuildInputPath(string relativePath)
-    {
-        var extension = Path.GetExtension(relativePath);
-        if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".props", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".targets", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".sln", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        var fileName = Path.GetFileName(relativePath);
-        return fileName.Equals("global.json", StringComparison.OrdinalIgnoreCase) ||
-               fileName.Equals("nuget.config", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<SnapshotMismatch> CheckWorkspaceIdentity(WorkspaceInfo current, SnapshotManifest stored)

@@ -56,7 +56,8 @@ internal sealed class WorkspaceLoader : IDisposable
     ///     and <c>OpenSolutionAsync</c>, and "Loading solution... done (N
     ///     projects)." is written before recovery lines.
     /// </summary>
-    public async Task<LoadedSolution> LoadAsync(string solutionPath, string gitRoot, CancellationToken cancellationToken)
+    public async Task<LoadedSolution> LoadAsync(string solutionPath, string gitRoot, CancellationToken cancellationToken,
+        Action<IEnumerable<string>>? captureDeclaredProjects = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -67,11 +68,18 @@ internal sealed class WorkspaceLoader : IDisposable
         IReadOnlyList<string> unloadedProjects;
         try
         {
+            string[]? declaredPaths = null;
+            if (captureDeclaredProjects is not null)
+            {
+                declaredPaths = await ReadDeclaredProjectPathsAsync(solutionPath, cancellationToken);
+                captureDeclaredProjects(declaredPaths);
+            }
             solution = await _openSolutionAsync(solutionPath, cancellationToken);
             // The injected opener has no solution file or MSBuild workspace.
             unloadedProjects = _workspace is null
                 ? []
-                : await ReadUnloadedProjectsAsync(solutionPath, solution, cancellationToken);
+                : GetUnloadedProjects(declaredPaths ?? await ReadDeclaredProjectPathsAsync(solutionPath, cancellationToken),
+                    solution, Path.GetDirectoryName(Path.GetFullPath(solutionPath))!);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -104,23 +112,30 @@ internal sealed class WorkspaceLoader : IDisposable
         return solution;
     }
 
-    private static async Task<IReadOnlyList<string>> ReadUnloadedProjectsAsync(
-        string solutionPath, Solution solution, CancellationToken cancellationToken)
+    private static async Task<string[]> ReadDeclaredProjectPathsAsync(string solutionPath, CancellationToken cancellationToken)
     {
         var fullPath = Path.GetFullPath(solutionPath);
         var serializer = SolutionSerializers.GetSerializerByMoniker(fullPath)
                          ?? throw new InvalidOperationException("Expected a .sln or .slnx file.");
         var declared = await serializer.OpenAsync(fullPath, cancellationToken);
         var solutionDir = Path.GetDirectoryName(fullPath)!;
+        return declared.SolutionProjects
+            .Where(project => string.Equals(project.Extension, ".csproj", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(project.Extension, ".vbproj", StringComparison.OrdinalIgnoreCase))
+            .Select(project => Path.GetFullPath(PathNormalizer.ToForwardSlash(project.FilePath), solutionDir))
+            .Distinct(PathNormalizer.PathComparer)
+            .ToArray();
+    }
+
+    private static string[] GetUnloadedProjects(IEnumerable<string> declaredPaths, Solution solution, string solutionDir)
+    {
         var loadedPaths = solution.Projects
             .Where(project => project.Language == LanguageNames.CSharp && project.FilePath != null)
             .Select(project => Path.GetFullPath(project.FilePath!, solutionDir))
             .ToHashSet(PathNormalizer.PathComparer);
 
-        return declared.SolutionProjects
-            .Where(project => string.Equals(project.Extension, ".csproj", StringComparison.OrdinalIgnoreCase))
-            .Select(project => Path.GetFullPath(PathNormalizer.ToForwardSlash(project.FilePath), solutionDir))
-            .Distinct(PathNormalizer.PathComparer)
+        return declaredPaths
+            .Where(path => string.Equals(Path.GetExtension(path), ".csproj", StringComparison.OrdinalIgnoreCase))
             .Where(path => !loadedPaths.Contains(path))
             .Select(path => PathNormalizer.ToGitRelativeFromNormalizedRoot(path, solutionDir))
             .Order(StringComparer.Ordinal)

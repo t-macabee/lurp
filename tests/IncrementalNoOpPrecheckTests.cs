@@ -21,11 +21,13 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
         CreateProject(Project, new Dictionary<string, string> { ["Widget.cs"] = WidgetSource });
     }
 
-    private async Task<string> RunIncrementalAsync(bool force = false)
+    private Task<string> RunIncrementalAsync(bool force = false) => RunIndexAsync("incremental", force);
+
+    private async Task<string> RunIndexAsync(string strategy, bool force = false, string? solutionPath = null)
     {
         using var store = OpenStore(DbPath);
         var sink = new CapturingOutputSink();
-        await IndexRunner.RunAsync(store, SolutionPath, [], "incremental", false, sink, false, force, CancellationToken.None);
+        await IndexRunner.RunAsync(store, solutionPath ?? SolutionPath, [], strategy, false, sink, false, force, CancellationToken.None);
         return sink.Output.ToString();
     }
 
@@ -104,7 +106,7 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task TouchedProjectFile_DoesNotSkipWorkspaceLoad()
+    public async Task TouchedProjectFile_KeepsTheSkip()
     {
         Seed();
         await RunFullIndexAsync(DbPath);
@@ -113,8 +115,191 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
 
         var output = await RunIncrementalAsync();
 
-        Assert.DoesNotContain("Workspace load skipped", output);
+        Assert.Contains("Workspace load skipped", output);
+        Assert.DoesNotContain("Loading solution...", output);
+    }
+
+    [Fact]
+    public async Task RemovedBuildProps_RebuildsWithoutConditionalSymbol()
+    {
+        CreateProject(Project, new Dictionary<string, string>
+        {
+            ["Widget.cs"] = WidgetSource + "\n#if FEATURE\npublic class ConditionalWidget { }\n#endif\n"
+        });
+        var propsPath = Path.Combine(TestDir, "Directory.Build.props");
+        File.WriteAllText(propsPath, """
+            <Project><PropertyGroup><DefineConstants>$(DefineConstants);FEATURE</DefineConstants></PropertyGroup></Project>
+            """);
+        var originalId = await RunFullIndexAsync(DbPath);
+
+        File.Delete(propsPath);
+        var output = await RunIncrementalAsync();
+
+        Assert.Contains("Full rebuild required", output);
+        using var store = OpenStore(DbPath);
+        Assert.Contains(store.SearchSymbolsPage("ConditionalWidget", originalId, 10, false, null, null).Items,
+            item => item.DocCommentId == "T:Core.ConditionalWidget");
+        var workspaceId = WorkspaceId.Create(TestDir, SolutionPath);
+        var selectedId = store.GetSelectedLatestSnapshotId(workspaceId.Value);
+        Assert.NotNull(selectedId);
+        Assert.NotEqual(originalId, selectedId);
+        Assert.DoesNotContain(store.SearchSymbolsPage("ConditionalWidget", selectedId, 10, false, null, null).Items,
+            item => item.DocCommentId == "T:Core.ConditionalWidget");
+    }
+
+    [Fact]
+    public async Task DeletedProject_DoesNotSkipAndRecordsUnloadedProject()
+    {
+        Seed();
+        CreateProject("Keep", new Dictionary<string, string> { ["Keep.cs"] = "public class Keep { }" });
+        await RunFullIndexAsync(DbPath);
+
+        File.Delete(Path.Combine(TestDir, "src", Project, $"{Project}.csproj"));
+        var output = await RunIncrementalAsync();
+
         Assert.Contains("Loading solution...", output);
+        using var store = OpenStore(DbPath);
+        var workspaceId = WorkspaceId.Create(TestDir, SolutionPath);
+        var snapshot = store.LoadSelectedLatestSnapshot(workspaceId.Value);
+        Assert.NotNull(snapshot);
+        Assert.Contains($"src/{Project}/{Project}.csproj", SnapshotManifest.FromStorageManifest(snapshot).UnloadedProjects);
+    }
+
+    [Fact]
+    public async Task BackdatedBuildProps_DoesNotSkipWorkspaceLoad()
+    {
+        Seed();
+        await RunFullIndexAsync(DbPath);
+
+        var propsPath = Path.Combine(TestDir, "Directory.Build.props");
+        File.WriteAllText(propsPath, "<Project />");
+        File.SetLastWriteTimeUtc(propsPath, DateTime.UtcNow.AddDays(-1));
+
+        var output = await RunIncrementalAsync();
+
+        Assert.Contains("Loading solution...", output);
+        Assert.Contains("Workspace load skipped", await RunIncrementalAsync());
+    }
+
+    [Fact]
+    public async Task BackdatedAssetsFile_DoesNotSkipWorkspaceLoad()
+    {
+        Seed();
+        await RunFullIndexAsync(DbPath);
+        var objDir = Path.Combine(TestDir, "src", Project, "obj");
+        Directory.CreateDirectory(objDir);
+        var assetsPath = Path.Combine(objDir, "project.assets.json");
+        File.WriteAllText(assetsPath, "{}");
+        File.SetLastWriteTimeUtc(assetsPath, DateTime.UtcNow.AddDays(-1));
+
+        Assert.Contains("Loading solution...", await RunIncrementalAsync());
+    }
+
+    [Theory]
+    [InlineData("incremental")]
+    [InlineData("full")]
+    public async Task ProjectComment_RefreshesInputsWhenTheSnapshotIsKept(string strategy)
+    {
+        Seed();
+        var originalId = await RunFullIndexAsync(DbPath);
+
+        var projectPath = Path.Combine(TestDir, "src", Project, $"{Project}.csproj");
+        File.AppendAllText(projectPath, "<!-- comment -->");
+        var output = await RunIndexAsync(strategy);
+
+        Assert.Contains("Loading solution...", output);
+        using var store = OpenStore(DbPath);
+        var workspaceId = WorkspaceId.Create(TestDir, SolutionPath);
+        Assert.Equal(originalId, store.GetSelectedLatestSnapshotId(workspaceId.Value));
+        Assert.Contains("Workspace load skipped", await RunIncrementalAsync());
+    }
+
+    [Fact]
+    public async Task SameIdFullRebuild_PromotesCapturedBuildInputs()
+    {
+        Seed();
+        var originalId = await RunFullIndexAsync(DbPath);
+        var projectPath = Path.Combine(TestDir, "src", Project, $"{Project}.csproj");
+        File.AppendAllText(projectPath, "<!-- comment -->");
+
+        await RunIndexAsync("full", force: true);
+        var output = await RunIncrementalAsync();
+
+        Assert.Contains("Workspace load skipped", output);
+        Assert.Contains($"Incremental index complete. Snapshot: {originalId}", output);
+    }
+
+    [Fact]
+    public async Task ParentBuildProps_DoesNotSkipWorkspaceLoad()
+    {
+        var solutionDir = Path.Combine(TestDir, "nested");
+        WriteSolution(solutionDir, Project, new Dictionary<string, string> { ["Widget.cs"] = WidgetSource });
+        var solutionPath = Path.Combine(solutionDir, "Test.slnx");
+        var propsPath = Path.Combine(TestDir, "Directory.Build.props");
+        File.WriteAllText(propsPath, "<Project />");
+        try
+        {
+            await RunIndexAsync("full", solutionPath: solutionPath);
+            File.AppendAllText(propsPath, "<!-- parent change -->");
+
+            var output = await RunIndexAsync("incremental", solutionPath: solutionPath);
+
+            Assert.Contains("Loading solution...", output);
+        }
+        finally
+        {
+            TestDatabase.DeleteSolutionCache(solutionPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExternalProject_DoesNotSkipAfterBackdatedProjectChange()
+    {
+        Seed();
+        var solutionDir = Path.Combine(TestDir, "nested");
+        Directory.CreateDirectory(solutionDir);
+        var solutionPath = Path.Combine(solutionDir, "External.slnx");
+        File.WriteAllText(solutionPath, $"""
+            <Solution><Project Path="../src/{Project}/{Project}.csproj" /></Solution>
+            """);
+        try
+        {
+            await RunIndexAsync("full", solutionPath: solutionPath);
+            Assert.Contains("Workspace load skipped", await RunIndexAsync("incremental", solutionPath: solutionPath));
+
+            var projectPath = Path.Combine(TestDir, "src", Project, $"{Project}.csproj");
+            File.AppendAllText(projectPath, "<!-- external change -->");
+            File.SetLastWriteTimeUtc(projectPath, DateTime.UtcNow.AddDays(-1));
+
+            Assert.Contains("Loading solution...", await RunIndexAsync("incremental", solutionPath: solutionPath));
+            Assert.Contains("Workspace load skipped", await RunIndexAsync("incremental", solutionPath: solutionPath));
+        }
+        finally
+        {
+            TestDatabase.DeleteSolutionCache(solutionPath);
+        }
+    }
+
+    [Fact]
+    public async Task MigratedSnapshot_LoadsOnceToCaptureBuildInputs()
+    {
+        Seed();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        using (var connection = TestDatabase.Open(DbPath))
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                DROP TABLE IF EXISTS snapshot_build_inputs;
+                DELETE FROM schema_metadata WHERE version > 52;
+                UPDATE snapshots SET database_schema_version = 52;
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var firstRun = await RunIncrementalAsync();
+        Assert.Contains("Loading solution...", firstRun);
+        Assert.Contains($"Incremental index complete. Snapshot: {snapshotId}", firstRun);
+        Assert.Contains("Workspace load skipped", await RunIncrementalAsync());
     }
 
     [Fact]

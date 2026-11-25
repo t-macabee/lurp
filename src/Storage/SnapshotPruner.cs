@@ -7,7 +7,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     private static readonly string[] SnapshotChildTables =
     [
         "edges", "diagnostics", "snapshot_declarations", "snapshot_symbols", "symbol_target_frameworks",
-        "projects", "snapshot_documents", "source_fts", "symbol_fts",
+        "projects", "snapshot_documents", "snapshot_build_inputs", "source_fts", "symbol_fts",
         "annotations", "snapshot_timings", "snapshot_metrics", "snapshot_graph_nodes", "binding_incompleteness"
     ];
 

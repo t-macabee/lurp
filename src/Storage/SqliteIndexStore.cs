@@ -199,10 +199,11 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
 
     public void SaveSnapshot(SnapshotRow manifest) => SaveSnapshot(manifest, replaceExisting: false);
 
-    internal void SaveSnapshot(SnapshotRow manifest, bool replaceExisting)
+    internal void SaveSnapshot(SnapshotRow manifest, bool replaceExisting,
+        IReadOnlyDictionary<string, string>? buildInputs = null)
     {
         EnsureOpen();
-        _lifecycle!.SaveSnapshot(manifest, replaceExisting, _pruner!);
+        _lifecycle!.SaveSnapshot(manifest, replaceExisting, _pruner!, buildInputs);
     }
 
     internal void CompleteIndex(string snapshotId, string? annotationSourceId)
@@ -239,10 +240,20 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _lifecycle!.MarkSnapshotComplete(snapshotId);
     }
 
-    public void MarkSnapshotSelected(string snapshotId, DateTime selectedAtUtc)
+    public void MarkSnapshotSelected(string snapshotId, DateTime selectedAtUtc) =>
+        MarkSnapshotSelected(snapshotId, selectedAtUtc, buildInputs: null);
+
+    internal void MarkSnapshotSelected(string snapshotId, DateTime selectedAtUtc,
+        IReadOnlyDictionary<string, string>? buildInputs)
     {
         EnsureOpen();
-        _lifecycle!.MarkSnapshotSelected(snapshotId, selectedAtUtc);
+        _lifecycle!.MarkSnapshotSelected(snapshotId, selectedAtUtc, buildInputs);
+    }
+
+    internal Dictionary<string, string> LoadBuildInputs(string snapshotId)
+    {
+        EnsureOpen();
+        return _lifecycle!.LoadBuildInputs(snapshotId);
     }
 
     public void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message) =>

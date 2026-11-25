@@ -129,12 +129,12 @@ public sealed partial class SnapshotManifest
 
     internal void Save(SqliteIndexStore snapshotStore, string buildStrategy,
         IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents,
-        bool replaceExisting)
+        bool replaceExisting, IReadOnlyDictionary<string, string>? buildInputs = null)
     {
         ArgumentNullException.ThrowIfNull(snapshotStore);
         ArgumentException.ThrowIfNullOrWhiteSpace(buildStrategy);
 
-        snapshotStore.SaveSnapshot(ToStorageManifest(buildStrategy, contents), replaceExisting);
+        snapshotStore.SaveSnapshot(ToStorageManifest(buildStrategy, contents), replaceExisting, buildInputs);
     }
 
     internal void ExportJson(string path) =>

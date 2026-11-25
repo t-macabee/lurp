@@ -1,6 +1,6 @@
 # Lurp 4.2.0
 
-Run a full index after the upgrade: schema v52, extractor 1.14.0 and the adapter versions below change the snapshot id. Use `--strategy=full --force` if you already built a development snapshot with extractor 1.14.0.
+Run a full index after the upgrade to schema v53. Extractor 1.14.0 and the adapter versions below change the snapshot id. Use `--strategy=full --force` if you already built a development snapshot with extractor 1.14.0.
 
 ## Breaking changes (CLI/MCP contract version 9)
 
@@ -63,6 +63,12 @@ User annotations now survive full and `--strategy=full --force` re-indexes: the 
 - `lurp_status` `documents`: selects the paths of the per-document freshness list (`document_freshness`); an empty array returns `null`.
 - `lurp_dead_candidates`: linked declarations share incoming liveness, public surface uses effective accessibility for every symbol, and record and framework conventions protect members.
 
+## Incremental indexing
+
+The incremental precheck compares build-input paths and SHA-256 hashes captured before the solution loads. Added, deleted and backdated build files trigger a workspace load. Touching a build file with identical content keeps the shortcut. Snapshots migrated from schema v52 load once to record build inputs.
+
+The check covers build files and `project.assets.json` under the solution directory, loaded project files outside it, and five named configuration files in its ancestors. Other build files added outside the solution directory are outside this check. An external project first discovered by MSBuild is checked on the next run, once its path is known.
+
 ## Framework adapters
 
 Every adapter version moves, so 4.1.0 snapshots are not reused.
@@ -85,7 +91,7 @@ A linked declaration takes the incoming edges of its copies in other projects, i
 | Component | 4.1.0 | 4.2.0 |
 | --- | --- | --- |
 | Tool | 4.1.0 | 4.2.0 |
-| Database schema | v50 | v52 |
+| Database schema | v50 | v53 |
 | Extractor | 1.13.0 | 1.14.0 |
 | CLI/MCP contract | v8 | v9 |
 | Output schema | v7 | v8 |

@@ -93,7 +93,7 @@ public sealed class PruneTimingTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task IncrementalIndex_WithNoContentChange_AddsNoTimingRowToTheExistingSnapshot()
+    public async Task IncrementalIndex_WithNoIndexedContentChange_AddsNoTimingRowToTheExistingSnapshot()
     {
         CreateProject(ProjectName, new Dictionary<string, string>
         {
@@ -107,11 +107,9 @@ public sealed class PruneTimingTests : IntegrationTestBase
         var precheckRowsBefore = CountStepRowsInDatabase(SnapshotTimingSteps.IncrementalPrecheck);
         var configCheckRowsBefore = CountStepRowsInDatabase(SnapshotTimingSteps.ConfigurationCheck);
 
-        // A build input (.csproj) newer than the snapshot defeats the precheck
-        // (WorkspaceFreshness.HasNoNewSourcesOrBuildInputs), but the content hashes are
-        // unchanged, so IncrementalIndexer returns at changedDocs.Count == 0.
+        // A project comment changes the build-input hash while preserving the indexed documents.
         var sink = new CapturingOutputSink();
-        Touch(Path.Combine(TestDir, "src", ProjectName, ProjectName + ".csproj"));
+        File.AppendAllText(Path.Combine(TestDir, "src", ProjectName, ProjectName + ".csproj"), "<!-- comment -->");
         var latestSnapshotId = await RunIncrementalViaRunnerAsync(sink);
         var output = sink.Output.ToString();
 

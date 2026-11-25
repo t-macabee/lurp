@@ -19,7 +19,13 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
     //   5. Remove stale data (edges, annotations, binding-incompleteness, declarations, TFMs, diagnostics) for the extraction scope.
     //   6. Re-extract declarations, edges, diagnostics, annotations and binding-incompleteness in one pass over the extraction scope.
     //   7. Prune removed symbols, clean up orphan edges and graph nodes, rebuild FTS5, persist semantic diff, and complete the snapshot.
-    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, SnapshotRow previousManifest, long solutionLoadMs = 0, CancellationToken cancellationToken = default)
+    public Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo,
+        SnapshotRow previousManifest, long solutionLoadMs = 0, CancellationToken cancellationToken = default) =>
+        RunIncrementalAsync(solution, workspaceInfo, previousManifest, buildInputs: null, solutionLoadMs, cancellationToken);
+
+    internal async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo,
+        SnapshotRow previousManifest, IReadOnlyDictionary<string, string>? buildInputs, long solutionLoadMs,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var swConfig = Stopwatch.StartNew();
@@ -156,7 +162,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         var sw4 = Stopwatch.StartNew();
         _output.Write("Saving new snapshot manifest... ");
         newManifest.Save(_store, SnapshotBuildStrategies.Incremental, workspaceInfo.DocumentContents,
-            replaceExisting: disposition == ExistingSnapshotDisposition.Retry);
+            replaceExisting: disposition == ExistingSnapshotDisposition.Retry, buildInputs);
 
         int totalDeclarations;
         int totalEdges;

@@ -55,6 +55,7 @@ public static class SnapshotComparison
     private static readonly HashSet<string> ExcludedTables = new(StringComparer.Ordinal)
     {
         "snapshot_timings", "snapshot_metrics", // Run measurements
+        "snapshot_build_inputs", // Freshness metadata can change when a snapshot is reused.
         "snapshot_pins", // User state
         "semantic_changes", // Changes from the prior snapshot depend on index history
         "schema_metadata", // Migration log

@@ -1,3 +1,4 @@
+using Lurp.Shared;
 using Microsoft.Data.Sqlite;
 using System.Globalization;
 using System.Text.Json;
@@ -38,7 +39,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
-    internal void SaveSnapshot(SnapshotRow manifest, bool replaceExisting, SnapshotPruner pruner)
+    internal void SaveSnapshot(SnapshotRow manifest, bool replaceExisting, SnapshotPruner pruner,
+        IReadOnlyDictionary<string, string>? buildInputs)
     {
         using var transaction = _connection.BeginTransaction();
         try
@@ -50,6 +52,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             InsertSnapshotHeader(manifest, transaction);
             InsertProjectGraph(manifest.SnapshotId, manifest.Projects, transaction);
             InsertDocumentsAndBindings(manifest.SnapshotId, manifest.Documents, transaction);
+            if (buildInputs is not null)
+                InsertBuildInputs(manifest.SnapshotId, buildInputs, transaction);
 
             transaction.Commit();
         }
@@ -203,9 +207,49 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
-    internal void MarkSnapshotSelected(string snapshotId, DateTime selectedAtUtc)
+    internal Dictionary<string, string> LoadBuildInputs(string snapshotId)
     {
         using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT normalized_path, sha256 FROM snapshot_build_inputs WHERE snapshot_id = @snapshotId;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        var inputs = new Dictionary<string, string>(PathNormalizer.PathComparer);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            inputs.Add(reader.GetString(0), reader.GetString(1));
+        return inputs;
+    }
+
+    private void InsertBuildInputs(string snapshotId, IReadOnlyDictionary<string, string> buildInputs,
+        SqliteTransaction transaction)
+    {
+        if (buildInputs.Count == 0)
+            return;
+
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO snapshot_build_inputs (snapshot_id, normalized_path, sha256)
+            VALUES (@snapshotId, @path, @sha256);
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        var pathParameter = command.Parameters.Add("@path", SqliteType.Text);
+        var hashParameter = command.Parameters.Add("@sha256", SqliteType.Text);
+        foreach (var (path, hash) in buildInputs)
+        {
+            pathParameter.Value = path;
+            hashParameter.Value = hash;
+            command.ExecuteNonQuery();
+        }
+    }
+
+    internal void MarkSnapshotSelected(string snapshotId, DateTime selectedAtUtc,
+        IReadOnlyDictionary<string, string>? buildInputs = null)
+    {
+        using var transaction = buildInputs is null ? null : _connection.BeginTransaction();
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             UPDATE snapshots
             SET selected_at_utc = @selectedAtUtc
@@ -215,7 +259,15 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@selectedAtUtc", selectedAtUtc.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@completeStatus", SnapshotStatusValues.Complete);
+        if (command.ExecuteNonQuery() == 0 || transaction is null)
+            return;
+
+        command.CommandText = "DELETE FROM snapshot_build_inputs WHERE snapshot_id = @snapshotId;";
+        command.Parameters.RemoveAt("@selectedAtUtc");
+        command.Parameters.RemoveAt("@completeStatus");
         command.ExecuteNonQuery();
+        InsertBuildInputs(snapshotId, buildInputs!, transaction);
+        transaction.Commit();
     }
 
     internal bool TryMarkSnapshotFailed(string snapshotId, string reasonCode, string? message)
