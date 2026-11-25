@@ -28,7 +28,7 @@ public sealed class CliMcpContractSnapshotTests
         // D102: the capsule document version. Source: RELEASE_NOTES_3.6.0.md "Versions" table
         // (Output schema v6) and RELEASE_NOTES_3.0.0.md (5 -> 6). It moves only on a breaking
         // change of the capsule document (VERSIONING.md).
-        Assert.Equal(7, VersionConstants.OutputSchemaVersion);
+        Assert.Equal(8, VersionConstants.OutputSchemaVersion);
     }
 
     [Fact]

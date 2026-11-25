@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 4.1.0, schema v52, extractor 1.14.0, CLI/MCP contract v9, output schema v7<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 4.2.0, schema v52, extractor 1.14.0, CLI/MCP contract v9, output schema v8<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -111,9 +111,11 @@ content changes; it never mutates an existing snapshot. When nothing changed, th
 existing snapshot is reused via content-addressed dedup and becomes the latest
 snapshot of the workspace.
 
-Declarations are per document: a `partial` type declared in two documents
-yields two declaration records of a snapshot with one symbol id, and the
-snapshot's symbol set holds that symbol once. `declarations_extracted_this_run`
+Declarations are one record per distinct span: a `partial` type declared in two
+documents yields two declaration records of a snapshot with one symbol id, and the
+snapshot's symbol set holds that symbol once. Conditional declarations of a
+multi-targeted project that share a span collapse to one record; copies with
+different spans are kept. `declarations_extracted_this_run`
 therefore counts declaration records while `symbols_in_snapshot` counts symbols.
 An edge shows every site of its highest provenance in source order. Impact hops and
 capsule path hops list up to 20 sites with `site_count`.
@@ -136,13 +138,13 @@ Stored edges carry one of six provenance levels, ranked in this order:
 | Level | Meaning |
 |---|---|
 | `compiler_proved` | The compiler resolves the relationship. Examples include calls, inheritance and field reads. |
-| `framework_derived` | A framework adapter records a relationship. The adapters record DI `Registers`, ASP.NET Core `RoutesTo`, MediatR `Handles`, EF Core `MapsTo` and navigation `References`, test `TestedBy`, and serialization context `References`. |
+| `framework_derived` | A framework adapter records a relationship. The adapters record DI `Registers`, ASP.NET Core `RoutesTo` and middleware `Calls`/`Constructs`, MediatR `Handles`, EF Core `MapsTo` and navigation `References`, test `TestedBy` and reflected setup `References`, and serialization context `References`. |
 | `possible` | `MayDispatchTo` marks a possible dispatch target when a type implements an interface member through a member of its base class. The base class declares the implementation. |
 | `convention` | Lurp infers the relationship from a convention such as an assembly scan. |
 | `name_candidate` | Lurp uses the semantics of a runtime name-binding API to resolve a name argument. Examples include reflection lookup, `PropertyChanged` with `[CallerMemberName]`, EF Core string APIs, binding attributes and MVC action names. |
 | `runtime_unknown` | The target is only known at run time. Lurp records that it cannot resolve the target. |
 
-`global_implementation_relation` is a capsule grade, never an edge: context assembly assigns it to an implementation of a called interface or virtual member projected through `MayDispatchTo` into `direct_callees`. The global relation is real; that the call reaches it at run time is not established.
+`global_implementation_relation` is a capsule grade, never an edge: context assembly assigns it to an implementation of a called interface or virtual member, or of an accessed virtual property or event, projected through `MayDispatchTo` into `direct_callees`. The global relation is real; that the call or access reaches it at run time is not established.
 
 ### 4.3 Edge kinds
 
@@ -167,14 +169,14 @@ is the executable form of these rules for the kinds that the golden compares.
 |---|---|---|---|
 | `Inherits` | A type names its base class. A class whose base is `object` and a struct give no edge. | type → base type | `compiler_proved` |
 | `Implements` | A type names an interface in its base list (an interface: its base interfaces). | type → interface | `compiler_proved` |
-| `References` | A type is named in a signature (a return, parameter, property, field or event type, with its type arguments, array elements and function-pointer types), as a type argument in a base list, in a written constraint, or in a body (a local declaration, a written or inferred lambda type, a pattern, a cast, `default`, `sizeof`, an array creation, a `catch` type, a method type argument, the receiver type of a static member access); an EF Core navigation (`HasOne`/`HasMany`); or a `[JsonSerializable]` context. | member, type, context or configuration → type | `compiler_proved`; `framework_derived` for EF Core navigations and `[JsonSerializable]` |
+| `References` | A type is named in a signature (a return, parameter, property, field or event type, with its type arguments, array elements and function-pointer types), as a type argument in a base list, in a written constraint, or in a body (a local declaration, a written or inferred lambda type, a pattern, a cast, `default`, `sizeof`, an array creation, a `catch` type, a method type argument, the receiver type of a static member access); an EF Core navigation (`HasOne`/`HasMany`); a `[JsonSerializable]` context; or a test method's reflected setup, fixture or data-source dependency. | member, type, context, configuration or test method → type or test dependency | `compiler_proved`; `framework_derived` for EF Core navigations, `[JsonSerializable]` contexts and test setup dependencies |
 | `Contains` | A type declares a nested type. | type → nested type | `compiler_proved` |
 | `Overrides` | A method, property or event overrides a base member. | override → overridden member | `compiler_proved` |
 | `Hides` | A member hides an inherited member by the C# hiding rules. | member → hidden member | `compiler_proved` |
 | `ExtensionReceiver` | A reduced extension call (`x.M()`) binds its receiver type to the extension method. | receiver type → extension method | `compiler_proved` |
-| `Calls` | Code calls a method: an invocation, the implicit calls of the C# rules (`foreach`, `using`, `await`, deconstruction, collection initializers and expressions, user-defined operators and conversions, interpolated-string handlers, `with`), a constructor initializer, and a source-declared constructor of an object creation or an attribute. | owner → method | `compiler_proved` |
+| `Calls` | Code calls a method: an invocation, the implicit calls of the C# rules (`foreach`, `using`, `await`, deconstruction, collection initializers and expressions, user-defined operators and conversions, interpolated-string handlers, `with`), a constructor initializer, and a source-declared constructor of an object creation or an attribute. An ASP.NET Core `UseMiddleware` call also calls the middleware entry points and explicit public constructors. | owner → method | `compiler_proved`; `framework_derived` for middleware entry points and explicit public constructors |
 | `MethodGroupRef` | A method group converts to a delegate, also the handler of an event `+=` or `-=`. | owner → method | `compiler_proved` |
-| `Constructs` | An object creation, an attribute application or an interpolated-string handler creation. | owner → created type | `compiler_proved` |
+| `Constructs` | An object creation, an attribute application, an interpolated-string handler creation, or the middleware type of an ASP.NET Core `UseMiddleware` call. | owner → created type | `compiler_proved`; `framework_derived` for the middleware type |
 | `Reads` | Code reads a field, property, indexer or event. | owner → member | `compiler_proved` |
 | `Writes` | Code writes a field, property, indexer or event. A compound assignment, `??=`, `++`, `--` and a `ref` use are a read and a write. | owner → member | `compiler_proved` |
 | `Returns` | A method returns a source type. A delegate type owns the return type of its `Invoke`. | method or delegate type → type | `compiler_proved` |
@@ -182,11 +184,11 @@ is the executable form of these rules for the kinds that the golden compares.
 | `Declares` | A type declares a member, also a compiler-made member that Lurp stores (the synthesized members of a record, the members of a delegate). | type → member | `compiler_proved` |
 | `MayDispatchTo` | A call on a virtual, abstract or interface member can run this implementation at run time. Every member of an override chain points to every override below it. | dispatch member → implementation | `compiler_proved`; `possible` when only a derived type maps the member to an inherited implementation |
 | `StaticallyCalls` | An access whose target can dispatch at run time. It sits next to the `Calls`, `Reads` or `Writes` edge of the same access. A `base.` access and a method group get none. | owner → dispatch member | `compiler_proved` |
-| `RoutesTo` | An ASP.NET Core route (`route://<METHOD> /<template>`, tokens and overrides resolved, `ANY` without a method constraint) reaches a controller action. | route node → action method | `framework_derived` |
-| `Registers` | A dependency-injection registration binds a service to an implementation. A registration without an implementation registers the service type itself. | registering member or service type → implementation type; interface → class for a Scrutor scan; or the runtime-unknown node or an assembly-scan placeholder | `framework_derived`; `convention` for a Scrutor scan; `runtime_unknown` for a registration that Lurp cannot read |
+| `RoutesTo` | An ASP.NET Core route (`route://<METHOD> /<template>`, tokens and overrides resolved, `ANY` without a method constraint, `CUSTOM` when an `HttpMethodAttribute` subclass names no readable verb) reaches a controller action. | route node → action method | `framework_derived` |
+| `Registers` | A dependency-injection registration binds a service to an implementation. A registration without an implementation registers the service type itself. | registering member or service type → implementation type; interface → class for a Scrutor scan; or the runtime-unknown node or a `convention:assembly_scan:<assembly>` placeholder | `framework_derived`; `convention` for a Scrutor scan and an unmodeled assembly-scan placeholder; `runtime_unknown` for a registration that Lurp cannot read |
 | `Handles` | A MediatR handler handles a request or a notification; target = the method that implements the interface's `Handle` (explicit, inherited and overloaded implementations included). | request type → handler method | `framework_derived` |
 | `MapsTo` | EF Core maps an entity type through a declared or inherited `DbSet`, a configuration or a model builder call. | context, property or configuration → entity type | `framework_derived` |
-| `TestedBy` | A test method covers a production type; the test reaches the type through its body, the helpers of the test assembly, its class constructor, initializers and setup methods. | production type → test method | `framework_derived` |
+| `TestedBy` | A test method covers a production type; the test reaches the type through its body, the helpers of the test assembly, its class constructor, initializers, setup methods, fixtures (`IClassFixture`/`ICollectionFixture`) and data sources (`MemberData`, `ClassData`, `TestCaseSource`, `DynamicData`). | production type → test method | `framework_derived` |
 | `ReflectionTypeRef` | A `typeof(T)` names a type. | owner → type | `compiler_proved` |
 | `ReflectionMemberRef` | A `nameof` names a member, and each member of its receiver chain. | owner → member | `compiler_proved` |
 | `ReflectionNameCandidate` | A string literal is the name argument of a runtime or framework name-binding API, and it equals a declared name of the member kind of that API in its scope: the known type and its base types (see [TRUST_KERNEL.md](../notes/TRUST_KERNEL.md)). | owner → candidate member or type | `name_candidate` |
@@ -217,8 +219,11 @@ migrate.
 ### 5.1 Impact reachability
 
 `ImpactReachability` answers "what can this change reach?". It runs a
-level-by-level BFS from the anchor with one shared visited set, so memory grows
-with symbols and edges, not with paths. For each reached symbol it records the
+level-by-level BFS from the anchor's depth-zero seeds with visits keyed by
+`(symbol, access)`, so a property or event can be reached once per access mode
+without repeating a symbol's paths. The seeds are the anchor plus, for a
+downstream traversal, the members of a type anchor when `Declares` is excluded
+and the accessors of a property or event anchor. For each reached symbol it records the
 depth, one witness path, a shortest-path count (the number of shortest symbol routes;
 parallel edges between two symbols count once, saturating at `long.MaxValue`)
 and a frontier flag. Edges are sorted by neighbor ID, kind,
@@ -245,14 +250,20 @@ For a type anchor, `relevant_tests` and `surrounding_source` swap positions wher
 
 Trim order (first dropped to last dropped; `uncertainties` is appended after the budget pass and is never counted or trimmed): `surrounding_source`, `inclusion_reasons` (except `omitted_tiers_*`), `affected_public_surfaces`, `likely_change_sites`, `completeness` (detail first as `summarized`, then whole section as `budget_exhausted`), `constraints`, `topology`, `semantic_causes`, `outgoing_paths`, `incoming_paths`, `suggested_verification`, then the remaining tiers from lowest priority up, then `anchor` (source bounded to fit, or `budget_exhausted` when residual content still exceeds the budget).
 
-Incoming capsule paths and default upstream impact use the same edge filter.
-Outgoing capsule paths follow all edge kinds.
+Incoming and outgoing capsule paths use the default impact filter, which excludes
+`Declares`, `Contains` and `TestedBy`; default upstream impact uses the same filter.
+The outgoing walk starts from the anchor and its depth-zero seeds.
 The caller and test tiers share a walk from the anchor and its effective members.
 Callers at depth one appear in `direct_callers`. Callers from depth two through
-the hop limit appear in `second_degree_context`. Reads and writes count at
-each hop. A dispatch link consumes one hop. A type capsule omits callers
-inside the type and its nested types. Tests use the minimum depth of the
-symbols they cover. These tiers sort by depth, then by symbol ID.
+the hop limit appear in `second_degree_context`. Calls, constructions,
+method-group references (`MethodGroupRef`), reads and writes count at each hop.
+Framework entry points (`RoutesTo`, `Handles`) are kept at every hop. A `RoutesTo`
+source is a Route item with no source or location; its id is not a stored symbol
+and `--symbol=` rejects it. A dispatch
+link consumes one hop. A type capsule omits callers inside the type and its
+nested types. Tests use the minimum depth of the symbols they cover. These tiers
+sort by depth, then by symbol ID. Start a new `--tier=` page sequence after
+upgrading to 4.2.0.
 
 When a tier is empty, contracts, direct callees and surrounding source check
 for binding loss in the anchor documents. Callers, tests, registrations and
@@ -265,9 +276,9 @@ The contracts tier shows proved interface members implemented by the anchor
 or its effective members. The registration tier uses the other runtime evidence.
 
 Affected public surfaces and the dead-candidate ladder use the same access
-rules. Types, ordinary methods, events and event accessors use effective
-access. Instance constructors, properties, fields and property accessors use
-declared access. Internal and private protected symbols need a friend grant
+rules. Every symbol uses effective access, which intersects declared access with
+every containing type, and falls back to declared access only when effective
+access is unavailable. Internal and private protected symbols need a friend grant
 to an assembly outside the snapshot.
 
 Constraints apply to the anchor, its containing types, emitted items and
@@ -328,7 +339,7 @@ entry, not a new extractor.
 | **snapshot** | One immutable view of a solution; content-addressed |
 | **capsule** | Token-bounded neighborhood assembled for an agent task |
 | **tier** | A category within a capsule; may be `budget_exhausted` |
-| **evidence / provenance** | The 7-level ladder (`compiler_proved` → `runtime_unknown`) |
+| **evidence / provenance** | The 6-level ladder (`compiler_proved` → `runtime_unknown`) |
 | **adapter** | Framework-mediated edge emitter (ASP.NET, DI, MediatR, …) |
 | **freshness** | Snapshot state (`fresh`/`stale`/`unknown`); `status --json` also reports a `completeness` block with `binding_incompleteness` / `binding_incompleteness_summary` / `binding_incompleteness_total`; the `occurrence_count` of a row is the number of distinct binding sites (document, node span, reason) |
 

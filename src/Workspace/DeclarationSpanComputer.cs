@@ -42,7 +42,9 @@ internal static class DeclarationSpanComputer
             if (lines.GetLineFromPosition(start).LineNumber -
                 lines.GetLineFromPosition(item.Span.End - 1).LineNumber > 1)
                 break;
-            start = item.SpanStart;
+            // FullSpan, not Span: a documentation comment's leading `///` or `/**` is trivia
+            // of the structured trivia node, so Span starts after the marker.
+            start = item.FullSpan.Start;
         }
 
         return start;

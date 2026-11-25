@@ -187,6 +187,36 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
             tiedGroups[1].GetProperty("max_depth").GetInt32()));
     }
 
+    [Fact]
+    public async Task ImpactHandler_CursorFromPreviousSequenceLayout_IsRejected()
+    {
+        var snapshotId = await IndexInitialAsync();
+        var barId = ResolveSymbolId(snapshotId, "global::ImpactProj.Foo.Bar");
+
+        var first = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
+            "--mode=impact", $"--symbol={barId}", "--direction=upstream",
+            $"--output-dir={TestDir}", "--output=json", "--limit=1"
+        ], sink));
+        Assert.Null(first.Failure);
+        using var doc = JsonDocument.Parse(first.Stdout);
+        var current = SequenceCursor.TryDecode(
+            doc.RootElement.GetProperty("truncated").GetProperty("cursor").GetString()!)!;
+
+        // The 4.1.0 fingerprint had no sequence marker.
+        var stale = current with
+        {
+            Fingerprint = SequenceCursor.ComputeFingerprint(barId, "Upstream", "3", null, null, "symbols")
+        };
+        Assert.NotEqual(current.Fingerprint, stale.Fingerprint);
+
+        var rejected = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
+            "--mode=impact", $"--symbol={barId}", "--direction=upstream",
+            $"--output-dir={TestDir}", "--output=json", "--limit=1", $"--cursor={stale.Encode()}"
+        ], sink));
+        Assert.NotNull(rejected.Failure);
+        Assert.Contains("re-run without --cursor", rejected.Failure.Message);
+    }
+
     // Contract/acceptance: pins the v2 summary and jsonl renderings.
     [Fact]
     public async Task ImpactHandler_SummaryAndJsonl_UseV2Shape()

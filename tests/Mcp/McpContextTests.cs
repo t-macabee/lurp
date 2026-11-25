@@ -228,6 +228,30 @@ public sealed class McpContextTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Tier_CursorFromPreviousSequenceLayout_ReturnsInvalidParams()
+    {
+        await IndexFixtureAndGetSnapshot();
+        var (session, tool) = CreateSessionTool();
+        await using (session)
+        {
+            var jsonFirst = tool.LurpContext(symbol: "CtxProj.Foo.Bar", tier: "direct_callers", tier_limit: 1);
+            using var docFirst = JsonDocument.Parse(jsonFirst);
+            var tierPage = docFirst.RootElement.GetProperty("tier_page");
+            var symbolId = tierPage.GetProperty("symbol_id").GetString()!;
+            var current = SequenceCursor.TryDecode(tierPage.GetProperty("next_cursor").GetString()!)!;
+
+            // The 4.1.0 fingerprint had no sequence marker.
+            var stale = current with { Fingerprint = SequenceCursor.ComputeFingerprint(symbolId, "direct_callers", "3", "False") };
+            Assert.NotEqual(current.Fingerprint, stale.Fingerprint);
+
+            var ex = Assert.Throws<McpProtocolException>(() =>
+                tool.LurpContext(symbol: "CtxProj.Foo.Bar", tier: "direct_callers", tier_limit: 1, cursor: stale.Encode()));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Contains("re-run without --cursor", ex.Message);
+        }
+    }
+
+    [Fact]
     public async Task Tier_Unknown_ReturnsInvalidParams()
     {
         await IndexFixtureAndGetSnapshot();

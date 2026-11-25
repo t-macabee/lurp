@@ -80,7 +80,11 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = $"""
             SELECT f.snapshot_id,
-                   CASE WHEN {SnapshotLifecycleStore.SupersededFailureExistsSql} THEN 1 ELSE 0 END AS is_superseded
+                   CASE WHEN {SnapshotLifecycleStore.SupersededFailureExistsSql} THEN 1 ELSE 0 END AS is_superseded,
+                   EXISTS (
+                       SELECT 1 FROM annotations
+                       WHERE snapshot_id = f.snapshot_id AND document_path IS NULL
+                   ) AS has_user_annotations
             FROM snapshots f
             WHERE f.workspace_id = @workspaceId
               AND f.status = @failedStatus
@@ -98,7 +102,10 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             var id = reader.GetString(0);
             var isSuperseded = reader.GetInt32(1) == 1;
             if (isSuperseded || keptCurrentFailure)
-                toDelete.Add(id);
+            {
+                if (reader.GetInt32(2) == 0)
+                    toDelete.Add(id);
+            }
             else
                 keptCurrentFailure = true;
         }
@@ -110,21 +117,21 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     {
         using var listCmd = _connection.CreateCommand();
         listCmd.CommandText = """
-            SELECT snapshot_id, status
+            SELECT snapshot_id
             FROM snapshots
             WHERE status IN (@inProgress, @failed)
               AND payload_pruned = 0;
             """;
         listCmd.Parameters.AddWithValue("@inProgress", SnapshotStatusValues.InProgress);
         listCmd.Parameters.AddWithValue("@failed", SnapshotStatusValues.Failed);
-        var snapshotRows = new List<(string SnapshotId, string Status)>();
+        var snapshotIds = new List<string>();
         using (var reader = listCmd.ExecuteReader())
         {
             while (reader.Read())
-                snapshotRows.Add((reader.GetString(0), reader.GetString(1)));
+                snapshotIds.Add(reader.GetString(0));
         }
 
-        if (snapshotRows.Count == 0)
+        if (snapshotIds.Count == 0)
             return;
 
         using var transaction = _connection.BeginTransaction();
@@ -133,20 +140,22 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = transaction;
 
-            foreach (var (snapshotId, status) in snapshotRows)
+            foreach (var snapshotId in snapshotIds)
             {
-                DeleteSnapshotPayload(cmd, snapshotId);
-                // Tombstone: keep the row : and with it the failure reason
-                // that P2-9 exists to expose : but mark the payload pruned so
-                // a later run does not rescan the (now empty) payload.
-                // Crashed in-progress rows have no failure reason to preserve;
-                // restore the original cleanup of deleting the whole row.
-                cmd.CommandText = status == SnapshotStatusValues.Failed
-                    ? "UPDATE snapshots SET payload_pruned = 1 WHERE snapshot_id = @sid;"
-                    : "DELETE FROM snapshots WHERE snapshot_id = @sid;";
-
+                DeleteSnapshotPayload(cmd, snapshotId, preserveUserAnnotations: true);
+                // Keep failed rows for status and interrupted replacements for their user notes.
+                cmd.CommandText = """
+                    UPDATE snapshots SET payload_pruned = 1 WHERE snapshot_id = @sid;
+                    DELETE FROM snapshots
+                    WHERE snapshot_id = @sid AND status = @inProgress
+                      AND NOT EXISTS (
+                          SELECT 1 FROM annotations
+                          WHERE snapshot_id = @sid AND document_path IS NULL
+                      );
+                    """;
                 cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("@sid", snapshotId);
+                cmd.Parameters.AddWithValue("@inProgress", SnapshotStatusValues.InProgress);
                 cmd.ExecuteNonQuery();
             }
 
@@ -179,9 +188,19 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         }
     }
 
-    private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId)
+    internal void DeleteSnapshotForRebuild(string snapshotId, SqliteTransaction transaction)
     {
-        DeleteSnapshotPayload(cmd, snapshotId);
+        if (IsPinnedSnapshot(snapshotId, transaction))
+            throw new InvalidOperationException($"snapshot '{snapshotId}' is pinned and cannot be deleted. Clear the pin first with --mode=pin-snapshot --clear.");
+
+        using var cmd = _connection.CreateCommand();
+        cmd.Transaction = transaction;
+        DeleteSnapshotData(cmd, snapshotId, preserveUserAnnotations: true);
+    }
+
+    private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId, bool preserveUserAnnotations = false)
+    {
+        DeleteSnapshotPayload(cmd, snapshotId, preserveUserAnnotations);
 
         cmd.CommandText = "UPDATE snapshot_pins SET previous_pinned_snapshot_id = NULL WHERE previous_pinned_snapshot_id = @sid;";
         cmd.Parameters.Clear();
@@ -194,11 +213,11 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         cmd.ExecuteNonQuery();
     }
 
-    private static void DeleteSnapshotPayload(SqliteCommand cmd, string snapshotId)
+    private static void DeleteSnapshotPayload(SqliteCommand cmd, string snapshotId, bool preserveUserAnnotations)
     {
         string[] tables =
         [
-            "edges", "diagnostics", "annotations", "snapshot_declarations", "snapshot_symbols", "symbol_target_frameworks",
+            "edges", "diagnostics", "snapshot_declarations", "snapshot_symbols", "symbol_target_frameworks",
             "projects", "snapshot_documents", "source_fts", "symbol_fts",
             "snapshot_timings", "snapshot_metrics", "snapshot_graph_nodes", "binding_incompleteness"
         ];
@@ -216,6 +235,15 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             """;
         cmd.Parameters.Clear();
         cmd.Parameters.AddWithValue("@sid", snapshotId);
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = """
+            DELETE FROM annotations
+            WHERE snapshot_id = @sid AND (NOT @preserveUserAnnotations OR document_path IS NOT NULL);
+            """;
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@sid", snapshotId);
+        cmd.Parameters.AddWithValue("@preserveUserAnnotations", preserveUserAnnotations);
         cmd.ExecuteNonQuery();
 
         foreach (var table in tables)

@@ -21,6 +21,9 @@ internal sealed record ImpactRequest(
     string? Cursor)
 {
     internal const string CursorKind = "impact";
+    // Part of the fingerprint so a cursor from a sequence layout this build does not
+    // reproduce fails validation instead of resuming at a misaligned offset.
+    private const string FingerprintMarker = "impact-v2";
     internal const int DefaultLimit = 50;
     internal const int DefaultMaxDepth = 3;
     internal static readonly IReadOnlyList<string> EdgeKindNames = Enum.GetNames<EdgeKind>();
@@ -116,17 +119,28 @@ internal sealed record ImpactRequest(
     {
         var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, Symbol, snapshotId, includeGenerated: true);
 
-        var fingerprint = SequenceCursor.ComputeFingerprint(
-            resolvedSymbolId,
-            Direction.ToString(),
-            MaxDepth.ToString(CultureInfo.InvariantCulture),
-            CanonicalKinds is null ? null : string.Join(",", CanonicalKinds),
-            CanonicalProvenance is null ? null : string.Join(",", CanonicalProvenance),
-            "symbols");
+        var fingerprint = ComputeFingerprint(resolvedSymbolId, Direction, MaxDepth, CanonicalKinds, CanonicalProvenance);
 
         if (!RequestError.TryDecodeAndValidateCursor(Cursor, snapshotId, fingerprint, CursorKind, out var offset, out var cursorError))
             return (null, cursorError);
 
         return (new ImpactBinding(resolvedSymbolId, fingerprint, offset), null);
+    }
+
+    internal static string ComputeFingerprint(
+        string resolvedSymbolId,
+        ImpactDirection direction,
+        int maxDepth,
+        IReadOnlyList<string>? canonicalKinds,
+        IReadOnlyList<string>? canonicalProvenance)
+    {
+        return SequenceCursor.ComputeFingerprint(
+            FingerprintMarker,
+            resolvedSymbolId,
+            direction.ToString(),
+            maxDepth.ToString(CultureInfo.InvariantCulture),
+            canonicalKinds is null ? null : string.Join(",", canonicalKinds),
+            canonicalProvenance is null ? null : string.Join(",", canonicalProvenance),
+            "symbols");
     }
 }

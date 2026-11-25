@@ -197,10 +197,23 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _lifecycle!.SaveWorkspace(id, gitRoot, solutionPath);
     }
 
-    public void SaveSnapshot(SnapshotRow manifest)
+    public void SaveSnapshot(SnapshotRow manifest) => SaveSnapshot(manifest, replaceExisting: false);
+
+    internal void SaveSnapshot(SnapshotRow manifest, bool replaceExisting)
     {
         EnsureOpen();
-        _lifecycle!.SaveSnapshot(manifest);
+        _lifecycle!.SaveSnapshot(manifest, replaceExisting, _pruner!);
+    }
+
+    internal void CompleteIndex(string snapshotId, string? annotationSourceId)
+    {
+        EnsureOpen();
+        using var transaction = _connection!.BeginTransaction();
+        if (annotationSourceId is not null)
+            _annotations!.CopyUserAnnotationsIfMissing(annotationSourceId, snapshotId, transaction);
+        _annotations!.PruneOrphanAnnotations(snapshotId, transaction);
+        _lifecycle!.MarkSnapshotComplete(snapshotId, transaction);
+        transaction.Commit();
     }
 
     public void MarkSnapshotComplete(string snapshotId)
@@ -215,10 +228,13 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _lifecycle!.MarkSnapshotSelected(snapshotId, selectedAtUtc);
     }
 
-    public void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message)
+    public void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message) =>
+        TryMarkSnapshotFailed(snapshotId, reasonCode, message);
+
+    internal bool TryMarkSnapshotFailed(string snapshotId, string reasonCode, string? message)
     {
         EnsureOpen();
-        _lifecycle!.MarkSnapshotFailed(snapshotId, reasonCode, message);
+        return _lifecycle!.TryMarkSnapshotFailed(snapshotId, reasonCode, message);
     }
 
     public SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null)
@@ -559,13 +575,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _annotations!.SaveAnnotations(snapshotId, annotations);
     }
 
-    internal void RestoreUserAnnotations(string snapshotId, IReadOnlyList<AnnotationRecord> annotations)
-    {
-        EnsureOpen();
-        if (annotations.Count > 0)
-            _annotations!.SaveAnnotations(snapshotId, annotations, requireLiveSymbol: true);
-    }
-
     public long SaveUserAnnotation(string snapshotId, string symbolId, string kind, string value)
     {
         EnsureOpen();
@@ -620,12 +629,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         return _annotations!.GetAnnotations(snapshotId, symbolId);
-    }
-
-    internal List<AnnotationRecord> GetUserAnnotations(string snapshotId)
-    {
-        EnsureOpen();
-        return _annotations!.GetUserAnnotations(snapshotId);
     }
 
     public AnnotationPage GetAnnotationsPage(string snapshotId, string? symbolId, string? documentPath, string? kind, int limit, AnnotationCursor? cursor)
@@ -706,10 +709,10 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _annotations!.CopyAnnotationsToSnapshot(fromSnapshotId, toSnapshotId);
     }
 
-    internal void PruneOrphanAnnotations(string snapshotId)
+    internal void CopyExtractorAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         EnsureOpen();
-        _annotations!.PruneOrphanAnnotations(snapshotId);
+        _annotations!.CopyAnnotationsToSnapshot(fromSnapshotId, toSnapshotId, includeUserAnnotations: false);
     }
 
     public bool TryRetractAnnotation(string snapshotId, long annotationId)

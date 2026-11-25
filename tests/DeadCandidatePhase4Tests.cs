@@ -86,6 +86,69 @@ public sealed class DeadCandidatePhase4Tests : IntegrationTestBase
         };
     }
 
+    /// <summary>
+    ///     C# specification, records: Equals, GetHashCode and the copy constructor use every instance field,
+    ///     PrintMembers reads public instance fields and properties, Deconstruct reads positional properties. None of
+    ///     them reads a static member or an indexer, calls a setter, or calls another method of the record.
+    /// </summary>
+    [Fact]
+    public async Task RecordDataMembersAreNotProvedDead()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["App.cs"] = """
+                         namespace Sample;
+                         internal sealed record Positional(int Value);
+                         internal readonly record struct ValueRecord(int Value);
+                         internal sealed record Nominal
+                         {
+                             internal int Field;
+                             public int Value { get { return 1; } set { } }
+                             internal static int Shared { get { return 1; } }
+                             internal int this[int index] { get { return index; } }
+                             internal void Unused() {}
+                         }
+                         internal sealed record Dead(int Value);
+                         internal sealed class Plain { internal int Value { get { return 1; } } }
+                         public static class Use
+                         {
+                             public static object Go() => new object[]
+                             {
+                                 new Positional(1), new ValueRecord(1), new Nominal(), new Plain()
+                             };
+                         }
+                         """
+        });
+
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        var actual = store.GetDeadCandidatesPage(snapshot, null, null, null, false, false, false, 200, null).Candidates
+            .Select(c => $"{SymbolId.DocCommentIdOf(c.SymbolId)} {c.Status} {c.Reason}").ToArray();
+
+        const string uncertain = $"{DeadCandidateStatus.UncertainDead} {DeadCandidateReason.FrameworkConvention}";
+        const string dead = $"{DeadCandidateStatus.ProvedDead} {DeadCandidateReason.NoIncomingLiveEdges}";
+        string[] expected =
+        [
+            $"F:Sample.Nominal.Field {uncertain}",
+            $"M:Sample.Dead.#ctor(System.Int32) {dead}",
+            $"M:Sample.Nominal.Unused {dead}",
+            $"M:Sample.Nominal.get_Item(System.Int32) {dead}",
+            $"M:Sample.Nominal.get_Shared {dead}",
+            $"M:Sample.Nominal.get_Value {uncertain}",
+            $"M:Sample.Nominal.set_Value(System.Int32) {dead}",
+            $"M:Sample.Plain.get_Value {dead}",
+            $"P:Sample.Dead.Value {uncertain}",
+            $"P:Sample.Nominal.Item(System.Int32) {dead}",
+            $"P:Sample.Nominal.Shared {dead}",
+            $"P:Sample.Nominal.Value {uncertain}",
+            $"P:Sample.Plain.Value {dead}",
+            $"P:Sample.Positional.Value {uncertain}",
+            $"P:Sample.ValueRecord.Value {uncertain}",
+            $"T:Sample.Dead {dead}"
+        ];
+        Assert.Equal(expected, actual.Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public async Task LinkedDeclarationsShareLivenessAndPreferTheOwningProject()
     {

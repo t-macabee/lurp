@@ -20,6 +20,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     private const string HostedServiceExtensionsType = "Microsoft.Extensions.DependencyInjection.ServiceCollectionHostedServiceExtensions";
     private const string OptionsExtensionsType = "Microsoft.Extensions.DependencyInjection.OptionsServiceCollectionExtensions";
     private const string OptionsConfigurationExtensionsType = "Microsoft.Extensions.DependencyInjection.OptionsConfigurationServiceCollectionExtensions";
+    private const string RelationalOptionsBuilderType = "Microsoft.EntityFrameworkCore.Infrastructure.RelationalDbContextOptionsBuilder`2";
     private const string ScrutorExtensionsType = "Microsoft.Extensions.DependencyInjection.ServiceCollectionExtensions";
 
     // The assemblies of MS.DI itself. A method of theirs that registers nothing (BuildServiceProvider,
@@ -117,7 +118,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             .SelectMany(a => a.Value.DescendantsAndSelf().OfType<IAnonymousFunctionOperation>())
             .SelectMany(lambda => lambda.Body.Descendants().OfType<IInvocationOperation>())
             .Where(candidate => !call.Context.IsSolutionSymbol(candidate.TargetMethod) &&
-                                !IsMediatRMethod(candidate.TargetMethod) && HasAssemblyParameter(candidate.TargetMethod))
+                                !IsMediatRMethod(candidate.TargetMethod) && !IsEfProviderOption(candidate.TargetMethod) &&
+                                HasAssemblyParameter(candidate.TargetMethod))
             .Distinct()
             .ToList();
         if (HasAssemblyParameter(invocation.TargetMethod))
@@ -162,6 +164,15 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     private static bool IsMediatRMethod(IMethodSymbol method)
     {
         return method.ContainingAssembly?.Name is "MediatR" or "MediatR.Extensions.Microsoft.DependencyInjection";
+    }
+
+    /// <summary>
+    ///     An option of an EF Core relational provider. <c>MigrationsAssembly</c> names an assembly,
+    ///     but it registers no service.
+    /// </summary>
+    private static bool IsEfProviderOption(IMethodSymbol method)
+    {
+        return FrameworkTypes.Is(method.ContainingType, RelationalOptionsBuilderType);
     }
 
     private static bool HasAssemblyParameter(IMethodSymbol method)

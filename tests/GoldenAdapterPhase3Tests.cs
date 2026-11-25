@@ -336,6 +336,103 @@ public sealed partial class GoldenAdapterTests
     }
 
     [Fact]
+    public async Task Phase3_AnnotationsOfExternalTypes_AreNotStored_AndConverge()
+    {
+        const string other = "namespace App; public class Other { }";
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Services.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                using Microsoft.EntityFrameworkCore;
+                using Microsoft.Extensions.DependencyInjection;
+                namespace App;
+                public class Options;
+                public class Entity { public string Name { get; set; } = ""; }
+                public static class Services
+                {
+                    public static void Bind(IServiceCollection services)
+                    {
+                        services.Configure<Options>(_ => { });
+                        services.Configure<MvcOptions>(_ => { });
+                    }
+                }
+                public class AppContext : DbContext
+                {
+                    protected override void OnModelCreating(ModelBuilder model)
+                    {
+                        model.Entity<Entity>().HasIndex(e => e.Name).IsUnique();
+                        model.Entity<ProblemDetails>().HasIndex(e => e.Title).IsUnique();
+                    }
+                }
+                """,
+            ["Other.cs"] = other
+        }, ["Microsoft.EntityFrameworkCore@10.0.1"], frameworkReferences: [AspNetCoreFramework]);
+        RestoreSolution();
+
+        var initial = await RunFullIndexAsync(DbPath);
+        using (var store = OpenStore(DbPath))
+        {
+            Assert.Equal(
+                [("ef_unique_index_constraint", ResolveSymbolId(initial, "global::App.Entity")),
+                    ("options_binding", ResolveSymbolId(initial, "global::App.Options"))],
+                store.GetAnnotations(initial).Select(a => (a.Kind, a.SymbolId)).Order());
+        }
+
+        WriteFile("App", "Other.cs", other + "\npublic class Added { }\n");
+        var incremental = await RunIncrementalIndexAsync();
+        var cleanDb = DbPath + ".clean";
+        var clean = await RunFullIndexAsync(cleanDb);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, incremental, cleanDb, clean);
+    }
+
+    [Fact]
+    public async Task Phase3_DI_EfMigrationsAssembly_IsNotAnAssemblyScan()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Services.cs"] = """
+                using Microsoft.EntityFrameworkCore;
+                using Microsoft.EntityFrameworkCore.Infrastructure;
+                using Microsoft.Extensions.DependencyInjection;
+                namespace App;
+                public class AppContext : DbContext;
+                public class ProviderExtension : RelationalOptionsExtension
+                {
+                    public override DbContextOptionsExtensionInfo Info => null!;
+                    public override void ApplyServices(IServiceCollection services) { }
+                    protected override RelationalOptionsExtension Clone() => this;
+                }
+                public class ProviderBuilder(DbContextOptionsBuilder options)
+                    : RelationalDbContextOptionsBuilder<ProviderBuilder, ProviderExtension>(options);
+                public static class Provider
+                {
+                    public static DbContextOptionsBuilder UseProvider(this DbContextOptionsBuilder options,
+                        Action<ProviderBuilder> configure) => options;
+                }
+                public static class Services
+                {
+                    public static void ByName(IServiceCollection services) => services.AddDbContext<AppContext>(options =>
+                        options.UseProvider(sql => sql.MigrationsAssembly(typeof(AppContext).Assembly.FullName)));
+                    public static void ByAssembly(IServiceCollection services) => services.AddDbContext<AppContext>(options =>
+                        options.UseProvider(sql => sql.MigrationsAssembly(typeof(AppContext).Assembly)));
+                }
+                """
+        }, ["Microsoft.EntityFrameworkCore.Relational@10.0.13"]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+
+        Assert.DoesNotContain(QueryEdges(snapshot, "Registers", Provenance.Convention), e =>
+            e.TargetSymbolId.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix, StringComparison.Ordinal));
+        var claims = QueryEdges(snapshot, "Registers", Provenance.RuntimeUnknown);
+        var context = ResolveSymbolId(snapshot, "global::App.AppContext");
+        foreach (var method in new[] { "ByName", "ByAssembly" })
+        {
+            var owner = ResolveSymbolId(snapshot, "global::App.Services." + method);
+            Assert.Contains(claims, e => e.SourceSymbolId == owner && e.TargetSymbolId == context);
+        }
+    }
+
+    [Fact]
     public async Task Phase3_TestAdapter_FollowsDataSourcesAndFixtureSetup()
     {
         CreateProject("App", new Dictionary<string, string>

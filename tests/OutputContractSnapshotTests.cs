@@ -235,6 +235,15 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
                 await RunMode("context", $"--symbol={anchor}", "--affected-project=CallShapes.App", "--output=json"),
                 "capsule");
 
+        // A capsule that a limit cuts: one hop fills truncation_reason, a small content
+        // budget fills omitted_tiers_budget_exhausted. The default limits cut nothing here.
+        ExtractJsonShape("cli:context:json",
+            await RunMode("context", $"--symbol={fixture.CallerSymbolId}", "--max-hops=1", "--output=json"),
+            "capsule");
+        ExtractJsonShape("cli:context:json",
+            await RunMode("context", $"--symbol={fixture.TypeSymbolId}", "--content-budget=2000", "--output=json"),
+            "capsule");
+
         // T7: find a real continuation cursor; no cursor is invented. The tier page is
         // run first-page and cursor-page in both output modes. --output=jsonl is accepted
         // only when --tier= is present (ParseOutputMode allowJsonl gate), which it is.
@@ -345,6 +354,10 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         var contextTool = new ContextTool(session);
         foreach (var anchor in fixture.AnchorSymbolIds)
             ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: anchor, affected_project: CallShapesAppProject));
+
+        // The limited capsules of the CLI runs above, CLI/MCP parity.
+        ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: fixture.CallerSymbolId, max_hops: 1));
+        ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: fixture.TypeSymbolId, content_budget: 2000));
 
         var (mcpCursorSymbol, mcpCursorTier, mcpCursor) = FindMcpContextCursor(session);
         ExtractToolShape("lurp_context", () => contextTool.LurpContext(symbol: mcpCursorSymbol, tier: mcpCursorTier, tier_limit: 1));

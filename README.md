@@ -17,7 +17,7 @@ source with evidence levels each time.
 
 ## [What the model sees](https://t-macabee.github.io/lurp/MODEL_VIEW.html)
 
-A point-in-time map of one Lurp 4.1.0 index (extractor 1.13.0) of
+A point-in-time map of one Lurp 4.2.0 index (extractor 1.14.0) of
 [eNoteV2](https://github.com/t-macabee/eNoteV2) (`eNote/eNote.sln` at `4ba9901`, 7 projects):
 the evidence level of every edge, the DI, routing and EF Core surfaces, and the
 full edge ledgers behind them. [`scripts/model-view/`](scripts/model-view/)
@@ -57,7 +57,7 @@ separately.
 | `timings` | Per-step performance data for a snapshot. |
 | `outline` | List declarations in a document with line spans. |
 | `diagnostics` | List compiler diagnostics captured at index time. |
-| `dead-candidates` | List dead-code candidates: no incoming LIVE edge (one-hop liveness), after a suppression ladder. Public surface (effective accessibility for types, methods and events; declared accessibility for constructors, properties and fields; plus internals of projects granting `InternalsVisibleTo` outside the snapshot), EF/serialization conventions, process entry points and generated/test code are never reported as `proved_dead`. |
+| `dead-candidates` | List dead-code candidates: no incoming LIVE edge (one-hop liveness), after a suppression ladder. Public surface (effective accessibility for every symbol, intersected with its containing types, plus internals of projects granting `InternalsVisibleTo` outside the snapshot), EF, serialization, framework and record conventions, process entry points and generated/test code are never reported as `proved_dead`. |
 
 ## Worked example
 
@@ -72,31 +72,21 @@ lurp --mode=context --file=eNote.Application/Features/Academic/Courses/Services/
 
 ```
 capsule global::eNote.Application.Features.Academic.Courses.Services.CourseService.GetByIdForInstructorAsync (Method)
-  snapshot: 9e997aadc404c302f308a82f42e4e01c  intent: inspect  maxHops: 3
-  content tokens:  7933/8000  (estimated_tokens: the budget basis)
-  delivery tokens: ~16986  (estimated_artifact_tokens: whole emitted file; size the context window from this)
+  snapshot: 5ba62832c49646ef4c2dc8aa6b85c7a1  intent: inspect  maxHops: 3
+  content tokens:  7729/8000  (estimated_tokens: the budget basis)
+  delivery tokens: ~23294  (estimated_artifact_tokens: whole emitted file; size the context window from this)
   truncated: True
-  contracts                    0
-  direct_callees               5
-  direct_callers               3
-  registered_implementations   1
-  relevant_tests               18
-  second_degree_context        0
-  surrounding_source           0
-  incoming_witness_paths: 3  outgoing_witness_paths: 3  uncertainties: 1
-  omitted: contracts (empty)
-  omitted: relevant_tests (summarized) : fetch with --tier=relevant_tests
-  omitted: second_degree_context (budget_exhausted) : fetch with --tier=second_degree_context
-  omitted: surrounding_source (budget_exhausted) : fetch with --tier=surrounding_source
-  omitted: incoming_paths (summarized)
+  contracts                    1
+  direct_callees               25
+  direct_callers               1
+  registered_implementations   0
+  relevant_tests               5
+  second_degree_context        2
+  surrounding_source           7
+  incoming_witness_paths: 3  outgoing_witness_paths: 3  uncertainties: 6
+  omitted: registered_implementations (unmodeled_construct)
   omitted: outgoing_paths (summarized)
-  omitted: registered_implementations (summarized) : fetch with --tier=registered_implementations
-  omitted: inclusion_reasons (budget_exhausted)
-  omitted: affected_public_surfaces (budget_exhausted)
-  omitted: likely_change_sites (budget_exhausted)
-  omitted: completeness (budget_exhausted)
-  omitted: constraints (budget_exhausted)
-  omitted: topology (budget_exhausted)
+  omitted: surrounding_source (summarized) : fetch with --tier=surrounding_source
   written: ./out/capsule-<id>.json
 ```
 
@@ -118,7 +108,7 @@ older runtime does not. Indexing and solution-backed status
 solution should be restored (an unrestored project still indexes, with a warning and missing edges; see "Restore first" below).
 
 ```bash
-dotnet tool install --global lurp --version 4.1.0
+dotnet tool install --global lurp --version 4.2.0
 lurp --mode=index --solution=path/to/Your.slnx
 ```
 
@@ -204,7 +194,7 @@ Measured on 2026-11-21 with Lurp 4.0.0 (Release build from `f683ccf` with the P2
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.1.0, schema v52, extractor 1.14.0, CLI/MCP contract v9, output schema v7<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.2.0, schema v52, extractor 1.14.0, CLI/MCP contract v9, output schema v8<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit
@@ -217,7 +207,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
-- [RELEASE_NOTES_4.2.0.md](docs/RELEASE_NOTES_4.2.0.md) (draft)
+- [RELEASE_NOTES_4.2.0.md](docs/RELEASE_NOTES_4.2.0.md): updated declaration spans, symbol search ranking, impact and context traversal, and expanded framework coverage. Run one full index after the upgrade.
 - [RELEASE_NOTES_4.1.0.md](docs/RELEASE_NOTES_4.1.0.md): the 4.1.0 changes to EF Core mapping and the MCP tool results (CLI/MCP contract 8). Run one full index after the upgrade.
 - [RELEASE_NOTES_4.0.0.md](docs/RELEASE_NOTES_4.0.0.md): the 4.0.0 changes to extraction, storage, indexing and the CLI/MCP contract. Run one full index after the upgrade.
 - [RELEASE_NOTES_3.6.1.md](docs/RELEASE_NOTES_3.6.1.md): the 3.6.1 changes (release workflow waits up to 60 minutes for nuget.org to index); no index run is needed.

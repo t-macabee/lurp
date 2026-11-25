@@ -273,6 +273,14 @@ public sealed class ContextCapsuleTraversalTests : IntegrationTestBase
         Assert.DoesNotContain(Capsule("Target", 1).SecondDegreeContext, item => item.SymbolId == routeId);
         Assert.Single(Capsule("Target", 3).SecondDegreeContext, item => item.SymbolId == routeId);
 
+        // The CLI tier page's summary omits the trailing ":" when the item carries no location.
+        var directId = ResolveSymbolId(snapshot, "global::App.DemoController.Direct");
+        var summary = await CliModeRunner.RunAsync("context", [
+            $"--symbol={directId}", "--tier=direct_callers", "--output=summary", $"--output-dir={TestDir}"]);
+        var routeLine = Assert.Single(summary.Split('\n', StringSplitOptions.RemoveEmptyEntries),
+            line => line.Contains(routeId, StringComparison.Ordinal));
+        Assert.Equal("  route://GET /demo  [RoutesTo/framework_derived]", routeLine.TrimEnd('\r'));
+
         ContextCapsule Capsule(string name, int maxHops) => ContextAssembler.ResolveAndAssemble(store, store,
             new ContextLookup(snapshot, ResolveSymbolId(snapshot, $"global::App.DemoController.{name}"), null, null),
             new ContextAssemblyOptions(ContextIntent.Inspect, 100_000, maxHops), store, store);

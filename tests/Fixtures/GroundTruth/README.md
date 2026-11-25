@@ -52,11 +52,13 @@ are committed. Index output belongs outside the fixture tree.
   (audit B6/Q12b). `CrossProjectBoundaryTests` runs this through the CLI.
 - `ExtractorGate/` — Fixture 3: the corpus of the extractor version gate
   (`ExtractorVersionGateTests`). `ExtractorGate.App` holds one shape for
-  each framework adapter (controller, DI registration and Scrutor scan, MediatR
-  handler, EF Core `DbContext` with a query filter and a context that inherits
-  a generic `DbSet<T>`, `[JsonPropertyName]`) and for
-  the `Hides` and `Reflection` extractors; `ExtractorGate.Tests` is an xUnit
-  project for the test adapter. It references MediatR, EF Core, Scrutor and
+  each framework adapter (controller and `UseMiddleware` middleware, DI
+  registration, options binding, typed HTTP client and Scrutor scan, MediatR
+  request and stream handler, EF Core `DbContext` with a query filter and a
+  context that inherits a generic `DbSet<T>`, `[JsonPropertyName]` and
+  `[JsonConstructor]`) and for the `Hides` and `Reflection` extractors;
+  `ExtractorGate.Tests` is an xUnit project for the test adapter with a
+  `[MemberData]` theory. It references MediatR, EF Core, Scrutor and
   xUnit, so a restore needs those packages.
 - `Directory.Build.props` — turns analyzers and warnings-as-errors off for these
   projects only: the fixtures deliberately use instance members a consumer

@@ -1,5 +1,6 @@
 using Lurp.Handlers;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Tests;
 
@@ -74,6 +75,58 @@ public sealed class AnnotationLifecycleTests : IntegrationTestBase
         using var rebuiltStore = OpenStore(DbPath);
         var rebuiltAddedId = HandlerBootstrap.ResolveSymbolArg(rebuiltStore, "P.Added", rebuilt);
         Assert.Equal("added after incremental index", Assert.Single(rebuiltStore.GetAnnotations(rebuilt, rebuiltAddedId)).Value);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InterruptedFullForceRebuild_PreservesNotesThroughCleanupAndRetry(bool beforeExtraction)
+    {
+        var (original, retainedId, removedId) = await SeedAnnotationsAsync();
+        using (var store = OpenStore(DbPath))
+        {
+            await Assert.ThrowsAsync<IOException>(() => IndexRunner.RunAsync(
+                store, SolutionPath, [], null, "full", output: new InterruptRebuildSink(beforeExtraction), force: true));
+        }
+
+        // A different successful build cleans up incomplete payloads and superseded failures.
+        WriteFile("P", "Types.cs", EditedSource);
+        var (different, _) = await RunIndexAsync(strategy: "full");
+        Assert.NotEqual(original, different);
+        using (var store = OpenStore(DbPath))
+        {
+            Assert.Equal(["keep", "keep"], store.GetAnnotations(original, retainedId).Select(a => a.Value));
+            store.SaveUserAnnotation(different, retainedId, "note", "only on the other snapshot");
+        }
+
+        WriteFile("P", "Types.cs", OriginalSource);
+        var (retried, _) = await RunIndexAsync(strategy: "full");
+
+        Assert.Equal(original, retried);
+        using var rebuilt = OpenStore(DbPath);
+        Assert.Equal(["keep", "keep"], rebuilt.GetAnnotations(retried, retainedId).Select(a => a.Value));
+        Assert.Equal("remove", Assert.Single(rebuilt.GetAnnotations(retried, removedId)).Value);
+    }
+
+    private sealed class InterruptRebuildSink(bool beforeExtraction) : IOutputSink
+    {
+        private bool _savingManifest;
+
+        public void Write(string message)
+        {
+            if (!beforeExtraction && message == "Building search index... ")
+                throw new IOException("Interrupted before search index completion.");
+            if (message == "Saving snapshot to database... ")
+                _savingManifest = true;
+        }
+
+        public void WriteLine(string message = "")
+        {
+            if (beforeExtraction && _savingManifest && message == "done.")
+                throw new IOException("Interrupted after manifest commit.");
+        }
+
+        public void WriteErrorLine(string message = "") { }
     }
 
     private async Task<(string SnapshotId, string RetainedId, string RemovedId)> SeedAnnotationsAsync()

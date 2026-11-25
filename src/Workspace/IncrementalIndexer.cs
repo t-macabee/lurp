@@ -152,7 +152,8 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         cancellationToken.ThrowIfCancellationRequested();
         var sw4 = Stopwatch.StartNew();
         _output.Write("Saving new snapshot manifest... ");
-        newManifest.Save(_store, SnapshotBuildStrategies.Incremental, workspaceInfo.DocumentContents, jsonExportPath);
+        newManifest.Save(_store, SnapshotBuildStrategies.Incremental, workspaceInfo.DocumentContents, jsonExportPath,
+            replaceExisting: disposition != ExistingSnapshotDisposition.Fresh);
         _output.WriteLine("done.");
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds));
@@ -203,7 +204,6 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             var swScope = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
             var prunedSymbolIds = _store.PruneUnlinkedSnapshotSymbols(newSnapshotIdStr, pruneCandidates);
-            _store.PruneOrphanAnnotations(newSnapshotIdStr);
             if (prunedSymbolIds.Count > 0)
                 _output.WriteLine($"Pruned {prunedSymbolIds.Count} removed symbols.");
 
@@ -234,16 +234,19 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         catch (Exception ex)
         {
             var reasonCode = ex is OperationCanceledException ? "cancelled" : "incremental_index_failure";
+            var markedFailed = false;
             try
             {
-                _store.MarkSnapshotFailed(newSnapshotIdStr, reasonCode, ex.Message);
+                markedFailed = _store.TryMarkSnapshotFailed(newSnapshotIdStr, reasonCode, ex.Message);
             }
             catch (Exception markEx)
             {
                 _output.WriteErrorLine($"WARNING: Failed to mark snapshot '{newSnapshotIdStr}' as failed: {markEx.Message}");
             }
 
-            _output.WriteErrorLine($"ERROR: Incremental index failed mid-operation, snapshot {newSnapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
+            _output.WriteErrorLine(markedFailed
+                ? $"ERROR: Incremental index failed mid-operation, snapshot {newSnapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}"
+                : $"ERROR: Incremental index failed mid-operation, and snapshot {newSnapshotIdStr} was left unmarked ({reasonCode}): {ex.Message}");
             throw;
         }
 
@@ -292,7 +295,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
         _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.CopySnapshotDiagnostics(previousSnapshotId, newSnapshotIdStr);
-        _store.CopyAnnotationsToSnapshot(previousSnapshotId, newSnapshotIdStr);
+        _store.CopyExtractorAnnotationsToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.CopyBindingIncompleteness(previousSnapshotId, newSnapshotIdStr);
 
         // Retire facts for the documents in the extraction scope.
@@ -440,7 +443,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
         // Completion must be last : all preceding phases must succeed.
         cancellationToken.ThrowIfCancellationRequested();
-        _store.MarkSnapshotComplete(context.Snapshots.ToSnapshotId);
+        _store.CompleteIndex(context.Snapshots.ToSnapshotId, context.Snapshots.FromSnapshotId);
 
         IndexFinalization.RefreshPlannerStatistics(_store, _output, timings);
         return orphanEdgesDropped;

@@ -460,6 +460,12 @@ internal sealed class DeadCandidateStore
                 reason = conventionReason;
                 uncertainties = [MakeConventionUncertainty(conventionReason, conventionSymbolId)];
             }
+            else if (IsRecordDataMember(cand, factsById))
+            {
+                status = DeadCandidateStatus.UncertainDead;
+                reason = DeadCandidateReason.FrameworkConvention;
+                uncertainties = [MakeRecordMemberUncertainty(cand.SymbolId)];
+            }
             else
             {
                 status = DeadCandidateStatus.ProvedDead;
@@ -1113,6 +1119,25 @@ internal sealed class DeadCandidateStore
     }
 
     /// <summary>
+    ///     An instance field, an instance property (not an indexer) or its getter of a record. The
+    ///     compiler reads them in the members that it synthesizes for the record (Equals, GetHashCode,
+    ///     PrintMembers, Deconstruct, the copy constructor), and the index has no edge for these reads.
+    ///     The verdict is not inherited by the record type: a record that nothing uses stays dead.
+    /// </summary>
+    private static bool IsRecordDataMember(CandidateFacts cand, Dictionary<string, CandidateFacts> factsById)
+    {
+        if (cand.AccessorKind != "get" &&
+            cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)))
+            return false;
+
+        return !cand.Row.DocCommentId.EndsWith(')') &&
+               !SymbolMetadata.IsTrue(cand.Metadata, SymbolMetadataKeys.IsStatic) &&
+               SymbolId.DeriveContainingTypeSymbolId(cand.SymbolId) is { } enclosing &&
+               factsById.TryGetValue(enclosing, out var type) &&
+               SymbolMetadata.IsTrue(type.Metadata, SymbolMetadataKeys.IsRecord);
+    }
+
+    /// <summary>
     ///     B34: the convention verdict for a candidate that inherits it from another symbol. An
     ///     accessor inherits its associated property's or event's verdict; a type inherits the
     ///     first convention verdict among its descendants in ordinal member order. Returns the
@@ -1331,6 +1356,11 @@ internal sealed class DeadCandidateStore
             _ => new DeadCandidateUncertainty([symbolId], "framework_convention",
                 "A framework may use this symbol through runtime activation or options binding.")
         };
+    }
+
+    private static DeadCandidateUncertainty MakeRecordMemberUncertainty(string symbolId)
+    {
+        return new DeadCandidateUncertainty([symbolId], "framework_convention", "The compiler reads this member in the members that it synthesizes for a record (Equals, GetHashCode, ToString, Deconstruct, copy constructor). The index has no edge for these reads.");
     }
 
     internal sealed record CandidateRow(string SymbolId, string Kind, string? Fqn, string? MetadataJson, string DocCommentId, string AssemblyIdentity);

@@ -30,7 +30,6 @@ internal static class ExistingSnapshotPolicy
         var (status, buildStrategy) = existing.Value;
         if (!string.Equals(status, SnapshotStatusValues.Complete, StringComparison.Ordinal))
         {
-            store.DeleteSnapshotData(snapshotId);
             sink.WriteLine($"Snapshot {snapshotId} exists with status '{status}'; removing it and retrying {strategy} index.");
             return ExistingSnapshotDisposition.Retry;
         }
@@ -57,7 +56,6 @@ internal static class ExistingSnapshotPolicy
         else
             sink.WriteLine($"Snapshot {snapshotId} exists and an incremental run built it; --strategy=full deletes it and rebuilds it.");
 
-        store.DeleteSnapshotData(snapshotId);
         return ExistingSnapshotDisposition.Rebuild;
     }
 }

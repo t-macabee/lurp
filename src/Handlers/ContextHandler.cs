@@ -102,7 +102,11 @@ internal static class ContextHandler
             output.WriteLine($"tier {page.TierName} of {page.FullyQualifiedName} ({page.Kind})");
             output.WriteLine($"  items: {page.TotalItems} total, {page.Items.Count} in this page (offset {page.Offset})");
             foreach (var item in page.Items)
-                output.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
+            {
+                // An item with no source location (a Route placeholder) has no path:line to print.
+                var location = item.DocumentPath is null ? "" : $"  {item.DocumentPath}:{item.StartLine}";
+                output.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]{location}");
+            }
             if (nextCursor != null)
                 output.WriteLine("  more available: re-run with --cursor=<next_cursor from --output=json>.");
         },

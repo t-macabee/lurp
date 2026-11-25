@@ -4,10 +4,6 @@ namespace Lurp.PerfHarness;
 
 internal sealed class HarnessError : Exception
 {
-    public HarnessError()
-    {
-    }
-
     public HarnessError(string message) : base(message)
     {
     }

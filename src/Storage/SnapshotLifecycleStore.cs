@@ -38,11 +38,14 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
-    internal void SaveSnapshot(SnapshotRow manifest)
+    internal void SaveSnapshot(SnapshotRow manifest, bool replaceExisting, SnapshotPruner pruner)
     {
         using var transaction = _connection.BeginTransaction();
         try
         {
+            if (replaceExisting)
+                pruner.DeleteSnapshotForRebuild(manifest.SnapshotId, transaction);
+
             UpsertWorkspace(manifest, transaction);
             InsertSnapshotHeader(manifest, transaction);
             InsertProjectGraph(manifest.SnapshotId, manifest.Projects, transaction);
@@ -190,9 +193,10 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         }
     }
 
-    internal void MarkSnapshotComplete(string snapshotId)
+    internal void MarkSnapshotComplete(string snapshotId, SqliteTransaction? transaction = null)
     {
         using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "UPDATE snapshots SET status = @status WHERE snapshot_id = @snapshotId;";
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -214,7 +218,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
-    internal void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message)
+    internal bool TryMarkSnapshotFailed(string snapshotId, string reasonCode, string? message)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = """
@@ -226,7 +230,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@reasonCode", reasonCode);
         command.Parameters.AddWithValue("@message", (object?)message ?? DBNull.Value);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.ExecuteNonQuery();
+        return command.ExecuteNonQuery() > 0;
     }
 
     /// <summary>

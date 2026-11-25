@@ -142,18 +142,14 @@ public static class IndexRunner
         var snapshotIdStr = snapshotId.ToString();
         var workspaceId = workspaceInfo.Id.Value;
 
-        // A full index can replace a complete snapshot with the same ID, including
-        // one built incrementally. Capture its notes before the policy deletes it.
-        var existing = store.GetExistingSnapshotState(snapshotIdStr, workspaceId);
-        var annotationSourceId = existing?.Status == SnapshotStatusValues.Complete
-            ? snapshotIdStr
-            : store.GetSelectedLatestSnapshotId(workspaceId);
-        var userAnnotations = annotationSourceId is null ? [] : store.GetUserAnnotations(annotationSourceId);
-
         var disposition = ExistingSnapshotPolicy.Resolve(store, snapshotIdStr, workspaceId, SnapshotBuildStrategies.Full, force, sink);
         if (disposition == ExistingSnapshotDisposition.Reuse)
             return (snapshotIdStr, false);
 
+        // A same-ID rebuild keeps the existing user annotations in place.
+        var annotationSourceId = disposition == ExistingSnapshotDisposition.Rebuild
+            ? null
+            : store.GetSelectedLatestSnapshotId(workspaceId);
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
         var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();
 
@@ -161,7 +157,8 @@ public static class IndexRunner
         var swManifest = Stopwatch.StartNew();
         sink.Write("Saving snapshot to database... ");
 
-        manifest.Save(store, SnapshotBuildStrategies.Full, workspaceInfo.DocumentContents, jsonExportPath);
+        manifest.Save(store, SnapshotBuildStrategies.Full, workspaceInfo.DocumentContents, jsonExportPath,
+            replaceExisting: disposition != ExistingSnapshotDisposition.Fresh);
 
         sink.WriteLine("done.");
         swManifest.Stop();
@@ -329,8 +326,7 @@ public static class IndexRunner
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds));
 
             cancellationToken.ThrowIfCancellationRequested();
-            store.RestoreUserAnnotations(snapshotIdStr, userAnnotations);
-            store.MarkSnapshotComplete(snapshotIdStr);
+            store.CompleteIndex(snapshotIdStr, annotationSourceId);
 
             IndexFinalization.RefreshPlannerStatistics(store, sink, timings);
 
@@ -355,16 +351,19 @@ public static class IndexRunner
                 WorkspaceUnreadableException => "workspace_unreadable",
                 _ => "full_index_failure"
             };
+            var markedFailed = false;
             try
             {
-                store.MarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message);
+                markedFailed = store.TryMarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message);
             }
             catch (Exception markEx)
             {
                 sink.WriteErrorLine($"WARNING: Failed to mark snapshot '{snapshotIdStr}' as failed: {markEx.Message}");
             }
 
-            sink.WriteErrorLine($"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
+            sink.WriteErrorLine(markedFailed
+                ? $"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}"
+                : $"ERROR: Full index failed, and snapshot {snapshotIdStr} was left unmarked ({reasonCode}): {ex.Message}");
 
             // Try to save whatever timings we have
             try

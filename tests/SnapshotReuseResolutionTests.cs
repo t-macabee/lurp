@@ -50,7 +50,7 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
     }
 
     [Fact]
-    public void IncompleteExistingRow_ResolvesRetry_AndIsDeleted()
+    public void IncompleteExistingRow_ResolvesRetry_AndWaitsForManifestSave()
     {
         using var store = OpenStore();
         store.SaveSnapshot(NewSnapshot());
@@ -59,7 +59,7 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
         var disposition = ExistingSnapshotPolicy.Resolve(store, SnapshotId, WorkspaceId, SnapshotBuildStrategies.Full, force: false, sink);
 
         Assert.Equal(ExistingSnapshotDisposition.Retry, disposition);
-        Assert.Null(store.GetSnapshotStatus(SnapshotId, WorkspaceId));
+        Assert.Equal(SnapshotStatusValues.InProgress, store.GetSnapshotStatus(SnapshotId, WorkspaceId));
         Assert.Equal(
             $"Snapshot {SnapshotId} exists with status 'in_progress'; removing it and retrying full index.",
             sink.Output.ToString().TrimEnd());
@@ -100,7 +100,7 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
     }
 
     [Fact]
-    public void CompleteIncrementalRow_FullNoForce_ResolvesRebuild_AndIsDeleted()
+    public void CompleteIncrementalRow_FullNoForce_ResolvesRebuild_AndWaitsForManifestSave()
     {
         using var store = OpenStore();
         store.SaveSnapshot(NewSnapshot(SnapshotBuildStrategies.Incremental));
@@ -110,14 +110,14 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
         var disposition = ExistingSnapshotPolicy.Resolve(store, SnapshotId, WorkspaceId, SnapshotBuildStrategies.Full, force: false, sink);
 
         Assert.Equal(ExistingSnapshotDisposition.Rebuild, disposition);
-        Assert.Null(store.GetSnapshotStatus(SnapshotId, WorkspaceId));
+        Assert.Equal(SnapshotStatusValues.Complete, store.GetSnapshotStatus(SnapshotId, WorkspaceId));
         Assert.Equal(
             $"Snapshot {SnapshotId} exists and an incremental run built it; --strategy=full deletes it and rebuilds it.",
             sink.Output.ToString().TrimEnd());
     }
 
     [Fact]
-    public void CompleteFullRow_FullForce_ResolvesRebuild_AndIsDeleted()
+    public void CompleteFullRow_FullForce_ResolvesRebuild_AndWaitsForManifestSave()
     {
         using var store = OpenStore();
         store.SaveSnapshot(NewSnapshot(SnapshotBuildStrategies.Full));
@@ -127,14 +127,14 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
         var disposition = ExistingSnapshotPolicy.Resolve(store, SnapshotId, WorkspaceId, SnapshotBuildStrategies.Full, force: true, sink);
 
         Assert.Equal(ExistingSnapshotDisposition.Rebuild, disposition);
-        Assert.Null(store.GetSnapshotStatus(SnapshotId, WorkspaceId));
+        Assert.Equal(SnapshotStatusValues.Complete, store.GetSnapshotStatus(SnapshotId, WorkspaceId));
         Assert.Equal(
             $"Identical complete snapshot {SnapshotId} already exists; --force given, deleting it and rebuilding it.",
             sink.Output.ToString().TrimEnd());
     }
 
     [Fact]
-    public void CompleteIncrementalRow_IncrementalForce_ResolvesRebuild_AndIsDeleted()
+    public void CompleteIncrementalRow_IncrementalForce_ResolvesRebuild_AndWaitsForManifestSave()
     {
         using var store = OpenStore();
         store.SaveSnapshot(NewSnapshot(SnapshotBuildStrategies.Incremental));
@@ -144,7 +144,7 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
         var disposition = ExistingSnapshotPolicy.Resolve(store, SnapshotId, WorkspaceId, SnapshotBuildStrategies.Incremental, force: true, sink);
 
         Assert.Equal(ExistingSnapshotDisposition.Rebuild, disposition);
-        Assert.Null(store.GetSnapshotStatus(SnapshotId, WorkspaceId));
+        Assert.Equal(SnapshotStatusValues.Complete, store.GetSnapshotStatus(SnapshotId, WorkspaceId));
         Assert.Equal(
             $"Identical complete snapshot {SnapshotId} already exists; --force given, deleting it and rebuilding it.",
             sink.Output.ToString().TrimEnd());

@@ -4,7 +4,7 @@ namespace Lurp.Workspace;
 
 internal static class VersionConstants
 {
-    internal const int OutputSchemaVersion = 7;
+    internal const int OutputSchemaVersion = 8;
     // Move this value when any extraction output changes, and move the string of each extractor
     // whose rows change (ExtractorConstants, an adapter's Version). ExtractorVersionGateTests and
     // tests/Snapshots/extractor-versions.txt enforce the rule (VERSIONING.md, D103).

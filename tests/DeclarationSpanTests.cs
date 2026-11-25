@@ -17,6 +17,32 @@ public sealed class DeclarationSpanTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Outline_KeepsDocumentationComment_WhenItIsTheFirstAttachedComment()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["C.cs"] = """
+                class C
+                {
+                    /// <summary>Documentation.</summary>
+                    void Documented() { }
+                }
+                """
+        });
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        const string path = "src/App/C.cs";
+        var method = Assert.Single(store.GetDeclarationsOutline(path, snapshot, false, 100, null)!.Items,
+            item => item.Kind == "Method");
+        // The declaration starts on the `///` line, so the marker is part of the span.
+        Assert.Equal(("Method", 3, 4), (method.Kind, method.StartLine, method.EndLine));
+
+        var source = await CliModeRunner.RunAsync("get-symbol",
+            [$"--output-dir={TestDir}", $"--symbol={method.SymbolId}", "--view=declaration"]);
+        Assert.StartsWith("/// <summary>Documentation.</summary>", source);
+    }
+
+    [Fact]
     public async Task OutlineNavigateAndGetSymbol_UseAttachedCommentsAndExactEnds()
     {
         CreateProject("App", new Dictionary<string, string>

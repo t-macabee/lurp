@@ -25,6 +25,9 @@ internal sealed record ContextRequest(
     string? Cursor)
 {
     internal const string CursorKind = "capsule-tier";
+    // Part of the fingerprint so a cursor from a sequence layout this build does not
+    // reproduce fails validation instead of resuming at a misaligned offset.
+    private const string FingerprintMarker = "capsule-tier-v2";
     internal const int DefaultTierLimit = 25;
     internal const int DefaultMaxHops = 3;
     internal const int DefaultBudget = 8000;
@@ -153,15 +156,21 @@ internal sealed record ContextRequest(
                     Line: Line));
         }
 
-        var fingerprint = SequenceCursor.ComputeFingerprint(
-            resolvedSymbol,
-            Tier,
-            MaxHops.ToString(CultureInfo.InvariantCulture),
-            IncludeGenerated.ToString());
+        var fingerprint = ComputeFingerprint(resolvedSymbol, Tier, MaxHops, IncludeGenerated);
 
         if (!RequestError.TryDecodeAndValidateCursor(Cursor, snapshotId, fingerprint, CursorKind, out var offset, out var cursorError))
             return (null, cursorError);
 
         return (new ContextBinding(resolvedSymbol, fingerprint, offset), null);
+    }
+
+    internal static string ComputeFingerprint(string resolvedSymbol, string tier, int maxHops, bool includeGenerated)
+    {
+        return SequenceCursor.ComputeFingerprint(
+            FingerprintMarker,
+            resolvedSymbol,
+            tier,
+            maxHops.ToString(CultureInfo.InvariantCulture),
+            includeGenerated.ToString());
     }
 }

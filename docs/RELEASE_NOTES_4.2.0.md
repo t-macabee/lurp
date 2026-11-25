@@ -1,12 +1,73 @@
-# Lurp 4.2.0 (draft)
+# Lurp 4.2.0
 
-## Declaration spans and search (CLI/MCP contract version 9)
+Run a full index after the upgrade: schema v52, extractor 1.14.0 and the adapter versions below change the snapshot id. Use `--strategy=full --force` if you already built a development snapshot with extractor 1.14.0.
 
-Declaration locations include attached comments and end on the line containing the last declaration token. Outline and navigation use the same line boundaries as symbol metadata. Indexing a multi-targeted project keeps each distinct conditional declaration span and collapses copies with identical spans.
+## Breaking changes (CLI/MCP contract version 9)
+
+### Declaration spans
+
+Declaration locations include attached comments and end on the line containing the last declaration token. Outline and navigation use the same line boundaries as symbol metadata. Indexing a multi-targeted project keeps each distinct conditional declaration span and collapses copies with identical spans. Fields and field-like events store their variable declarator span only, so `start_line` is the declarator line; an indexer has no identifier name span, so `name_start_line` equals `start_line`.
+
+Run a full index to extract the new declaration spans. The database migration rebuilds the symbol search index for stored snapshots.
+
+### Symbol search
 
 Symbol search ranks exact simple names, name tokens and prefixes, simple-name substrings, then containing or fully qualified names. Within each tier, production symbols precede test symbols and types precede members. The search query and cursor flag descriptions and the `lurp_search` tool description reflect the new order.
 
-Start a fresh page if you have a search or outline cursor from an earlier version. The database migration rebuilds symbol search for stored snapshots. Run a full index to extract the new declaration spans. Use `--force` if you already built a development snapshot with extractor 1.14.0.
+The symbol search cursor carries the new tiered sort key. Start a fresh page if you have a search cursor from an earlier version.
+
+### Impact and context traversal
+
+Both `--direction=downstream` and `--direction=upstream` now exclude `Declares`, `Contains` and `TestedBy` by default; 4.1.0 followed every kind downstream. Supply `--kinds=` for a different set. This changes downstream witness paths, groups and counts.
+
+A downstream traversal seeds the walk with the anchor's depth-zero members for a type anchor (when `Declares` is excluded) and with its accessors for a property or event anchor. Reachability visits are keyed by `(symbol, access)`, so a read and a write of the same property can produce separate visits, and a compound assignment still counts as one symbol route.
+
+The caller tiers follow constructions, as well as calls, method-group references, reads and writes, at every hop. Framework entry points (`RoutesTo`, `Handles`) are kept at every hop, not only at depth one. A `RoutesTo` source is a Route item with no source text or declaration location; its `route://` id is not a stored symbol, and `--symbol=` rejects it.
+
+The outgoing capsule paths now use the same default edge filter as incoming paths and default upstream impact (`Declares`, `Contains` and `TestedBy` excluded), starting at the anchor and its depth-zero seeds. They previously followed every edge kind.
+
+### Cursor resets
+
+Start a fresh page when you continue a search, outline, impact or `--tier=` context sequence that began before 4.2.0. Each of those cursors binds its request to a fingerprint of the 4.2.0 sequence layout and rejects a 4.1.0 cursor instead of resuming at a misaligned offset.
+
+### Output schema v8
+
+The context capsule's `OutputSchemaVersion` moves from 7 to 8. The capsule field names are unchanged, but the meaning of the path fields changed: outgoing paths use the default impact filter, caller tiers include framework entry points at every hop and constructions, and a Route item can appear in a caller tier. A consumer that reads outgoing paths as "every edge kind" must update.
+
+### Annotation lifecycle
+
+User annotations now survive full and `--strategy=full --force` re-indexes: the new snapshot copies them forward. An annotation whose symbol no longer exists in the new snapshot is pruned. Extractor-derived annotations are written again from the new snapshot. A same-ID rebuild keeps existing user annotations in storage through an interruption and retry.
+
+### Changed descriptions
+
+- `--query=` (search): the new ranking tiers.
+- `--cursor=` (search): continues across all symbol match tiers.
+- `lurp_search`: the new ranking order.
+- `--direction=` (impact) and `lurp_impact`: both directions exclude `Declares`, `Contains` and `TestedBy` by default.
+- `--force`: user annotations survive a full forced re-index, and orphan annotations are pruned.
+- `--provenance=`: excludes `ReflectionNameCandidate` and `ReflectionTargetUnknown` (not every `Reflection*` kind) and follows adapter-emitted `framework_derived` edges, including middleware `Calls`/`Constructs`.
+- `lurp_outline`: linked-file copies of one span collapse to one row, preferring the owning project.
+- `lurp_refresh`: `ack` must equal the `new_snapshot_id` of a call without `ack` (the literal `latest` is not accepted); a valid `ack` checks the database schema version and advances the session pin without closing or reopening a store.
+- `lurp_diagnostics` and `diagnostics --include-generated`: generated filename patterns apply to all diagnostic paths. A leading `<auto-generated` or `<autogenerated` comment also marks snapshot documents as generated. The default filter also excludes out-of-snapshot `bin/**` and `obj/**` build outputs.
+- `lurp_status` `documents`: selects the paths of the per-document freshness list (`document_freshness`); an empty array returns `null`.
+- `lurp_dead_candidates`: linked declarations share incoming liveness, public surface uses effective accessibility for every symbol, and record and framework conventions protect members.
+
+## Framework adapters
+
+Every adapter version moves, so 4.1.0 snapshots are not reused.
+
+| Adapter | Version | New facts |
+| --- | --- | --- |
+| ASP.NET Core | `aspnetcore-v4` | `UseMiddleware` emits `Constructs` to the middleware type and `Calls` to its entry points and explicit public constructors. Custom `HttpMethodAttribute` classes resolve their template and verbs through constructor chains, metadata-only constructors and array constants, and a verb that cannot be read becomes `CUSTOM`. |
+| Dependency Injection | `di-v3` | `Configure<T>` and `AddOptions<T>` add `options_binding` annotations. External single-type extensions claim the named type. Assembly scans (`FromAssemblyOf`/`FromAssemblyContaining`, `AddValidatorsFromAssembly*`) emit a `convention:assembly_scan:<assembly>` placeholder instead of a runtime-unknown claim; EF Core `MigrationsAssembly` is not a scan. |
+| MediatR | `mediatr-v3` | Stream requests (`IStreamRequest`, `IStreamRequestHandler`) produce `Handles`. |
+| EF Core | `efcore-v4` | `MapsTo` covers fluent, owned and complex mappings, types discovered through `model.Entity(typeof(T))`, extension-method chains and navigation reachability. Query filters and unique indexes add constraint annotations. |
+| Serialization | `serialization-v3` | `[JsonConstructor]` and serialization callbacks receive `included` annotations. |
+| Test | `test-v5` | `TestedBy` follows `MemberData`, `ClassData`, `TestCaseSource` and `DynamicData` sources, `IClassFixture`/`ICollectionFixture` setup and their initializers. Reflected setup also emits `framework_derived` `References` from the test to its dependency, so an edit to the dependency refreshes the coverage facts. |
+
+## Dead-code candidates
+
+A linked declaration takes the incoming edges of its copies in other projects, including when a project filter is set, so one project's use keeps every copy alive. Public surface uses effective accessibility for every symbol, with declared accessibility only as the fallback. An unmodeled DI assembly scan makes a class, delegate and instance constructor unresolved. Constructors of EF mapping source types get `ef_convention`. An instance field, an instance property (not an indexer) or its getter of a record gets `framework_convention`, because the compiler reads it in the synthesized record members; the record type does not inherit that verdict. Annotations on external types are not stored.
 
 ## Versions
 
@@ -16,4 +77,4 @@ Start a fresh page if you have a search or outline cursor from an earlier versio
 | Database schema | v50 | v52 |
 | Extractor | 1.13.0 | 1.14.0 |
 | CLI/MCP contract | v8 | v9 |
-| Output schema | v7 | v7 |
+| Output schema | v7 | v8 |

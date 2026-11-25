@@ -32,7 +32,7 @@ internal sealed class StatusTool
         [Description("Sections to include, comma-separated: freshness, manifest, documents, references, completeness or all. Values combine as a union; documents returns the per-document version map. Unknown values are an error.")] string? sections = null,
         int? max_documents = null,
         int? max_mismatches = null,
-        [Description("Array of document paths (strings) for the per-document map. An empty array returns no map. An empty or whitespace entry is an error.")] string[]? documents = null,
+        [Description("Array of document paths (strings) that selects the paths for the per-document freshness list (`document_freshness`). An empty array returns `null`. An empty or whitespace entry is an error.")] string[]? documents = null,
         bool? full = null,
         [Description("Project names (the keys of detail.manifest.target_frameworks). Builds the manifest from these projects only: their per-project maps, documents and binding rows. Needs a manifest section: any sections value except freshness.")] string[]? projects = null,
         [Description("Manifest size target in UTF-8 bytes (default 40000, at most 400000). Over the target, the largest manifest parts are summarized or left out and named in detail.manifest.omitted_fields. Other sections stay in full. Client size limits apply to both wire copies (content[0].text and structuredContent).")] int? max_bytes = null,
