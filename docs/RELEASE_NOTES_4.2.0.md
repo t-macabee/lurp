@@ -10,6 +10,10 @@ Indexing and solution-backed `--mode=status` exit 2 when the solution cannot be 
 
 Indexing records C# projects declared in the solution that MSBuild could not load as `project_unreadable`. A run fails when all C# projects are unreadable. The unloaded project paths contribute to the snapshot ID and full freshness checks.
 
+### Solution file types
+
+Indexing accepts only `.sln` and `.slnx` solution files. A `.slnf` filter file now fails the run with exit 2 (`workspace_unreadable` in MCP) instead of being opened by MSBuild. The declared-project check reads the solution through a reader that supports the two documented types; a filter file is not a solution.
+
 ### Declaration spans
 
 Declaration locations include attached comments and end on the line containing the last declaration token. Outline and navigation use the same line boundaries as symbol metadata. Indexing a multi-targeted project keeps each distinct conditional declaration span and collapses copies with identical spans. Fields and field-like events store their variable declarator span only, so `start_line` is the declarator line; an indexer has no identifier name span, so `name_start_line` equals `start_line`.

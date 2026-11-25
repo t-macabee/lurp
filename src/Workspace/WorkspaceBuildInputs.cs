@@ -5,10 +5,14 @@ namespace Lurp.Workspace;
 /// <summary>Build-file paths and content observed before MSBuild opens the solution.</summary>
 internal sealed class WorkspaceBuildInputs
 {
-    private static readonly HashSet<string> ParentInputNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props", "global.json", "nuget.config"
-    };
+    // Opened by name rather than by listing the directory. A parent directory that is
+    // executable but not readable still resolves these names, and a missing file is
+    // allowed. NuGet on Linux accepts the three spellings below.
+    private static readonly string[] ParentInputNames =
+    [
+        "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props", "global.json",
+        "nuget.config", "NuGet.config", "NuGet.Config"
+    ];
 
     private static readonly EnumerationOptions ObjAssetsEnumerationOptions = new()
     {
@@ -49,11 +53,8 @@ internal sealed class WorkspaceBuildInputs
 
             for (var parent = Directory.GetParent(_root); parent is not null; parent = parent.Parent)
             {
-                foreach (var path in Directory.EnumerateFiles(parent.FullName))
-                {
-                    if (ParentInputNames.Contains(Path.GetFileName(path)))
-                        AddHash(path, allowMissing: false);
-                }
+                foreach (var name in ParentInputNames)
+                    AddHash(Path.Combine(parent.FullName, name), allowMissing: true);
             }
 
             if (previous is not null)

@@ -252,6 +252,67 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
         }
     }
 
+    [SkippableFact]
+    public async Task UnreadableParentDirectory_KeepsTheSkip()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "Unix directory permissions.");
+
+        var solutionDir = Path.Combine(TestDir, "nested");
+        WriteSolution(solutionDir, Project, new Dictionary<string, string> { ["Widget.cs"] = WidgetSource });
+        var solutionPath = Path.Combine(solutionDir, "Test.slnx");
+        await RunIndexAsync("full", solutionPath: solutionPath);
+
+        var originalMode = UnixFileMode.None;
+        if (!OperatingSystem.IsWindows())
+        {
+            originalMode = File.GetUnixFileMode(TestDir);
+            File.SetUnixFileMode(TestDir, UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        try
+        {
+            try
+            {
+                _ = Directory.EnumerateFiles(TestDir).Any();
+                Skip.If(true, "The test process can list an unreadable directory (for example, it runs as root).");
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+
+            Assert.Contains("Workspace load skipped", await RunIndexAsync("incremental", solutionPath: solutionPath));
+        }
+        finally
+        {
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(TestDir, originalMode);
+            TestDatabase.DeleteSolutionCache(solutionPath);
+        }
+    }
+
+    [SkippableFact]
+    public async Task DanglingParentNuGetConfig_KeepsTheSkip()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "Linux only (symlinks).");
+
+        var solutionDir = Path.Combine(TestDir, "nested");
+        WriteSolution(solutionDir, Project, new Dictionary<string, string> { ["Widget.cs"] = WidgetSource });
+        var solutionPath = Path.Combine(solutionDir, "Test.slnx");
+        var linkPath = Path.Combine(TestDir, "nuget.config");
+        File.CreateSymbolicLink(linkPath, Path.Combine(TestDir, "missing.config"));
+        try
+        {
+            await RunIndexAsync("full", solutionPath: solutionPath);
+
+            Assert.Contains("Workspace load skipped", await RunIndexAsync("incremental", solutionPath: solutionPath));
+        }
+        finally
+        {
+            File.Delete(linkPath);
+            TestDatabase.DeleteSolutionCache(solutionPath);
+        }
+    }
+
     [Fact]
     public async Task ExternalProject_DoesNotSkipAfterBackdatedProjectChange()
     {

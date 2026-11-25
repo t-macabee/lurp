@@ -256,4 +256,4 @@ The current list is generated from `src/Workspace/DeclaredBoundaries.cs` in [ARC
 - **`SqliteIndexStore` decomposition** into leaf stores (08-05).
 - **Incremental re-extraction document-scoped** with lockstep delete/extract (08-06).
 - **Snapshot identity covers compilation inputs** (NuGet refs + compilation options hashed; migration 27) (08-10).
-- **`--force` re-extracts without bypassing identity** (deletes complete snapshot, id stays identical).
+- **`--force` re-extracts without bypassing identity** (rebuilds the complete snapshot while it stays readable, id stays identical).
