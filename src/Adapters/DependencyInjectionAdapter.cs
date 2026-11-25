@@ -99,12 +99,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         {
             DependencyInjectionConventionMatcher.ReadScan(invocation, location, call);
         }
-        else if (IsExternalServiceCollectionMethod(method, call.Context.Compilation))
+        else if (IsExternalServiceCollectionMethod(method, call.Context))
         {
             call.Unknown(call.OwnerId, location);
             var declared = method.ReducedFrom ?? method;
             if (declared.IsExtensionMethod && FrameworkTypes.Is(declared.Parameters[0].Type, ServiceCollectionType) &&
-                !call.Context.IsSolutionSymbol(declared) && !IsMediatRMethod(declared) &&
+                !IsMediatRMethod(declared) &&
                 !ReadExternalScan(invocation, location, call) && method.TypeArguments.Length == 1)
             {
                 call.OwnerClaim(method.TypeArguments, location);
@@ -347,13 +347,14 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     }
 
     /// <summary>
-    ///     D26: a method outside the compilation that takes an <c>IServiceCollection</c> (an extension
-    ///     method included) and is not a method of the MS.DI assemblies.
+    ///     D26: a method outside the solution that takes an <c>IServiceCollection</c> (an extension
+    ///     method included) and is not a method of the MS.DI assemblies. A method of another project
+    ///     in the solution is not external.
     /// </summary>
-    private static bool IsExternalServiceCollectionMethod(IMethodSymbol method, Compilation compilation)
+    private static bool IsExternalServiceCollectionMethod(IMethodSymbol method, AdapterExtractionContext context)
     {
         var declared = (method.ReducedFrom ?? method).OriginalDefinition;
-        if (!ExtractionUtils.IsOutsideCompilation(declared, compilation))
+        if (context.IsSolutionSymbol(declared))
             return false;
         if (declared.ContainingAssembly is { } assembly && ContainerAssemblies.Contains(assembly.Name))
             return false;

@@ -17,7 +17,7 @@ internal static class DeclaredBoundaries
         new(
             "di_external_extension",
             "An external IServiceCollection extension method was detected but could not be analyzed: " +
-            "the method lives outside the compilation so its registration semantics are unknown."
+            "the method lives outside the solution so its registration semantics are unknown."
         ),
         new(
             "masstransit_consumer",
