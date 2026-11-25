@@ -121,7 +121,7 @@ internal sealed class IndexTool
                         catch (WorkspaceUnreadableException wue)
                         {
                             opSink.WriteErrorLine($"ERROR: workspace unreadable: {wue.Message}");
-                            publish = () => opRef.Fail(wue.Message, "workspace_unreadable", McpErrorMapper.WorkspaceUnreadable(wue.Message));
+                            publish = () => opRef.Fail(wue.Message, "workspace_unreadable", McpErrorMapper.WorkspaceUnreadable(wue));
                         }
                         catch (Exception ex)
                         {

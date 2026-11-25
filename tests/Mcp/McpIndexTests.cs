@@ -269,6 +269,23 @@ public sealed class McpIndexTests : IntegrationTestBase
         }
     }
 
+    [Fact]
+    public async Task Index_MalformedSolution_RemediationNamesSolution()
+    {
+        await IndexInitialAsync();
+        File.WriteAllText(SolutionPath, "<NotASolution />");
+        await using var session = McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={TestDir}"]);
+        var tool = new IndexTool(session, new McpIndexSessionState());
+
+        using var start = Parse(tool.LurpIndex(strategy: "full"));
+        using var final = await WaitForCompletionAsync(tool, GetString(start.RootElement, "operation_id"));
+
+        Assert.Equal("failed", GetString(final.RootElement, "status"));
+        Assert.Equal("workspace_unreadable", GetString(final.RootElement, "error_code"));
+        var remediation = GetString(final.RootElement.GetProperty("error_data"), "remediation");
+        Assert.Contains(SolutionPath, remediation);
+    }
+
     private static readonly string[] OperationKeys =
     [
         "operation_id", "status", "started_at_utc", "finished_at_utc", "progress", "error",

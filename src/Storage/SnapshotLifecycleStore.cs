@@ -328,6 +328,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             ToolVersion = row.ToolVersion,
             PreviousSnapshotId = row.PreviousSnapshotId,
             Projects = projects,
+            UnloadedProjects = ReadUnloadedProjects(row.SnapshotId),
             SkippedAdapters = row.SkippedAdapters,
             BuildStrategy = row.BuildStrategy
         };
@@ -373,6 +374,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             ToolVersion = row.ToolVersion,
             PreviousSnapshotId = row.PreviousSnapshotId,
             Projects = projects,
+            UnloadedProjects = ReadUnloadedProjects(row.SnapshotId),
             SkippedAdapters = row.SkippedAdapters,
             BuildStrategy = row.BuildStrategy
         };
@@ -499,6 +501,33 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
         }
 
         return documents;
+    }
+
+    private List<string> ReadUnloadedProjects(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        // A loaded project with no source documents can also have a project-scoped
+        // unreadable row. Its projects row distinguishes it from an unloaded path.
+        command.CommandText = """
+            SELECT b.project_name
+            FROM binding_incompleteness b
+            WHERE b.snapshot_id = @snapshotId
+              AND b.document_path = ''
+              AND b.reason = @reason
+              AND NOT EXISTS (
+                  SELECT 1 FROM projects p
+                  WHERE p.snapshot_id = b.snapshot_id AND p.name = b.project_name
+              )
+            ORDER BY b.project_name;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@reason", BindingIncompletenessReason.ProjectUnreadable);
+
+        var paths = new List<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            paths.Add(reader.GetString(0));
+        return paths;
     }
 
     private List<ProjectRow> LoadProjects(string snapshotId)

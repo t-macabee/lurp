@@ -153,6 +153,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckAssemblyNames(current, stored));
         mismatches.AddRange(CheckInternalsVisibleTo(current, stored));
         mismatches.AddRange(CheckProjectGraph(current, stored));
+        mismatches.AddRange(CheckUnloadedProjects(current, stored));
         mismatches.AddRange(CheckMetadataReferences(current, stored));
         mismatches.AddRange(CheckCompilationOptions(current, stored));
         mismatches.AddRange(CheckProjectDocumentMembership(current, stored));
@@ -170,6 +171,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckAssemblyNames(current, stored));
         mismatches.AddRange(CheckInternalsVisibleTo(current, stored));
         mismatches.AddRange(CheckProjectGraph(current, stored));
+        mismatches.AddRange(CheckUnloadedProjects(current, stored));
         mismatches.AddRange(CheckMetadataReferences(current, stored));
         mismatches.AddRange(CheckCompilationOptions(current, stored));
         mismatches.AddRange(CheckProjectDocumentMembership(current, stored));
@@ -442,6 +444,17 @@ public static class WorkspaceFreshness
                 yield return new SnapshotMismatch(MismatchKind.ProjectReferenceChanged, $"Project references changed for '{projName}'.", null, detail);
             }
         }
+    }
+
+    private static IEnumerable<SnapshotMismatch> CheckUnloadedProjects(WorkspaceInfo current, SnapshotManifest stored)
+    {
+        var added = current.UnloadedProjects
+            .Except(stored.UnloadedProjects, PathNormalizer.PathComparer).Order(StringComparer.Ordinal).ToList();
+        var removed = stored.UnloadedProjects
+            .Except(current.UnloadedProjects, PathNormalizer.PathComparer).Order(StringComparer.Ordinal).ToList();
+        if (added.Count > 0 || removed.Count > 0)
+            yield return new SnapshotMismatch(
+                MismatchKind.UnloadedProjectsChanged, "The set of unloaded C# projects changed.", null, FormatSetDifference(added, removed));
     }
 
     private static string FormatSetDifference(IReadOnlyList<string> added, IReadOnlyList<string> removed, int limit = 20)

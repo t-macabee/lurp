@@ -59,6 +59,9 @@ public sealed partial class SnapshotManifest
     public IReadOnlyDictionary<string, string> ProjectPaths { get; init; }
         = new Dictionary<string, string>(StringComparer.Ordinal);
 
+    [JsonIgnore]
+    public IReadOnlyList<string> UnloadedProjects { get; init; } = [];
+
     [JsonPropertyName("project_documents")]
     public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectDocuments { get; init; }
         = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
@@ -101,6 +104,7 @@ public sealed partial class SnapshotManifest
             CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
             InternalsVisibleTo = new Dictionary<string, IReadOnlyList<string>>(workspace.InternalsVisibleTo, StringComparer.Ordinal),
             ProjectPaths = new Dictionary<string, string>(workspace.ProjectPaths, StringComparer.Ordinal),
+            UnloadedProjects = workspace.UnloadedProjects,
             ProjectDocuments = new Dictionary<string, IReadOnlyList<string>>(workspace.ProjectDocuments, StringComparer.Ordinal),
             DatabaseSchemaVersion = MigrationRunner.LatestVersion,
             OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
@@ -210,6 +214,7 @@ public sealed partial class SnapshotManifest
             ToolVersion = ToolVersion,
             PreviousSnapshotId = PreviousSnapshotId?.ToString(),
             Projects = projects,
+            UnloadedProjects = UnloadedProjects,
             SkippedAdapters = Completeness?.SkippedAdapters ?? [],
             BuildStrategy = buildStrategy
         };
@@ -303,6 +308,7 @@ public sealed partial class SnapshotManifest
             CompilationOptionsFingerprints = compilationOptionsFingerprints,
             InternalsVisibleTo = internalsVisibleTo,
             ProjectPaths = projectPaths,
+            UnloadedProjects = storage.UnloadedProjects,
             ProjectDocuments = projectDocuments,
             DatabaseSchemaVersion = storage.DatabaseSchemaVersion,
             OutputSchemaVersion = storage.OutputSchemaVersion,

@@ -1,4 +1,5 @@
 using Lurp.Handlers;
+using Lurp.Workspace;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
@@ -26,10 +27,10 @@ internal static class McpErrorMapper
         Content = [new TextContentBlock { Text = ex.Message }]
     };
 
-    internal static McpReasonPayload WorkspaceUnreadable(string message) => new(
+    internal static McpReasonPayload WorkspaceUnreadable(WorkspaceUnreadableException exception) => new(
         "workspace_unreadable",
-        message,
-        "Run 'dotnet restore' on the solution and confirm the required SDK and target frameworks are installed, then re-index.");
+        exception.Message,
+        exception.Remediation);
 }
 
 internal sealed record McpReasonPayload(string reason_code, string message, string remediation);

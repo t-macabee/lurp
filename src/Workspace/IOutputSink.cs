@@ -66,3 +66,14 @@ public sealed class StderrOutputSink : IOutputSink
         Console.Error.WriteLine(message);
     }
 }
+
+internal sealed class NullOutputSink : IOutputSink
+{
+    public static readonly NullOutputSink Instance = new();
+
+    private NullOutputSink() { }
+
+    public void Write(string message) { }
+    public void WriteLine(string message = "") { }
+    public void WriteErrorLine(string message = "") { }
+}

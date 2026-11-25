@@ -19,6 +19,7 @@ public class SnapshotRow
     public string ToolVersion { get; init; } = string.Empty;
     public string? PreviousSnapshotId { get; init; }
     public List<ProjectRow> Projects { get; init; } = [];
+    [JsonIgnore] public IReadOnlyList<string> UnloadedProjects { get; init; } = [];
     public List<string> SkippedAdapters { get; init; } = [];
     public string BuildStrategy { get; init; } = SnapshotBuildStrategies.Incremental;
 }

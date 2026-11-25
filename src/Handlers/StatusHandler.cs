@@ -1,6 +1,4 @@
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
-using Microsoft.CodeAnalysis.MSBuild;
 using System.Text.Json;
 
 namespace Lurp.Handlers;
@@ -78,12 +76,10 @@ internal static class StatusHandler
 
     private static async Task<WorkspaceFreshness.FreshnessResult> CheckCurrentWorkspaceAsync(SqliteIndexStore store, string solutionPath)
     {
-        if (!MSBuildLocator.IsRegistered) MSBuildRegistration.RegisterOrThrow();
-
-        using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(solutionPath));
-        var solution = await workspace.OpenSolutionAsync(solutionPath);
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
-        var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
+        using var loader = new WorkspaceLoader(NullOutputSink.Instance);
+        var loaded = await loader.LoadAsync(solutionPath, gitRoot, CancellationToken.None);
+        var workspaceInfo = new WorkspaceInfo(loaded.Solution, gitRoot, NullOutputSink.Instance, loaded.UnloadedProjects);
 
         return WorkspaceFreshness.CheckFreshness(workspaceInfo, store);
     }

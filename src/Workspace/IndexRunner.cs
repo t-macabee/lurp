@@ -57,12 +57,13 @@ public static class IndexRunner
             }
         }
 
-        var (solution, loadElapsed) = await loader.LoadAsync(solutionPath, gitRoot, cancellationToken);
+        var loaded = await loader.LoadAsync(solutionPath, gitRoot, cancellationToken);
+        var (solution, loadElapsed) = loaded;
 
         var swWorkspaceInfo = Stopwatch.StartNew();
         sink.Write("Building workspace info... ");
 
-        var workspaceInfo = new WorkspaceInfo(solution, gitRoot, sink);
+        var workspaceInfo = new WorkspaceInfo(solution, gitRoot, sink, loaded.UnloadedProjects);
 
         sink.WriteLine("done.");
         swWorkspaceInfo.Stop();
@@ -173,13 +174,18 @@ public static class IndexRunner
             int totalEdges;
             var totalDiagnostics = 0;
             var allAnnotations = new List<AnnotationRecord>();
-            var projectErrors = new List<Exception>();
 
             // Step: Full Extraction Loop (compilation load + fact extraction + db writes)
             var swExtract = Stopwatch.StartNew();
             var allEdges = new List<EdgeRecord>();
-            var blindProjects = new List<string>();
+            var blindProjects = new List<string>(workspaceInfo.UnloadedProjects);
             var extractedProjects = 0;
+
+            if (workspaceInfo.UnloadedProjects.Count > 0)
+            {
+                store.SaveBindingIncompleteness(snapshotIdStr, workspaceInfo.UnloadedProjects.Select(path =>
+                    new BindingIncompletenessRecord(path, null, BindingIncompletenessReason.ProjectUnreadable, 1, VersionConstants.ExtractorVersion)));
+            }
 
             await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(
                                solution,
@@ -204,32 +210,13 @@ public static class IndexRunner
                     continue;
                 }
 
+                var options = CompilationFactExtractor.CreateOptions(skipAdapters, output: sink);
+                CompilationFactExtractor.ExtractionResult result;
                 try
                 {
-                    var options = CompilationFactExtractor.CreateOptions(skipAdapters, output: sink);
-                    var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, project, options);
-
-                    store.SaveDeclarations(snapshotIdStr, result.Declarations);
-                    totalDeclarations += result.Declarations.Count;
-
-                    allEdges.AddRange(result.Edges);
-
-                    store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
-                    totalDiagnostics += result.Diagnostics.Count;
-                    store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
-                    allAnnotations.AddRange(result.Annotations);
-                    foreach (var measurement in result.Measurements.Where(_ => verbose))
-                        sink.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
-
-                    extractedProjects++;
-
-                    sink.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
+                    result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, project, options);
                 }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     // A failing project is isolated rather than fatal: discarding the
                     // siblings that extracted cleanly would cost the whole solution for
@@ -237,19 +224,25 @@ public static class IndexRunner
                     // project's documents so capsules anchored there report unresolved
                     // rather than empty.
                     sink.WriteErrorLine($"FAILED: {ex.Message}");
-                    projectErrors.Add(ex);
                     blindProjects.Add(projectName);
-                    try
-                    {
-                        store.SaveBindingIncompleteness(
-                            snapshotIdStr,
-                            WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
-                    }
-                    catch (Exception recordEx)
-                    {
-                        sink.WriteErrorLine($"WARNING: Failed to record unreadable project '{projectName}': {recordEx.Message}");
-                    }
+                    store.SaveBindingIncompleteness(
+                        snapshotIdStr,
+                        WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
+                    continue;
                 }
+
+                store.SaveDeclarations(snapshotIdStr, result.Declarations);
+                totalDeclarations += result.Declarations.Count;
+                allEdges.AddRange(result.Edges);
+                store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
+                totalDiagnostics += result.Diagnostics.Count;
+                store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
+                allAnnotations.AddRange(result.Annotations);
+                foreach (var measurement in result.Measurements.Where(_ => verbose))
+                    sink.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
+
+                extractedProjects++;
+                sink.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }
 
             totalEdges = store.SaveEdges(snapshotIdStr, allEdges);
@@ -259,9 +252,19 @@ public static class IndexRunner
             // Hard stop only when nothing was readable. There is no lit ground to stand
             // on, so every capsule the snapshot could serve would be an empty graph
             // presented as fact.
-            if (extractedProjects == 0 && blindProjects.Count > 0) throw new WorkspaceUnreadableException(WorkspaceLoadGate.DescribeRemediation(blindProjects));
+            if (extractedProjects == 0 && blindProjects.Count > 0)
+            {
+                if (workspaceInfo.UnloadedProjects.Count == 0)
+                    throw new WorkspaceUnreadableException(WorkspaceLoadGate.DescribeRemediation(blindProjects));
 
-            if (projectErrors.Count > 0 || blindProjects.Count > 0)
+                var names = string.Join(", ", blindProjects.Order(StringComparer.Ordinal));
+                const string remediation = "Check that the project files listed in the solution exist, run 'dotnet restore', and re-index.";
+                throw new WorkspaceUnreadableException(
+                    $"No C# projects could be indexed. Unreadable projects: {names}. {remediation}",
+                    remediation: remediation);
+            }
+
+            if (blindProjects.Count > 0)
             {
                 sink.WriteErrorLine();
                 sink.WriteErrorLine($"WARNING: {blindProjects.Count} of {blindProjects.Count + extractedProjects} project(s) were unreadable and are excluded from the graph:");

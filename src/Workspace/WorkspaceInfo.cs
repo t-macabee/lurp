@@ -21,6 +21,9 @@ public sealed class WorkspaceInfo
                                                               ?? new Version(0, 0);
 
     public WorkspaceInfo(Solution solution, string gitRoot, IOutputSink? output = null)
+        : this(solution, gitRoot, output, []) { }
+
+    internal WorkspaceInfo(Solution solution, string gitRoot, IOutputSink? output, IReadOnlyList<string> unloadedProjects)
     {
         var sink = output ?? ConsoleOutputSink.Instance;
         Id = WorkspaceId.Create(gitRoot, solution.FilePath ?? "");
@@ -39,6 +42,7 @@ public sealed class WorkspaceInfo
         AssemblyNames = BuildAssemblyNameMap(solution);
 
         ProjectPaths = BuildProjectPathMap(solution, gitRoot);
+        UnloadedProjects = unloadedProjects;
 
         InternalsVisibleTo = BuildInternalsVisibleToMap(solution);
 
@@ -97,6 +101,8 @@ public sealed class WorkspaceInfo
     public IReadOnlyDictionary<string, string> AssemblyNames { get; }
 
     public IReadOnlyDictionary<string, string> ProjectPaths { get; }
+
+    public IReadOnlyList<string> UnloadedProjects { get; }
 
     /// <summary>
     ///     D48 / D171: per-project sorted, distinct <c>InternalsVisibleTo</c> target assembly

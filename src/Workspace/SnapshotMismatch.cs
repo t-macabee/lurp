@@ -30,7 +30,9 @@ public enum MismatchKind
 
     AssemblyNameChanged,
 
-    InternalsVisibleToChanged
+    InternalsVisibleToChanged,
+
+    UnloadedProjectsChanged
 }
 
 public sealed record SnapshotMismatch(MismatchKind Kind, string Description, DocumentId? Document, string? Detail);

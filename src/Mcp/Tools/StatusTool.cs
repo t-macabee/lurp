@@ -4,8 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Lurp.Handlers;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
-using Microsoft.CodeAnalysis.MSBuild;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -235,12 +233,11 @@ internal sealed class StatusTool
 
     private async Task<WorkspaceFreshness.FreshnessResult> CheckFullFreshnessAsync(SqliteIndexStore store, string snapshotId, CancellationToken cancellationToken)
     {
-        if (!MSBuildLocator.IsRegistered) MSBuildRegistration.RegisterOrThrow();
-
-        using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(_session.SolutionPath!));
-        var solution = await workspace.OpenSolutionAsync(_session.SolutionPath!, cancellationToken: cancellationToken);
-        var gitRoot = Path.GetDirectoryName(Path.GetFullPath(_session.SolutionPath!))!;
-        var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
+        var solutionPath = _session.SolutionPath!;
+        var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
+        using var loader = new WorkspaceLoader(NullOutputSink.Instance);
+        var loaded = await loader.LoadAsync(solutionPath, gitRoot, cancellationToken);
+        var workspaceInfo = new WorkspaceInfo(loaded.Solution, gitRoot, NullOutputSink.Instance, loaded.UnloadedProjects);
         var metadata = store.LoadSnapshot(snapshotId);
         if (metadata == null)
             return new WorkspaceFreshness.FreshnessResult(false, [new SnapshotMismatch(MismatchKind.VersionChanged, "Snapshot not found.", null, snapshotId)]);

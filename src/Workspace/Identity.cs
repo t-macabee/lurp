@@ -108,6 +108,8 @@ public sealed record SnapshotIdentityInput(
     IReadOnlySet<string> SkipAdapters,
     IReadOnlyDictionary<string, string> ExtractorVersions)
 {
+    public IReadOnlyList<string> UnloadedProjects { get; init; } = [];
+
     public static SnapshotIdentityInput FromWorkspace(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters)
     {
         return new SnapshotIdentityInput(
@@ -131,7 +133,10 @@ public sealed record SnapshotIdentityInput(
             workspace.CompilerVersion.ToString(),
             workspace.ExtractorVersion,
             skipAdapters ?? new HashSet<string>(StringComparer.Ordinal),
-            ExtractorRegistry.All.ToDictionary(e => e.Name, e => e.Version, StringComparer.Ordinal));
+            ExtractorRegistry.All.ToDictionary(e => e.Name, e => e.Version, StringComparer.Ordinal))
+        {
+            UnloadedProjects = workspace.UnloadedProjects
+        };
     }
 }
 
@@ -193,6 +198,11 @@ public static class SnapshotIdentity
             WriteField(writer, "project", kvp.Key);
             WriteField(writer, "projectPath", kvp.Value);
         }
+
+        writer.Write("unloadedProjects");
+        writer.Write(input.UnloadedProjects.Count);
+        foreach (var path in input.UnloadedProjects.Order(StringComparer.Ordinal))
+            writer.Write(path);
 
         writer.Write("projectGraph");
         writer.Write(input.ProjectGraph.Count);

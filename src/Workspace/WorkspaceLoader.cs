@@ -1,6 +1,7 @@
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.VisualStudio.SolutionPersistence.Serializer;
 using System.Diagnostics;
 
 namespace Lurp.Workspace;
@@ -62,7 +63,23 @@ internal sealed class WorkspaceLoader : IDisposable
         var sw = Stopwatch.StartNew();
         _output.Write("Loading solution... ");
 
-        var solution = await _openSolutionAsync(solutionPath, cancellationToken);
+        Solution solution;
+        IReadOnlyList<string> unloadedProjects;
+        try
+        {
+            solution = await _openSolutionAsync(solutionPath, cancellationToken);
+            // The injected opener has no solution file or MSBuild workspace.
+            unloadedProjects = _workspace is null
+                ? []
+                : await ReadUnloadedProjectsAsync(solutionPath, solution, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var fullPath = Path.GetFullPath(solutionPath);
+            throw new WorkspaceUnreadableException(
+                $"Could not open solution '{fullPath}': {ex.Message}", ex,
+                $"Check that '{fullPath}' is a valid .sln or .slnx file and that the required .NET SDK is installed.");
+        }
 
         _output.WriteLine($"done ({solution.Projects.Count()} projects).");
         ReportLoadDiagnostics();
@@ -76,7 +93,7 @@ internal sealed class WorkspaceLoader : IDisposable
         // altering projects that evaluated cleanly.
         var recovered = LanguageVersionRecovery.Apply(solution, gitRoot, _loadDiagnostics, _output);
 
-        return new LoadedSolution(recovered, sw.ElapsedMilliseconds);
+        return new LoadedSolution(recovered, sw.ElapsedMilliseconds) { UnloadedProjects = unloadedProjects };
     }
 
     private async Task<Solution> OpenWithWorkspaceAsync(string solutionPath, CancellationToken cancellationToken)
@@ -85,6 +102,29 @@ internal sealed class WorkspaceLoader : IDisposable
         var solution = await _workspace.OpenSolutionAsync(solutionPath, cancellationToken: cancellationToken);
         _loadDiagnostics = _workspace.Diagnostics;
         return solution;
+    }
+
+    private static async Task<IReadOnlyList<string>> ReadUnloadedProjectsAsync(
+        string solutionPath, Solution solution, CancellationToken cancellationToken)
+    {
+        var fullPath = Path.GetFullPath(solutionPath);
+        var serializer = SolutionSerializers.GetSerializerByMoniker(fullPath)
+                         ?? throw new InvalidOperationException("Expected a .sln or .slnx file.");
+        var declared = await serializer.OpenAsync(fullPath, cancellationToken);
+        var solutionDir = Path.GetDirectoryName(fullPath)!;
+        var loadedPaths = solution.Projects
+            .Where(project => project.Language == LanguageNames.CSharp && project.FilePath != null)
+            .Select(project => Path.GetFullPath(project.FilePath!, solutionDir))
+            .ToHashSet(PathNormalizer.PathComparer);
+
+        return declared.SolutionProjects
+            .Where(project => string.Equals(project.Extension, ".csproj", StringComparison.OrdinalIgnoreCase))
+            .Select(project => Path.GetFullPath(PathNormalizer.ToForwardSlash(project.FilePath), solutionDir))
+            .Distinct(PathNormalizer.PathComparer)
+            .Where(path => !loadedPaths.Contains(path))
+            .Select(path => PathNormalizer.ToGitRelativeFromNormalizedRoot(path, solutionDir))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
     }
 
     private void ReportLoadDiagnostics()
@@ -141,4 +181,7 @@ internal sealed class WorkspaceLoader : IDisposable
 }
 
 /// <summary>The opened and language-version-recovered solution, ready for extraction.</summary>
-internal sealed record LoadedSolution(Solution Solution, long LoadElapsedMilliseconds);
+internal sealed record LoadedSolution(Solution Solution, long LoadElapsedMilliseconds)
+{
+    public IReadOnlyList<string> UnloadedProjects { get; init; } = [];
+}
