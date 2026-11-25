@@ -12,6 +12,17 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
     private const string NewtonsoftJsonProperty = "Newtonsoft.Json.JsonPropertyAttribute";
     private const string NewtonsoftJsonIgnore = "Newtonsoft.Json.JsonIgnoreAttribute";
+    private const string NewtonsoftOnError = "Newtonsoft.Json.Serialization.OnErrorAttribute";
+
+    private static readonly string[] StjCallbackInterfaces =
+    [
+        "System.Text.Json.Serialization.IJsonOnSerializing",
+        "System.Text.Json.Serialization.IJsonOnSerialized",
+        "System.Text.Json.Serialization.IJsonOnDeserializing",
+        "System.Text.Json.Serialization.IJsonOnDeserialized"
+    ];
+
+    private const string SerializationContract = "serialization_contract";
 
     private const string DataContractAttribute = "System.Runtime.Serialization.DataContractAttribute";
     private const string DataContractDataMember = "System.Runtime.Serialization.DataMemberAttribute";
@@ -27,6 +38,10 @@ public sealed class SerializationAdapter : IFrameworkAdapter
     {
         var edges = new List<EdgeRecord>();
         var annotations = new List<AnnotationRecord>();
+        var callbackInterfaces = StjCallbackInterfaces
+            .Select(context.Compilation.GetTypeByMetadataName)
+            .OfType<INamedTypeSymbol>()
+            .ToList();
 
         foreach (var type in context.GetAllNamedTypes())
         {
@@ -34,6 +49,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                 continue;
 
             ExtractJsonSerializable(type, context, edges);
+            ExtractInterfaceCallbacks(type, callbackInterfaces, context, annotations);
 
             var hasDataContract = HasAttribute(type, DataContractAttribute);
             foreach (var member in type.GetMembers())
@@ -53,7 +69,73 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             }
         }
 
-        return new AdapterExtractionResult(edges, annotations);
+        return new AdapterExtractionResult(edges, Deduplicate(annotations));
+    }
+
+    /// <summary>
+    ///     System.Text.Json calls these interfaces' methods by their interface member, so the
+    ///     implementation can be implicit, explicit or inherited. It is resolved through the
+    ///     type's interface map, which also gives the document that retirement must follow.
+    /// </summary>
+    private static void ExtractInterfaceCallbacks(
+        INamedTypeSymbol type,
+        List<INamedTypeSymbol> callbackInterfaces,
+        AdapterExtractionContext context,
+        List<AnnotationRecord> annotations)
+    {
+        foreach (var callbackInterface in callbackInterfaces)
+        {
+            foreach (var member in callbackInterface.GetMembers())
+            {
+                if (member is not IMethodSymbol interfaceMethod)
+                    continue;
+
+                if (type.FindImplementationForInterfaceMember(interfaceMethod) is not IMethodSymbol implementation)
+                    continue;
+
+                var definition = implementation.OriginalDefinition;
+                if (definition.IsStatic || definition.IsGenericMethod || !context.IsSolutionSymbol(definition))
+                    continue;
+
+                if (definition.ContainingType is not { } declaringType)
+                    continue;
+
+                // An implicit or explicit implementation belongs to the document of the method.
+                // An inherited method whose base does not implement the interface belongs to the
+                // derived type's document; otherwise the base's own walk emits it.
+                string? documentPath;
+                if (SymbolEqualityComparer.Default.Equals(declaringType, type.OriginalDefinition))
+                    documentPath = context.LocationResolver.Resolve(definition).path;
+                else if (!declaringType.AllInterfaces.Any(i =>
+                             SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, callbackInterface.OriginalDefinition)))
+                    documentPath = context.LocationResolver.Resolve(type).path;
+                else
+                    continue;
+
+                if (documentPath == null || context.MakeSymbolId(definition) is not { } id)
+                    continue;
+
+                annotations.Add(new AnnotationRecord(id, SerializationContract, "included", documentPath));
+            }
+        }
+    }
+
+    /// <summary>
+    ///     The annotations unique index keys on the document too. Two derived types that inherit
+    ///     one callback must keep one row per derived document, so the key has the same shape.
+    /// </summary>
+    private static List<AnnotationRecord> Deduplicate(List<AnnotationRecord> annotations)
+    {
+        var seen = new HashSet<(string Symbol, string Kind, string Value, string Document)>();
+        var results = new List<AnnotationRecord>(annotations.Count);
+        foreach (var annotation in annotations)
+        {
+            if (annotation.DocumentPath == null ||
+                seen.Add((annotation.SymbolId, annotation.Kind, annotation.Value, annotation.DocumentPath)))
+                results.Add(annotation);
+        }
+
+        return results;
     }
 
     private void ExtractJsonSerializable(INamedTypeSymbol type, AdapterExtractionContext context, List<EdgeRecord> edges)
@@ -111,15 +193,17 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         {
             MethodKind.Constructor => HasAttribute(method, "System.Text.Json.Serialization.JsonConstructorAttribute") ||
                                       HasAttribute(method, "Newtonsoft.Json.JsonConstructorAttribute"),
-            MethodKind.Ordinary => HasAttribute(method, "System.Runtime.Serialization.OnSerializingAttribute") ||
-                                   HasAttribute(method, "System.Runtime.Serialization.OnSerializedAttribute") ||
-                                   HasAttribute(method, "System.Runtime.Serialization.OnDeserializingAttribute") ||
-                                   HasAttribute(method, "System.Runtime.Serialization.OnDeserializedAttribute"),
+            MethodKind.Ordinary => !method.IsStatic && !method.IsGenericMethod &&
+                                   (HasAttribute(method, "System.Runtime.Serialization.OnSerializingAttribute") ||
+                                    HasAttribute(method, "System.Runtime.Serialization.OnSerializedAttribute") ||
+                                    HasAttribute(method, "System.Runtime.Serialization.OnDeserializingAttribute") ||
+                                    HasAttribute(method, "System.Runtime.Serialization.OnDeserializedAttribute") ||
+                                    HasAttribute(method, NewtonsoftOnError)),
             _ => false
         };
 
         if (included && context.MakeSymbolId(method) is { } id)
-            annotations.Add(new AnnotationRecord(id, "serialization_contract", "included",
+            annotations.Add(new AnnotationRecord(id, SerializationContract, "included",
                 context.LocationResolver.Resolve(method).path));
     }
 

@@ -157,6 +157,89 @@ public sealed partial class GoldenAdapterTests
     }
 
     [Fact]
+    public async Task Phase3_Serialization_InterfaceCallbacksReceiveIncludedAnnotations()
+    {
+        var test = new SerializationAdapterExtractorTest();
+        try
+        {
+            var extraction = await test.ExtractAsync(
+                new Dictionary<string, string>
+                {
+                    ["Base.cs"] = """
+                                  namespace App;
+
+                                  public class CallbackBase
+                                  {
+                                      public void OnSerializing() { }
+                                      public void OnSerialized() { }
+                                      public void OnDeserializing() { }
+                                      public void OnDeserialized() { }
+                                  }
+                                  """,
+                    ["Callbacks.cs"] = """
+                                       using System.Text.Json.Serialization;
+
+                                       namespace App;
+
+                                       public class ImplicitCallbacks : IJsonOnSerializing, IJsonOnSerialized, IJsonOnDeserializing, IJsonOnDeserialized
+                                       {
+                                           public void OnSerializing() { }
+                                           public void OnSerialized() { }
+                                           public void OnDeserializing() { }
+                                           public void OnDeserialized() { }
+                                       }
+
+                                       public class ExplicitCallbacks : IJsonOnSerializing, IJsonOnSerialized, IJsonOnDeserializing, IJsonOnDeserialized
+                                       {
+                                           void IJsonOnSerializing.OnSerializing() { }
+                                           void IJsonOnSerialized.OnSerialized() { }
+                                           void IJsonOnDeserializing.OnDeserializing() { }
+                                           void IJsonOnDeserialized.OnDeserialized() { }
+                                       }
+
+                                       public class InheritedCallbacks : CallbackBase, IJsonOnSerializing, IJsonOnSerialized, IJsonOnDeserializing, IJsonOnDeserialized
+                                       {
+                                       }
+                                       """
+                },
+                runAdapters: true);
+
+            var callbacks = extraction.Result.Annotations
+                .Where(a => a.Kind == "serialization_contract")
+                .Select(a => (Symbol: SymbolId.DocCommentIdOf(a.SymbolId), a.Value, a.DocumentPath))
+                .OrderBy(a => a.Symbol, StringComparer.Ordinal)
+                .ToList();
+
+            string[] expected =
+            [
+                "M:App.CallbackBase.OnDeserialized",
+                "M:App.CallbackBase.OnDeserializing",
+                "M:App.CallbackBase.OnSerialized",
+                "M:App.CallbackBase.OnSerializing",
+                "M:App.ExplicitCallbacks.System#Text#Json#Serialization#IJsonOnDeserialized#OnDeserialized",
+                "M:App.ExplicitCallbacks.System#Text#Json#Serialization#IJsonOnDeserializing#OnDeserializing",
+                "M:App.ExplicitCallbacks.System#Text#Json#Serialization#IJsonOnSerialized#OnSerialized",
+                "M:App.ExplicitCallbacks.System#Text#Json#Serialization#IJsonOnSerializing#OnSerializing",
+                "M:App.ImplicitCallbacks.OnDeserialized",
+                "M:App.ImplicitCallbacks.OnDeserializing",
+                "M:App.ImplicitCallbacks.OnSerialized",
+                "M:App.ImplicitCallbacks.OnSerializing"
+            ];
+
+            Assert.Equal(expected, callbacks.Select(a => a.Symbol));
+            Assert.All(callbacks, a =>
+            {
+                Assert.Equal("included", a.Value);
+                Assert.EndsWith("Callbacks.cs", a.DocumentPath, StringComparison.Ordinal);
+            });
+        }
+        finally
+        {
+            test.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task Phase3_AspNetCore_MapsMiddlewareAndCustomHttpVerbs()
     {
         CreateProject("App", new Dictionary<string, string>

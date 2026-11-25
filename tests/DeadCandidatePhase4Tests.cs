@@ -5,6 +5,56 @@ namespace Lurp.Tests;
 public sealed class DeadCandidatePhase4Tests : IntegrationTestBase
 {
     [Fact]
+    public async Task SerializationCallbacksFollowTheRulesOfEachSerializer()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["App.cs"] = """
+                         using System.Runtime.Serialization;
+                         using System.Text.Json.Serialization;
+
+                         namespace Sample;
+
+                         internal class Dto
+                         {
+                             [Newtonsoft.Json.Serialization.OnError]
+                             private void ErrorHandler(StreamingContext context, Newtonsoft.Json.Serialization.ErrorContext error) { }
+
+                             [OnDeserialized]
+                             private static void StaticCallback(StreamingContext context) { }
+                         }
+
+                         internal class Callbacked : IJsonOnSerialized
+                         {
+                             public void OnSerialized() { }
+                         }
+                         """
+        }, ["Newtonsoft.Json@13.0.3"]);
+
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        var annotations = store.GetAnnotations(snapshot).Where(a => a.Kind == "serialization_contract").ToArray();
+        Assert.Equal(2, annotations.Length);
+        Assert.Contains(annotations, a => a.SymbolId == ResolveSymbolId(snapshot, "global::Sample.Dto.ErrorHandler"));
+        Assert.Contains(annotations, a => a.SymbolId == ResolveSymbolId(snapshot, "global::Sample.Callbacked.OnSerialized"));
+        Assert.DoesNotContain(annotations, a => a.SymbolId == ResolveSymbolId(snapshot, "global::Sample.Dto.StaticCallback"));
+
+        var page = store.GetDeadCandidatesPage(snapshot, null, null, null, false, false, false, 200, null);
+        CheckVerdict("global::Sample.Dto.ErrorHandler", DeadCandidateStatus.UncertainDead, DeadCandidateReason.SerializationConvention);
+        CheckVerdict("global::Sample.Dto.StaticCallback", DeadCandidateStatus.ProvedDead, DeadCandidateReason.NoIncomingLiveEdges);
+        CheckVerdict("global::Sample.Callbacked.OnSerialized", DeadCandidateStatus.UncertainDead, DeadCandidateReason.ExternalInterfaceImplementation);
+
+        void CheckVerdict(string fqn, string status, string reason)
+        {
+            var id = ResolveSymbolId(snapshot, fqn);
+            var candidate = Assert.Single(page.Candidates, c => c.SymbolId == id);
+            Assert.Equal(status, candidate.Status);
+            Assert.Equal(reason, candidate.Reason);
+        }
+    }
+
+    [Fact]
     public async Task RuntimeConventionsProtectMembersOfNonPublicTypes()
     {
         CreateProject("App", new Dictionary<string, string>

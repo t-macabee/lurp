@@ -98,6 +98,42 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Scenario_SerializationCallbackInheritedByTwoDerivedTypes_KeepsTheOtherDocument()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Base.cs"] = "namespace TestProject; public class CallbackBase { public void OnSerialized() { } }",
+            ["One.cs"] = "namespace TestProject; public class One : CallbackBase, System.Text.Json.Serialization.IJsonOnSerialized { }",
+            ["Two.cs"] = "namespace TestProject; public class Two : CallbackBase, System.Text.Json.Serialization.IJsonOnSerialized { }"
+        });
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        using (var store = OpenStore(DbPath))
+        {
+            var annotations = SerializationCallbacks(store, snapshotA);
+            Assert.Equal(2, annotations.Count);
+            Assert.Contains(annotations, a => a.DocumentPath!.EndsWith("One.cs", StringComparison.Ordinal));
+            Assert.Contains(annotations, a => a.DocumentPath!.EndsWith("Two.cs", StringComparison.Ordinal));
+        }
+
+        WriteFile("TestProject", "One.cs", "namespace TestProject; public class One : CallbackBase { }");
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+        using (var store = OpenStore(DbPath))
+        {
+            var annotation = Assert.Single(SerializationCallbacks(store, snapshotB));
+            Assert.EndsWith("Two.cs", annotation.DocumentPath, StringComparison.Ordinal);
+        }
+    }
+
+    private static List<AnnotationRecord> SerializationCallbacks(SqliteIndexStore store, string snapshotId) =>
+        store.GetAnnotations(snapshotId)
+            .Where(a => a.Kind == "serialization_contract" && a.Value == "included")
+            .ToList();
+
+    [Fact]
     public async Task ScenarioD_RenameMethod_SwapsSymbolIdentity()
     {
         await RunParityScenarioAsync("TestProject",
