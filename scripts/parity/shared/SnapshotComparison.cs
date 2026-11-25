@@ -11,7 +11,8 @@ public static class SnapshotComparison
     {
         ["snapshots"] = (
             ["status", "payload_pruned", "failure_reason_code", "tool_version", "database_schema_version",
-             "output_schema_version", "extractor_version", "sdk_version", "compiler_version", "skipped_adapters"],
+             "output_schema_version", "extractor_version", "sdk_version", "compiler_version", "skipped_adapters",
+             "analyzers_skipped"],
             ["snapshot_id", // The comparison checks the requested IDs separately.
              "built_at_utc", "selected_at_utc", "build_strategy", "previous_snapshot_id", // Index history
              "workspace_id", // Database identity
@@ -208,7 +209,8 @@ public static class SnapshotComparison
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT status, payload_pruned, failure_reason_code, tool_version, database_schema_version,
-                   output_schema_version, extractor_version, sdk_version, compiler_version, skipped_adapters
+                   output_schema_version, extractor_version, sdk_version, compiler_version, skipped_adapters,
+                   analyzers_skipped
             FROM snapshots
             WHERE snapshot_id = @snapshotId;
             """;
@@ -222,7 +224,7 @@ public static class SnapshotComparison
             reader.GetString(0), reader.GetInt32(1) != 0, reader.IsDBNull(2) ? null : reader.GetString(2),
             reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetInt32(4), reader.GetInt32(5),
             reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7),
-            reader.IsDBNull(8) ? null : reader.GetString(8), reader.GetString(9))];
+            reader.IsDBNull(8) ? null : reader.GetString(8), reader.GetString(9), reader.GetInt32(10) != 0)];
     }
 
     public static List<DocumentSnapshot> ReadDocuments(string dbPath, string snapshotId)
@@ -654,7 +656,8 @@ public static class SnapshotComparison
 
     private sealed record SnapshotMetadata(
         string Status, bool PayloadPruned, string? FailureReasonCode, string? ToolVersion, int DatabaseSchemaVersion,
-        int OutputSchemaVersion, string? ExtractorVersion, string? SdkVersion, string? CompilerVersion, string SkippedAdapters);
+        int OutputSchemaVersion, string? ExtractorVersion, string? SdkVersion, string? CompilerVersion, string SkippedAdapters,
+        bool AnalyzersSkipped);
 
     public sealed record DocumentSnapshot(string RelativePath, string ContentHash, bool IsGenerated,
         string? LineStarts, string? Encoding, long? ByteCount, string? ContentSha256);

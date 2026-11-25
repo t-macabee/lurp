@@ -351,6 +351,7 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
         {
             command.CommandText = """
                 DROP TABLE IF EXISTS snapshot_build_inputs;
+                ALTER TABLE snapshots DROP COLUMN analyzers_skipped;
                 DELETE FROM schema_metadata WHERE version > 52;
                 UPDATE snapshots SET database_schema_version = 52;
                 """;

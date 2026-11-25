@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace Lurp.Workspace;
 
-public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, HashSet<string> skipAdapters, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
+public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, HashSet<string> skipAdapters, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false, bool skipAnalyzers = false)
 {
     private readonly DocumentChangeDetector _changeDetector = new(gitRoot, output ?? ConsoleOutputSink.Instance);
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
@@ -53,6 +53,15 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
                     null)
             ]);
 
+        if (previousManifest.AnalyzersSkipped != skipAnalyzers)
+            throw new FullRebuildRequiredException(
+            [
+                new SnapshotMismatch(MismatchKind.VersionChanged,
+                    $"Analyzer mode changed (analyzers_skipped: {previousManifest.AnalyzersSkipped} -> {skipAnalyzers}).",
+                    null,
+                    null)
+            ]);
+
         swConfig.Stop();
         timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.ConfigurationCheck, swConfig.ElapsedMilliseconds));
 
@@ -74,7 +83,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // identical snapshot id, so a complete snapshot with this id must be
         // reused rather than duplicated, and a crashed or failed attempt with
         // the same id must not block a retry.
-        var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
+        var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters, skipAnalyzers);
         var newSnapshotIdStr = snapshotId.ToString();
         var disposition = ExistingSnapshotPolicy.Resolve(_store, newSnapshotIdStr, workspaceInfo.Id.Value, SnapshotBuildStrategies.Incremental, force, _output);
         if (disposition == ExistingSnapshotDisposition.Reuse)
@@ -135,7 +144,11 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             extractionScopeSeed.UnionWith(widePaths);
 
         var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
-        var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, extractionScopePaths, previousRichManifest.ProjectDocuments);
+        var affectedProjects = _changeDetector.IdentifyAffectedProjects(
+            solution,
+            extractionScopePaths,
+            previousRichManifest.ProjectDocuments,
+            includeDependents: widePaths != null);
 
         // Extraction guards compare against SyntaxTree.FilePath, which is absolute
         // and forward-slash normalized. Passing the git-root-relative form matches
@@ -156,7 +169,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         var isRebuild = disposition == ExistingSnapshotDisposition.Rebuild;
         var buildId = isRebuild ? new SnapshotId(Guid.NewGuid()) : snapshotId;
         var buildSnapshotId = buildId.ToString();
-        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, buildId, SnapshotId.Parse(previousSnapshotId), skipAdapters);
+        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, buildId, SnapshotId.Parse(previousSnapshotId), skipAdapters, skipAnalyzers);
         // Step 4: Manifest Creation
         cancellationToken.ThrowIfCancellationRequested();
         var sw4 = Stopwatch.StartNew();
@@ -373,7 +386,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
                 continue;
             }
 
-            var options = CompilationFactExtractor.CreateOptions(skipAdapters, extractionScopeAbsolutePaths, _output);
+            var options = CompilationFactExtractor.CreateOptions(skipAdapters, extractionScopeAbsolutePaths, _output, skipAnalyzers);
             CompilationFactExtractor.ExtractionResult result;
             try
             {

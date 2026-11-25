@@ -82,7 +82,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Transaction = transaction;
 
         command.CommandText = """
-            INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, selected_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, status, build_strategy) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, @status, @buildStrategy);
+            INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, selected_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, analyzers_skipped, status, build_strategy) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, @analyzersSkipped, @status, @buildStrategy);
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshot.SnapshotId);
         command.Parameters.AddWithValue("@workspaceId", snapshot.WorkspaceId);
@@ -95,6 +95,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@toolVersion", (object?)snapshot.ToolVersion ?? DBNull.Value);
         command.Parameters.AddWithValue("@previousSnapshotId", (object?)snapshot.PreviousSnapshotId ?? DBNull.Value);
         command.Parameters.AddWithValue("@skippedAdapters", string.Join(",", snapshot.SkippedAdapters));
+        command.Parameters.AddWithValue("@analyzersSkipped", snapshot.AnalyzersSkipped ? 1 : 0);
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.InProgress);
         command.Parameters.AddWithValue("@buildStrategy", snapshot.BuildStrategy);
         command.ExecuteNonQuery();
@@ -331,7 +332,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                        s.sdk_version, s.compiler_version, s.built_at_utc,
                        s.database_schema_version, s.output_schema_version,
                        s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                       s.skipped_adapters, s.build_strategy, s.selected_at_utc
+                       s.skipped_adapters, s.build_strategy, s.selected_at_utc, s.analyzers_skipped, s.analyzers_skipped
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.status = @status
@@ -344,7 +345,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                        s.sdk_version, s.compiler_version, s.built_at_utc,
                        s.database_schema_version, s.output_schema_version,
                        s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                       s.skipped_adapters, s.build_strategy, s.selected_at_utc
+                       s.skipped_adapters, s.build_strategy, s.selected_at_utc, s.analyzers_skipped, s.analyzers_skipped
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.workspace_id = @workspaceId
@@ -385,6 +386,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             Projects = projects,
             UnloadedProjects = ReadUnloadedProjects(row.SnapshotId),
             SkippedAdapters = row.SkippedAdapters,
+            AnalyzersSkipped = row.AnalyzersSkipped,
             BuildStrategy = row.BuildStrategy
         };
     }
@@ -397,7 +399,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                    s.sdk_version, s.compiler_version, s.built_at_utc,
                    s.database_schema_version, s.output_schema_version,
                    s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                   s.skipped_adapters, s.build_strategy, s.selected_at_utc
+                   s.skipped_adapters, s.build_strategy, s.selected_at_utc, s.analyzers_skipped
             FROM snapshots s
             JOIN workspaces w ON w.workspace_id = s.workspace_id
             WHERE s.snapshot_id = @snapshotId;
@@ -431,6 +433,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             Projects = projects,
             UnloadedProjects = ReadUnloadedProjects(row.SnapshotId),
             SkippedAdapters = row.SkippedAdapters,
+            AnalyzersSkipped = row.AnalyzersSkipped,
             BuildStrategy = row.BuildStrategy
         };
     }
@@ -449,7 +452,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                    s.sdk_version, s.compiler_version, s.built_at_utc,
                    s.database_schema_version, s.output_schema_version,
                    s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                   s.skipped_adapters, s.build_strategy, s.selected_at_utc
+                   s.skipped_adapters, s.build_strategy, s.selected_at_utc, s.analyzers_skipped
             FROM snapshots s
             JOIN workspaces w ON w.workspace_id = s.workspace_id
             WHERE s.snapshot_id = @snapshotId;
@@ -480,6 +483,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             PreviousSnapshotId = row.PreviousSnapshotId,
             Projects = projects,
             SkippedAdapters = row.SkippedAdapters,
+            AnalyzersSkipped = row.AnalyzersSkipped,
             BuildStrategy = row.BuildStrategy
         };
     }
@@ -507,6 +511,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
         var selectedAtUtc = reader.IsDBNull(14)
             ? builtAtUtc
             : DateTime.Parse(reader.GetString(14), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        var analyzersSkipped = !reader.IsDBNull(15) && reader.GetInt32(15) != 0;
 
         return new SnapshotRow
         {
@@ -524,6 +529,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             ToolVersion = toolVersion ?? "",
             PreviousSnapshotId = previousSnapshotId,
             SkippedAdapters = skippedAdapters,
+            AnalyzersSkipped = analyzersSkipped,
             BuildStrategy = buildStrategy
         };
     }

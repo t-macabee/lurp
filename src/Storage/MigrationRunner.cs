@@ -205,7 +205,8 @@ public class MigrationRunner
             new Migration_050_EdgeSiteEvidence(),
             new Migration_051_MultiTfmDeclarationSpans(),
             new Migration_052_WeightedSymbolFts(),
-            new Migration_053_SnapshotBuildInputs()
+            new Migration_053_SnapshotBuildInputs(),
+            new Migration_054_AnalyzersSkipped()
         ];
     }
 }

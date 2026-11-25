@@ -8,8 +8,12 @@ public static class IndexRunner
 {
     internal static readonly string[] Strategies = [SnapshotBuildStrategies.Full, SnapshotBuildStrategies.Incremental];
 
-    public static async Task<string> RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
-        bool force = false, CancellationToken cancellationToken = default)
+    public static Task<string> RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
+        bool force = false, CancellationToken cancellationToken = default) =>
+        RunAsync(store, solutionPath, skipAdapters, strategyArg, verbose, output, skipDiff, force, skipAnalyzers: false, cancellationToken);
+
+    public static async Task<string> RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? strategyArg, bool verbose, IOutputSink? output, bool skipDiff,
+        bool force, bool skipAnalyzers, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var runStartedAtUtc = DateTime.UtcNow;
@@ -37,7 +41,7 @@ public static class IndexRunner
         if (strategy == SnapshotBuildStrategies.Incremental && !force)
         {
             var currentSnapshot = previous is null ? null
-                : WorkspaceFreshness.CanSkipIncrementalIndex(store, previous, gitRoot, capturedBuildInputs, sink);
+                : WorkspaceFreshness.CanSkipIncrementalIndex(store, previous, gitRoot, capturedBuildInputs, sink, skipAnalyzers);
             inputScan.Stop();
             precheckMs = inputScan.ElapsedMilliseconds;
 
@@ -95,7 +99,7 @@ public static class IndexRunner
             {
                 try
                 {
-                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, verbose, sink, skipDiff, force);
+                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, verbose, sink, skipDiff, force, skipAnalyzers);
                     var result = await incrementalIndexer.RunIncrementalAsync(
                         solution, workspaceInfo, previousStorageManifest, buildInputs, loadElapsed, cancellationToken);
 
@@ -129,7 +133,7 @@ public static class IndexRunner
         if (precheckMs is { } fullPrecheckElapsed)
             setupTimings.Add(new SnapshotTimingRow(SnapshotTimingSteps.IncrementalPrecheck, fullPrecheckElapsed));
         var (selectedId, built) = await RunFullIndexAsync(
-            store, solution, workspaceInfo, skipAdapters, buildInputs, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
+            store, solution, workspaceInfo, skipAdapters, buildInputs, setupTimings, verbose, sink, skipDiff, force, skipAnalyzers, cancellationToken);
         var newSnapshotId = built ? selectedId : null;
         store.MarkSnapshotSelected(selectedId, runStartedAtUtc, built ? null : buildInputs);
 
@@ -145,9 +149,9 @@ public static class IndexRunner
     private static async Task<(string SelectedSnapshotId, bool Built)> RunFullIndexAsync(
         SqliteIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters,
         IReadOnlyDictionary<string, string> buildInputs, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
-        bool skipDiff = false, bool force = false, CancellationToken cancellationToken = default)
+        bool skipDiff = false, bool force = false, bool skipAnalyzers = false, CancellationToken cancellationToken = default)
     {
-        var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
+        var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters, skipAnalyzers);
         var snapshotIdStr = snapshotId.ToString();
         var workspaceId = workspaceInfo.Id.Value;
 
@@ -160,7 +164,7 @@ public static class IndexRunner
         var annotationSourceId = isRebuild ? null : store.GetSelectedLatestSnapshotId(workspaceId);
         var buildId = isRebuild ? new SnapshotId(Guid.NewGuid()) : snapshotId;
         var buildSnapshotId = buildId.ToString();
-        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, buildId, skipAdapters: skipAdapters);
+        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, buildId, skipAdapters: skipAdapters, skipAnalyzers: skipAnalyzers);
         var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();
 
         // Step: Manifest Save
@@ -219,7 +223,7 @@ public static class IndexRunner
                     continue;
                 }
 
-                var options = CompilationFactExtractor.CreateOptions(skipAdapters, output: sink);
+                var options = CompilationFactExtractor.CreateOptions(skipAdapters, output: sink, skipAnalyzers: skipAnalyzers);
                 CompilationFactExtractor.ExtractionResult result;
                 try
                 {

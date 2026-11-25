@@ -49,6 +49,7 @@ internal static class IndexHandler
         }
 
         var verbose = args.Contains("--verbose");
+        var skipAnalyzers = args.Contains("--skip-analyzers");
         var skipDiff = args.Contains("--skip-diff");
         var force = args.Contains("--force");
 
@@ -56,6 +57,8 @@ internal static class IndexHandler
         output.WriteLine($"Output DB: {dbPath}");
         if (jsonExportPath != null)
             output.WriteLine($"JSON export: {jsonExportPath}");
+        if (skipAnalyzers)
+            output.WriteLine("Skipping analyzer diagnostics.");
         output.WriteLine();
 
         var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
@@ -71,7 +74,7 @@ internal static class IndexHandler
             }
 
             var selectedId = await IndexRunner.RunAsync(store, solutionPathArg, skipAdapters, strategyArg,
-                verbose, output, skipDiff, force, cancellationToken);
+                verbose, output, skipDiff, force, skipAnalyzers, cancellationToken);
             if (jsonExportPath is not null)
             {
                 var snapshot = store.LoadSnapshot(selectedId)

@@ -21,6 +21,7 @@ public class SnapshotRow
     public List<ProjectRow> Projects { get; init; } = [];
     [JsonIgnore] public IReadOnlyList<string> UnloadedProjects { get; init; } = [];
     public List<string> SkippedAdapters { get; init; } = [];
+    public bool AnalyzersSkipped { get; init; }
     public string BuildStrategy { get; init; } = SnapshotBuildStrategies.Incremental;
 }
 

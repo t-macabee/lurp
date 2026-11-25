@@ -194,7 +194,7 @@ Measured on 2026-11-21 with Lurp 4.0.0 (Release build from `f683ccf` with the P2
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.2.0, schema v53, extractor 1.14.0, CLI/MCP contract v9, output schema v8<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 4.2.0, schema v54, extractor 1.14.0, CLI/MCP contract v9, output schema v8<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit
@@ -207,6 +207,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- [RELEASE_NOTES_4.3.0.md](docs/RELEASE_NOTES_4.3.0.md) (draft)
 - [RELEASE_NOTES_4.2.0.md](docs/RELEASE_NOTES_4.2.0.md): updated declaration spans, symbol search ranking, impact and context traversal, and expanded framework coverage. Run one full index after the upgrade.
 - [RELEASE_NOTES_4.1.0.md](docs/RELEASE_NOTES_4.1.0.md): the 4.1.0 changes to EF Core mapping and the MCP tool results (CLI/MCP contract 8). Run one full index after the upgrade.
 - [RELEASE_NOTES_4.0.0.md](docs/RELEASE_NOTES_4.0.0.md): the 4.0.0 changes to extraction, storage, indexing and the CLI/MCP contract. Run one full index after the upgrade.

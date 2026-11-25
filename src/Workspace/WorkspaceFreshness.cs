@@ -178,21 +178,24 @@ public static class WorkspaceFreshness
     /// Checks whether an incremental index run can be safely skipped without loading the workspace.
     /// Compares build-input content and uses the read-path hash check for documents.
     /// </summary>
-    public static SnapshotRow? CanSkipIncrementalIndex(SqliteIndexStore store, WorkspaceId workspaceId, string gitRoot, IOutputSink? output = null)
+    public static SnapshotRow? CanSkipIncrementalIndex(SqliteIndexStore store, WorkspaceId workspaceId, string gitRoot, IOutputSink? output = null, bool skipAnalyzers = false)
     {
         var built = store.LoadSelectedLatestSnapshot(workspaceId.Value);
         if (built is null)
             return null;
 
         var buildInputs = new WorkspaceBuildInputs(gitRoot, built, CancellationToken.None);
-        return CanSkipIncrementalIndex(store, built, gitRoot, buildInputs, output);
+        return CanSkipIncrementalIndex(store, built, gitRoot, buildInputs, output, skipAnalyzers);
     }
 
     internal static SnapshotRow? CanSkipIncrementalIndex(SqliteIndexStore store, SnapshotRow built, string gitRoot,
-        WorkspaceBuildInputs buildInputs, IOutputSink? output)
+        WorkspaceBuildInputs buildInputs, IOutputSink? output, bool skipAnalyzers = false)
     {
         try
         {
+            if (built.AnalyzersSkipped != skipAnalyzers)
+                return null;
+
             if (!buildInputs.Matches(store.LoadBuildInputs(built.SnapshotId)))
                 return null;
 

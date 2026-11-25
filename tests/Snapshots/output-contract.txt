@@ -47,6 +47,7 @@ cli:context:json[capsule] $.budget number
 cli:context:json[capsule] $.completeness object
 cli:context:json[capsule] $.completeness.active_tfms object
 cli:context:json[capsule] $.completeness.active_tfms.{*} string
+cli:context:json[capsule] $.completeness.analyzers_skipped boolean
 cli:context:json[capsule] $.completeness.binding_incompleteness array(empty)
 cli:context:json[capsule] $.completeness.binding_incompleteness_summary array
 cli:context:json[capsule] $.completeness.binding_incompleteness_summary[] object
@@ -483,6 +484,7 @@ cli:dead-candidates:jsonl:meta $.meta.uncertain_provenance[] string
 cli:dead-candidates:jsonl:meta $.meta.unresolved_count number
 cli:dead-candidates:jsonl:meta $.type string
 cli:diagnostics:json $ object
+cli:diagnostics:json $.analyzers_skipped boolean
 cli:diagnostics:json $.diagnostic_count number
 cli:diagnostics:json $.diagnostics array
 cli:diagnostics:json $.diagnostics[] object
@@ -527,6 +529,7 @@ cli:diagnostics:jsonl:diagnostic $.diagnostic.start_line number
 cli:diagnostics:jsonl:diagnostic $.type string
 cli:diagnostics:jsonl:meta $ object
 cli:diagnostics:jsonl:meta $.meta object
+cli:diagnostics:jsonl:meta $.meta.analyzers_skipped boolean
 cli:diagnostics:jsonl:meta $.meta.diagnostic_count number
 cli:diagnostics:jsonl:meta $.meta.document string
 cli:diagnostics:jsonl:meta $.meta.freshness object
@@ -937,6 +940,7 @@ cli:index:export $.compiler_version string
 cli:index:export $.completeness object
 cli:index:export $.completeness.active_tfms object
 cli:index:export $.completeness.active_tfms.{*} string
+cli:index:export $.completeness.analyzers_skipped boolean
 cli:index:export $.completeness.binding_incompleteness array(empty)
 cli:index:export $.completeness.binding_incompleteness_summary array(empty)
 cli:index:export $.completeness.binding_incompleteness_total number
@@ -1131,6 +1135,7 @@ cli:status:json $.manifest.compiler_version string
 cli:status:json $.manifest.completeness object
 cli:status:json $.manifest.completeness.active_tfms object
 cli:status:json $.manifest.completeness.active_tfms.{*} string
+cli:status:json $.manifest.completeness.analyzers_skipped boolean
 cli:status:json $.manifest.completeness.binding_incompleteness array
 cli:status:json $.manifest.completeness.binding_incompleteness[] object
 cli:status:json $.manifest.completeness.binding_incompleteness[].count number
@@ -1251,6 +1256,7 @@ mcp:context $.capsule.budget number
 mcp:context $.capsule.completeness object
 mcp:context $.capsule.completeness.active_tfms object
 mcp:context $.capsule.completeness.active_tfms.{*} string
+mcp:context $.capsule.completeness.analyzers_skipped boolean
 mcp:context $.capsule.completeness.binding_incompleteness array(empty)
 mcp:context $.capsule.completeness.binding_incompleteness_summary array
 mcp:context $.capsule.completeness.binding_incompleteness_summary[] object
@@ -1581,6 +1587,7 @@ mcp:dead_candidates $.uncertain_provenance array
 mcp:dead_candidates $.uncertain_provenance[] string
 mcp:dead_candidates $.unresolved_count number
 mcp:diagnostics $ object
+mcp:diagnostics $.analyzers_skipped boolean
 mcp:diagnostics $.diagnostic_count number
 mcp:diagnostics $.diagnostics array
 mcp:diagnostics $.diagnostics[] object
@@ -2012,6 +2019,7 @@ mcp:search $.results[].type string
 mcp:search $.snapshot_id string
 mcp:search $.type string
 mcp:status $ object
+mcp:status $.analyzers_skipped boolean
 mcp:status $.contract_version number
 mcp:status $.detail null|object
 mcp:status $.detail.contract_version number
@@ -2034,6 +2042,7 @@ mcp:status $.detail.manifest.compiler_version string
 mcp:status $.detail.manifest.completeness object
 mcp:status $.detail.manifest.completeness.active_tfms object
 mcp:status $.detail.manifest.completeness.active_tfms.{*} string
+mcp:status $.detail.manifest.completeness.analyzers_skipped boolean
 mcp:status $.detail.manifest.completeness.binding_incompleteness array
 mcp:status $.detail.manifest.completeness.binding_incompleteness[] object
 mcp:status $.detail.manifest.completeness.binding_incompleteness[].count number

@@ -1398,7 +1398,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(53, runner.GetCurrentSchemaVersion());
+        Assert.Equal(54, runner.GetCurrentSchemaVersion());
 
         using var store = new SqliteIndexStore(_dbPath);
         store.Open();

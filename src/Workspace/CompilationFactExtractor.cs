@@ -1,6 +1,7 @@
 using Lurp.Adapters;
 using Lurp.Helpers;
 using Microsoft.CodeAnalysis;
+using System.Diagnostics;
 
 namespace Lurp.Workspace;
 
@@ -15,13 +16,15 @@ public static class CompilationFactExtractor
     public static ExtractionOptions CreateOptions(
         IReadOnlySet<string>? skipAdapters = null,
         IReadOnlySet<string>? scopeDocuments = null,
-        IOutputSink? output = null)
+        IOutputSink? output = null,
+        bool skipAnalyzers = false)
     {
         var sink = output ?? ConsoleOutputSink.Instance;
         return new ExtractionOptions(
             skipAdapters,
             ScopeDocuments: scopeDocuments,
-            LogWarning: msg => sink.WriteErrorLine($"WARNING: {msg}"));
+            LogWarning: msg => sink.WriteErrorLine($"WARNING: {msg}"),
+            SkipAnalyzers: skipAnalyzers);
     }
 
     /// <summary>
@@ -128,12 +131,12 @@ public static class CompilationFactExtractor
 
         var symbolExtractor = new SymbolExtractor(inputs, workspaceInfo, targetFramework);
 
-        var declarations = symbolExtractor.ExtractAll();
+        var declarations = Measure("SymbolExtractor", measurements, symbolExtractor.ExtractAll);
 
         var edges = RunStage(
             ctx, "StructuralEdge", null, logWarning,
             msg => $"Edge extraction failed for project '{projectName}': {msg}",
-            symbolExtractor.ExtractEdges,
+            () => Measure("StructuralEdge", measurements, symbolExtractor.ExtractEdges),
             []);
 
         var memberEdgeExtractor = new MemberEdgeExtractor(inputs);
@@ -150,7 +153,7 @@ public static class CompilationFactExtractor
         RunStage(
             ctx, "Polymorphism", null, logWarning,
             msg => $"Polymorphism extraction failed for project '{projectName}': {msg}",
-            () => edges.AddRange(new PolymorphismExtractor(inputs).ExtractAll()));
+            () => Measure("PolymorphismExtractor", measurements, () => edges.AddRange(new PolymorphismExtractor(inputs).ExtractAll())));
 
         RunStage(
             ctx, "Reflection", null, logWarning,
@@ -172,18 +175,45 @@ public static class CompilationFactExtractor
             RunStage(
                 ctx, "Adapter", adapter.Name, logWarning,
                 msg => $"Adapter '{adapter.Name}' failed: {msg}",
-                () =>
+                () => Measure(adapter.GetType().Name, measurements, () =>
                 {
                     var result = adapter.Extract(adapterContext);
                     edges.AddRange(result.Edges);
                     annotations.AddRange(result.Annotations);
-                });
+                }));
 
         var diagnostics = project != null
-            ? CompilationHelper.GetDiagnostics(project, compilation, logWarning)
-            : CompilationHelper.GetDiagnostics(projectName, compilation);
+            ? CompilationHelper.GetDiagnostics(project, compilation, logWarning, measurements, options?.SkipAnalyzers ?? false)
+            : CompilationHelper.GetCompilerDiagnostics(projectName, compilation, measurements);
 
         return new ExtractionResult(declarations, edges, diagnostics, [.. incompleteness.ToRecords()], measurements, annotations, failures);
+    }
+
+    private static T Measure<T>(string name, List<ExtractionMeasurement> measurements, Func<T> action)
+    {
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            stopwatch.Stop();
+            measurements.Add(new ExtractionMeasurement(
+                name,
+                stopwatch.ElapsedMilliseconds,
+                GC.GetAllocatedBytesForCurrentThread() - allocatedBefore));
+        }
+    }
+
+    private static void Measure(string name, List<ExtractionMeasurement> measurements, Action action)
+    {
+        Measure<object?>(name, measurements, () =>
+        {
+            action();
+            return null;
+        });
     }
 
     private static HashSet<AssemblyIdentity> GetSolutionAssemblyIdentities(Compilation compilation, WorkspaceInfo workspaceInfo)
@@ -220,7 +250,8 @@ public static class CompilationFactExtractor
         IReadOnlySet<string>? SkipAdapters = null,
         Action<string>? LogWarning = null,
         IReadOnlySet<string>? ScopeDocuments = null,
-        Func<IReadOnlySet<string>?, IFrameworkAdapter[]>? AdapterProvider = null
+        Func<IReadOnlySet<string>?, IFrameworkAdapter[]>? AdapterProvider = null,
+        bool SkipAnalyzers = false
     );
 
     /// <summary>

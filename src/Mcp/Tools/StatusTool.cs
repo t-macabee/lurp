@@ -110,6 +110,7 @@ internal sealed class StatusTool
 
             StatusDetail? detailObj = null;
             JsonNode? manifestNode = null;
+            bool? analyzersSkipped = null;
             if (includeManifest)
             {
                 var filters = new
@@ -120,6 +121,7 @@ internal sealed class StatusTool
                 try
                 {
                     var latestRow = store.LoadSnapshot(snapshotId);
+                    analyzersSkipped = latestRow?.AnalyzersSkipped ?? false;
                     if (projectFilter != null && latestRow != null)
                     {
                         var knownProjects = latestRow.Projects.Select(project => project.Name).ToHashSet(StringComparer.Ordinal);
@@ -150,6 +152,8 @@ internal sealed class StatusTool
                 }
             }
 
+            var resolvedAnalyzersSkipped = analyzersSkipped ?? (store.LoadSnapshotMetadata(snapshotId)?.AnalyzersSkipped ?? false);
+
             // Compute document_freshness if requested
             List<object>? documentFreshness = null;
             if (normalizedRequested != null && normalizedRequested.Count > 0)
@@ -160,7 +164,7 @@ internal sealed class StatusTool
             string Serialize(bool truncated)
             {
                 var envelope = new StatusResponse(snapshotId, VersionConstants.CliMcpContractVersion,
-                    freshness, true, detailObj, documentFreshness, truncated);
+                    freshness, true, resolvedAnalyzersSkipped, detailObj, documentFreshness, truncated);
                 return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
 
@@ -299,4 +303,4 @@ internal sealed record StatusDetail(
 
 internal sealed record StatusResponse(
     string snapshot_id, int contract_version, Dictionary<string, object?> freshness,
-    bool pinned, StatusDetail? detail, List<object>? document_freshness, bool truncated);
+    bool pinned, bool analyzers_skipped, StatusDetail? detail, List<object>? document_freshness, bool truncated);

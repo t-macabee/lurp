@@ -1,6 +1,8 @@
+using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
@@ -38,11 +40,31 @@ internal static class CompilationHelper
 
     public static List<DiagnosticRecord> GetDiagnostics(string projectName, Compilation compilation)
     {
+        return GetCompilerDiagnostics(projectName, compilation, measurements: null);
+    }
+
+    internal static List<DiagnosticRecord> GetCompilerDiagnostics(
+        string projectName,
+        Compilation compilation,
+        List<CompilationFactExtractor.ExtractionMeasurement>? measurements)
+    {
+        var allocatedBefore = measurements != null ? GC.GetAllocatedBytesForCurrentThread() : 0;
+        var stopwatch = measurements != null ? Stopwatch.StartNew() : null;
+
         var results = new List<DiagnosticRecord>();
 
         var diagnostics = compilation.GetDiagnostics();
         foreach (var diag in diagnostics)
             results.Add(ToRecord(diag, projectName));
+
+        if (stopwatch != null)
+        {
+            stopwatch.Stop();
+            measurements!.Add(new CompilationFactExtractor.ExtractionMeasurement(
+                "CompilerDiagnostics",
+                stopwatch.ElapsedMilliseconds,
+                GC.GetAllocatedBytesForCurrentThread() - allocatedBefore));
+        }
 
         return results;
     }
@@ -79,11 +101,24 @@ internal static class CompilationHelper
 
     public static List<DiagnosticRecord> GetDiagnostics(Project project, Compilation compilation, Action<string>? logWarning)
     {
-        // Start with compiler diagnostics (covers CS8019/CS8933 etc.)
-        var results = GetDiagnostics(project.Name, compilation);
+        return GetDiagnostics(project, compilation, logWarning, measurements: null, skipAnalyzers: false);
+    }
 
-        if (project.AnalyzerReferences.Count == 0)
+    internal static List<DiagnosticRecord> GetDiagnostics(
+        Project project,
+        Compilation compilation,
+        Action<string>? logWarning,
+        List<CompilationFactExtractor.ExtractionMeasurement>? measurements,
+        bool skipAnalyzers = false)
+    {
+        // Start with compiler diagnostics (covers CS8019/CS8933 etc.)
+        var results = GetCompilerDiagnostics(project.Name, compilation, measurements);
+
+        if (skipAnalyzers || project.AnalyzerReferences.Count == 0)
             return results;
+
+        var allocatedBefore = measurements != null ? GC.GetAllocatedBytesForCurrentThread() : 0;
+        var stopwatch = measurements != null ? Stopwatch.StartNew() : null;
 
         try
         {
@@ -104,6 +139,17 @@ internal static class CompilationHelper
         {
             // A poisoned analyzer assembly must not stop indexing.
             logWarning?.Invoke($"WARNING: Analyzer diagnostics for project '{project.Name}' are not stored: {ex.GetType().Name}: {ex.Message}. Compiler diagnostics are stored.");
+        }
+        finally
+        {
+            if (stopwatch != null)
+            {
+                stopwatch.Stop();
+                measurements!.Add(new CompilationFactExtractor.ExtractionMeasurement(
+                    "AnalyzerDiagnostics",
+                    stopwatch.ElapsedMilliseconds,
+                    GC.GetAllocatedBytesForCurrentThread() - allocatedBefore));
+            }
         }
 
         return results;

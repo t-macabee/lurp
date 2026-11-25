@@ -85,7 +85,7 @@ public sealed partial class SnapshotManifest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SnapshotCompleteness? Completeness { get; set; }
 
-    public static SnapshotManifest FromWorkspace(WorkspaceInfo workspace, SnapshotId snapshotId, SnapshotId? previousSnapshotId = null, IReadOnlySet<string>? skipAdapters = null)
+    public static SnapshotManifest FromWorkspace(WorkspaceInfo workspace, SnapshotId snapshotId, SnapshotId? previousSnapshotId = null, IReadOnlySet<string>? skipAdapters = null, bool skipAnalyzers = false)
     {
         return new SnapshotManifest
         {
@@ -117,6 +117,7 @@ public sealed partial class SnapshotManifest
                 SkippedAdapters = skipAdapters != null
                     ? [.. skipAdapters.OrderBy(x => x, StringComparer.Ordinal)]
                     : [],
+                AnalyzersSkipped = skipAnalyzers,
                 ActiveTfms = new Dictionary<string, string>(workspace.TargetFrameworks),
                 ExtractorVersion = VersionConstants.ExtractorVersion
             }
@@ -213,6 +214,7 @@ public sealed partial class SnapshotManifest
             Projects = projects,
             UnloadedProjects = UnloadedProjects,
             SkippedAdapters = Completeness?.SkippedAdapters ?? [],
+            AnalyzersSkipped = Completeness?.AnalyzersSkipped ?? false,
             BuildStrategy = buildStrategy
         };
     }
@@ -231,6 +233,7 @@ public sealed partial class SnapshotManifest
         {
             GeneratedTreesIncluded = false,
             SkippedAdapters = storage.SkippedAdapters,
+            AnalyzersSkipped = storage.AnalyzersSkipped,
             ActiveTfms = targetFrameworks,
             ExtractorVersion = storage.ExtractorVersion
         };

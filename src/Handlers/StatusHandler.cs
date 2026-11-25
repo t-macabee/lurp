@@ -211,7 +211,7 @@ internal static class StatusHandler
             return;
         }
 
-        WriteTextHeader(dbPath, schemaVersion, latestSnapshotId, pin, output);
+        WriteTextHeader(dbPath, schemaVersion, latestSnapshotId, latestSnapshot.AnalyzersSkipped, pin, output);
         output.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace.");
         ShowTimingIfAvailable(store, latestSnapshotId, output);
     }
@@ -256,7 +256,7 @@ internal static class StatusHandler
             return;
         }
 
-        WriteTextHeader(dbPath, schemaVersion, latestSnapshotId, pin, output);
+        WriteTextHeader(dbPath, schemaVersion, latestSnapshotId, latestSnapshot.AnalyzersSkipped, pin, output);
         output.WriteLine(freshness.IsFresh ? "Freshness: up to date." : $"Freshness: stale ({freshness.Mismatches.Count} mismatch(es)).");
 
         foreach (var mismatch in freshness.Mismatches) output.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
@@ -298,12 +298,14 @@ internal static class StatusHandler
         LatestFailurePayload? latest_failure);
 
     /// <summary>The header lines both <c>status</c> text branches print: database, schema, contract, latest snapshot, pin block, stale pin and latest failure.</summary>
-    private static void WriteTextHeader(string dbPath, int schemaVersion, string latestSnapshotId, PinPreamble pin, IOutputSink output)
+    private static void WriteTextHeader(string dbPath, int schemaVersion, string latestSnapshotId, bool analyzersSkipped, PinPreamble pin, IOutputSink output)
     {
         output.WriteLine($"Database: {dbPath}");
         output.WriteLine($"Schema version: {schemaVersion}");
         output.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
         output.WriteLine($"Latest snapshot: {latestSnapshotId}");
+        if (analyzersSkipped)
+            output.WriteLine("Analyzers: skipped (--skip-analyzers)");
         if (pin.PinActive)
         {
             var pinnedRow = pin.PinnedRow!;

@@ -109,8 +109,9 @@ public sealed record SnapshotIdentityInput(
     IReadOnlyDictionary<string, string> ExtractorVersions)
 {
     public IReadOnlyList<string> UnloadedProjects { get; init; } = [];
+    public bool SkipAnalyzers { get; init; }
 
-    public static SnapshotIdentityInput FromWorkspace(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters)
+    public static SnapshotIdentityInput FromWorkspace(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters, bool skipAnalyzers = false)
     {
         return new SnapshotIdentityInput(
             workspace.Id,
@@ -135,16 +136,17 @@ public sealed record SnapshotIdentityInput(
             skipAdapters ?? new HashSet<string>(StringComparer.Ordinal),
             ExtractorRegistry.All.ToDictionary(e => e.Name, e => e.Version, StringComparer.Ordinal))
         {
-            UnloadedProjects = workspace.UnloadedProjects
+            UnloadedProjects = workspace.UnloadedProjects,
+            SkipAnalyzers = skipAnalyzers
         };
     }
 }
 
 public static class SnapshotIdentity
 {
-    public static SnapshotId Create(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters)
+    public static SnapshotId Create(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters, bool skipAnalyzers = false)
     {
-        return Create(SnapshotIdentityInput.FromWorkspace(workspace, skipAdapters));
+        return Create(SnapshotIdentityInput.FromWorkspace(workspace, skipAdapters, skipAnalyzers));
     }
 
     public static SnapshotId Create(SnapshotIdentityInput input)
@@ -268,6 +270,8 @@ public static class SnapshotIdentity
         writer.Write(input.SkipAdapters.Count);
         foreach (var adapter in input.SkipAdapters.OrderBy(a => a, StringComparer.Ordinal))
             writer.Write(adapter);
+
+        WriteField(writer, "skipAnalyzers", input.SkipAnalyzers ? "1" : "0");
 
         writer.Flush();
         return stream.ToArray();

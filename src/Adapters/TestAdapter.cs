@@ -7,6 +7,8 @@ namespace Lurp.Adapters;
 
 public sealed class TestAdapter : IFrameworkAdapter
 {
+    internal static readonly AsyncLocal<Action<string>?> BodyRootObserver = new();
+
     private const string AdapterVersion = "test-v5";
 
     public string Name => "Test";
@@ -20,25 +22,38 @@ public sealed class TestAdapter : IFrameworkAdapter
         if (!IsTestProject(context.Compilation))
             return edges;
 
+        var observer = BodyRootObserver.Value;
+        Action<SyntaxNode>? onBodyRoot = observer == null
+            ? null
+            : node =>
+            {
+                if (!string.IsNullOrEmpty(node.SyntaxTree.FilePath))
+                    observer(PathNormalizer.ToForwardSlash(node.SyntaxTree.FilePath));
+            };
+
         var bodyInputs = context.Inputs with { ScopeDocuments = null, Incompleteness = null };
         var memberCtx = new MemberEdgeExtractionContext(bodyInputs);
         var targetSymbolsById = new Dictionary<string, ISymbol>(StringComparer.Ordinal);
-        var bodyEdges = new OperationShapeExtractor(memberCtx).ExtractBodies(targetSymbolsById);
-
+        var operationExtractor = new OperationShapeExtractor(memberCtx);
         var edgesByOwner = new Dictionary<string, List<(string TargetId, string Kind)>>(StringComparer.Ordinal);
-        foreach (var edge in bodyEdges)
-        {
-            if (edge.Kind is not (nameof(EdgeKind.Calls) or nameof(EdgeKind.Constructs) or
-                nameof(EdgeKind.Reads) or nameof(EdgeKind.Writes) or nameof(EdgeKind.References)))
-                continue;
 
-            if (!edgesByOwner.TryGetValue(edge.SourceSymbolId, out var list))
+        IReadOnlyList<(string TargetId, string Kind)> GetBodyEdgesForOwner(ISymbol owner, string ownerId)
+        {
+            if (edgesByOwner.TryGetValue(ownerId, out var existing))
+                return existing;
+
+            var list = new List<(string TargetId, string Kind)>();
+            foreach (var edge in operationExtractor.ExtractBodiesForOwner(owner, targetSymbolsById, onBodyRoot))
             {
-                list = [];
-                edgesByOwner[edge.SourceSymbolId] = list;
+                if (edge.Kind is not (nameof(EdgeKind.Calls) or nameof(EdgeKind.Constructs) or
+                    nameof(EdgeKind.Reads) or nameof(EdgeKind.Writes) or nameof(EdgeKind.References)))
+                    continue;
+
+                list.Add((edge.TargetSymbolId, edge.Kind));
             }
 
-            list.Add((edge.TargetSymbolId, edge.Kind));
+            edgesByOwner[ownerId] = list;
+            return list;
         }
 
         var types = context.GetAllNamedTypes().ToList();
@@ -69,7 +84,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                     testMethodId,
                     location,
                     collectionDefinitions,
-                    edgesByOwner,
+                    GetBodyEdgesForOwner,
                     targetSymbolsById,
                     context,
                     edges);
@@ -225,7 +240,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         string testMethodId,
         (string? path, int? sl, int? sc, int? el, int? ec) location,
         ILookup<string, INamedTypeSymbol> collectionDefinitions,
-        Dictionary<string, List<(string TargetId, string Kind)>> edgesByOwner,
+        Func<ISymbol, string, IReadOnlyList<(string TargetId, string Kind)>> getBodyEdgesForOwner,
         Dictionary<string, ISymbol> targetSymbolsById,
         AdapterExtractionContext context,
         List<EdgeRecord> edges)
@@ -346,9 +361,9 @@ public sealed class TestAdapter : IFrameworkAdapter
             var (current, expandAccessors) = queue.Dequeue();
             var currentId = context.MakeSymbolId(current);
 
-            if (currentId != null && edgesByOwner.TryGetValue(currentId, out var outgoing))
+            if (currentId != null)
             {
-                foreach (var (targetId, kind) in outgoing)
+                foreach (var (targetId, kind) in getBodyEdgesForOwner(current, currentId))
                 {
                     if (!targetSymbolsById.TryGetValue(targetId, out var targetSymbol))
                         continue;

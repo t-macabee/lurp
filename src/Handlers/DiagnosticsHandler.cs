@@ -41,6 +41,7 @@ internal static class DiagnosticsHandler
             }
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
+            var analyzersSkipped = store.LoadSnapshotMetadata(snapshotId)?.AnalyzersSkipped ?? false;
 
             var diagnostics = page.Items.Select(SurfacePayloads.DiagnosticRow).ToList();
 
@@ -52,6 +53,7 @@ internal static class DiagnosticsHandler
                 severity = severityFilter,
                 id = idFilter,
                 include_generated = includeGenerated,
+                analyzers_skipped = analyzersSkipped,
                 diagnostic_count = page.TotalCount,
                 next_cursor = page.NextCursor,
                 freshness = FreshnessJson.Cheap(freshness)
@@ -61,9 +63,9 @@ internal static class DiagnosticsHandler
             {
                 foreach (var d in diagnostics)
                     output.WriteLine($"{d.severity,-10} {d.id,-10} {d.document_path ?? "<null>"}:{d.start_line}  {d.message}");
-                output.WriteLine($"-- {diagnostics.Count}/{page.TotalCount} diagnostic(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+                output.WriteLine($"-- {diagnostics.Count}/{page.TotalCount} diagnostic(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}{(analyzersSkipped ? " (analyzers skipped at index time)" : "")}");
             },
-            () => new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, include_generated = includeGenerated, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
+            () => new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, include_generated = includeGenerated, analyzers_skipped = analyzersSkipped, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
             () => meta,
             CliOutputWriter.JsonlItemTypes["diagnostics"],
             diagnostics);

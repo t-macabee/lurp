@@ -44,13 +44,33 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         return edges;
     }
 
-    internal List<EdgeRecord> ExtractBodies(Dictionary<string, ISymbol>? targetSymbolsById = null)
+    internal List<EdgeRecord> ExtractBodies(Dictionary<string, ISymbol>? targetSymbolsById = null, Action<SyntaxNode>? onBodyRoot = null)
+    {
+        return ExtractBodyRoots(ExecutableRoots.Bodies(context), targetSymbolsById, onBodyRoot);
+    }
+
+    internal List<EdgeRecord> ExtractBodiesForOwner(
+        ISymbol owner,
+        Dictionary<string, ISymbol>? targetSymbolsById = null,
+        Action<SyntaxNode>? onBodyRoot = null)
+    {
+        return ExtractBodyRoots(ExecutableRoots.BodiesForOwner(context, owner), targetSymbolsById, onBodyRoot);
+    }
+
+    private List<EdgeRecord> ExtractBodyRoots(
+        IEnumerable<(ISymbol Owner, SyntaxNode Node)> roots,
+        Dictionary<string, ISymbol>? targetSymbolsById,
+        Action<SyntaxNode>? onBodyRoot)
     {
         var edges = new List<EdgeRecord>();
         _targetSymbolsById = targetSymbolsById;
         try
         {
-            ExtractBodyEdges(edges);
+            foreach (var (rootOwner, node) in roots)
+            {
+                onBodyRoot?.Invoke(node);
+                ExtractBodyRoot(rootOwner, node, edges);
+            }
         }
         finally
         {
@@ -63,42 +83,44 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
     private void ExtractBodyEdges(List<EdgeRecord> edges)
     {
         foreach (var (owner, node) in ExecutableRoots.Bodies(context))
+            ExtractBodyRoot(owner, node, edges);
+    }
+
+    private void ExtractBodyRoot(ISymbol owner, SyntaxNode node, List<EdgeRecord> edges)
+    {
+        var ownerId = context.MakeSymbolId(owner);
+        if (ownerId == null)
+            return;
+
+        var model = context.GetOrCreateSemanticModel(node.SyntaxTree);
+
+        if (node is ConstructorInitializerSyntax ctorInitializer &&
+            model.GetSymbolInfo(ctorInitializer).Symbol is IMethodSymbol initializerTarget)
+            AddCall(ownerId, initializerTarget, ctorInitializer, edges);
+
+        if (node is PrimaryConstructorBaseTypeSyntax primaryBase)
+            AddPrimaryBaseConstructor(ownerId, primaryBase, model, edges);
+
+        var operation = model.GetOperation(node);
+        if (operation != null)
         {
-            var ownerId = context.MakeSymbolId(owner);
-            if (ownerId == null)
-                continue;
+            Walk(operation, owner, ownerId, model, edges);
+            return;
+        }
 
-            var model = context.GetOrCreateSemanticModel(node.SyntaxTree);
-
-            if (node is ConstructorInitializerSyntax ctorInitializer &&
-                model.GetSymbolInfo(ctorInitializer).Symbol is IMethodSymbol initializerTarget)
-                AddCall(ownerId, initializerTarget, ctorInitializer, edges);
-
-            if (node is PrimaryConstructorBaseTypeSyntax primaryBase)
-                AddPrimaryBaseConstructor(ownerId, primaryBase, model, edges);
-
-
-            var operation = model.GetOperation(node);
-            if (operation != null)
+        // Some nodes do not expose a single root operation on every Roslyn
+        // version (e.g. a primary-constructor base list). Walk the top-level
+        // operations of the descendant expressions without re-walking nested ones.
+        var walked = new HashSet<IOperation>();
+        foreach (var child in node.DescendantNodesAndSelf())
+        {
+            var childOperation = model.GetOperation(child);
+            if (childOperation != null && walked.Add(childOperation) &&
+                (childOperation.Parent == null || !walked.Contains(childOperation.Parent)))
             {
-                Walk(operation, owner, ownerId, model, edges);
-                continue;
-            }
-
-            // Some nodes do not expose a single root operation on every Roslyn
-            // version (e.g. a primary-constructor base list). Walk the top-level
-            // operations of the descendant expressions without re-walking nested ones.
-            var walked = new HashSet<IOperation>();
-            foreach (var child in node.DescendantNodesAndSelf())
-            {
-                var childOperation = model.GetOperation(child);
-                if (childOperation != null && walked.Add(childOperation) &&
-                    (childOperation.Parent == null || !walked.Contains(childOperation.Parent)))
-                {
-                    foreach (var descendant in childOperation.DescendantsAndSelf())
-                        walked.Add(descendant);
-                    Walk(childOperation, owner, ownerId, model, edges);
-                }
+                foreach (var descendant in childOperation.DescendantsAndSelf())
+                    walked.Add(descendant);
+                Walk(childOperation, owner, ownerId, model, edges);
             }
         }
     }

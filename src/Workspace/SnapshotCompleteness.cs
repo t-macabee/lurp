@@ -9,6 +9,9 @@ public sealed record SnapshotCompleteness
 
     [JsonPropertyName("skipped_adapters")] public List<string> SkippedAdapters { get; init; } = [];
 
+    [JsonPropertyName("analyzers_skipped")]
+    public bool AnalyzersSkipped { get; init; }
+
     [JsonPropertyName("active_tfms")] public Dictionary<string, string> ActiveTfms { get; init; } = [];
 
     [JsonPropertyName("extractor_version")]

@@ -25,7 +25,7 @@ public static class Program
                     Requirement = FlagRequirement.Required,
                     EnvironmentVariable = "LURP_SOLUTION_PATH",
                 },
-                FlagCatalog.Strategy, FlagCatalog.OutputJson, FlagCatalog.SkipAdapter, FlagCatalog.SkipDiff, FlagCatalog.Verbose, FlagCatalog.Force
+                FlagCatalog.Strategy, FlagCatalog.OutputJson, FlagCatalog.SkipAdapter, FlagCatalog.SkipAnalyzers, FlagCatalog.SkipDiff, FlagCatalog.Verbose, FlagCatalog.Force
             ],
             (a, output) => IndexHandler.Run(a, output)),
         new("get-source", "Retrieve source text for a document by relative path (--document=).",

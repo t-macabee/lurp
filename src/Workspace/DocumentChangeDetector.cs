@@ -36,7 +36,8 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
     public HashSet<string> IdentifyAffectedProjects(
         Solution solution,
         HashSet<string> changedPaths,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? previousProjectDocuments = null)
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? previousProjectDocuments = null,
+        bool includeDependents = true)
     {
         var affectedIds = new HashSet<ProjectId>();
 
@@ -67,6 +68,8 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
 
             if (affectedIds.Contains(project.Id) || string.IsNullOrEmpty(project.FilePath))
                 continue;
+            if (!includeDependents && previousProjectDocuments != null)
+                continue;
             var projectDirectory = Path.GetDirectoryName(project.FilePath);
             if (projectDirectory != null && changedPaths.Any(path =>
                     Path.GetFullPath(Path.Combine(_gitRoot, path)).StartsWith(
@@ -75,14 +78,17 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
                 affectedIds.Add(project.Id);
         }
 
-        var dependencyGraph = solution.GetProjectDependencyGraph();
-        var queue = new Queue<ProjectId>(affectedIds);
-        while (queue.Count > 0)
+        if (includeDependents)
         {
-            var referencedProject = queue.Dequeue();
-            foreach (var dependent in dependencyGraph.GetProjectsThatDirectlyDependOnThisProject(referencedProject))
-                if (affectedIds.Add(dependent))
-                    queue.Enqueue(dependent);
+            var dependencyGraph = solution.GetProjectDependencyGraph();
+            var queue = new Queue<ProjectId>(affectedIds);
+            while (queue.Count > 0)
+            {
+                var referencedProject = queue.Dequeue();
+                foreach (var dependent in dependencyGraph.GetProjectsThatDirectlyDependOnThisProject(referencedProject))
+                    if (affectedIds.Add(dependent))
+                        queue.Enqueue(dependent);
+            }
         }
 
         return affectedIds
