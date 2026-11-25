@@ -22,6 +22,34 @@ public sealed class McpIndexTests : IntegrationTestBase
 
     private static string GetString(JsonElement el, string name) => el.GetProperty(name).GetString()!;
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("", false)]
+    public async Task MissingOrEmptyOperationId_IsRejectedWithoutStarting(string? operationId, bool cancel)
+    {
+        await IndexInitialAsync();
+        await using var session = McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={TestDir}"]);
+        var state = new McpIndexSessionState();
+        var tool = new IndexTool(session, state);
+        string? startedId = null;
+        try
+        {
+            var error = Assert.Throws<McpProtocolException>(() =>
+            {
+                using var result = Parse(tool.LurpIndex(operation_id: operationId, cancel: cancel));
+                startedId = GetString(result.RootElement, "operation_id");
+            });
+            Assert.Equal(McpErrorCode.InvalidParams, error.ErrorCode);
+            Assert.Null(state.RunningOperationId);
+        }
+        finally
+        {
+            if (startedId != null)
+                using (await WaitForCompletionAsync(tool, startedId)) { }
+        }
+    }
+
     private static async Task<JsonDocument> WaitForCompletionAsync(IndexTool tool, string operationId, int timeoutMs = 60000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

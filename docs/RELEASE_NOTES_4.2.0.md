@@ -4,6 +4,10 @@ Run a full index after the upgrade to schema v53. Extractor 1.14.0 and the adapt
 
 ## Breaking changes (CLI/MCP contract version 9)
 
+### MCP indexing requests
+
+`lurp_index` rejects `cancel: true` without an `operation_id` and rejects an empty-string `operation_id`. These requests previously started an index run.
+
 ### Dead-candidate classification
 
 Entry points and public surface take precedence over unmodeled dependency injection assembly scans. Public candidates in scanned assemblies are excluded by default and reported as `public_surface` with `include_public`; entry points retain `entry_point_convention`. This also changes verdicts for existing snapshots.
@@ -60,6 +64,7 @@ User annotations now survive full and `--strategy=full --force` re-indexes: the 
 
 ### Changed descriptions
 
+- `lurp_index`: cancellation requires an operation ID, and an empty ID is rejected.
 - `--query=` (search): the new ranking tiers.
 - `--cursor=` (search): continues across all symbol match tiers.
 - `lurp_search`: the new ranking order.
