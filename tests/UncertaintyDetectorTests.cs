@@ -11,6 +11,26 @@ namespace Lurp.Tests;
 public sealed class UncertaintyDetectorTests : IntegrationTestBase
 {
     [Fact]
+    public async Task GeneratedReflectionRelations_RespectIncludeGenerated()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Target.cs"] = "namespace TestProject; public class Target { }",
+            ["Reflection.g.cs"] = "namespace TestProject; public class Generated { public void Use() { System.Type.GetType(\"TestProject.Target\"); } }"
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var targetId = ResolveSymbolId(snapshotId, "global::TestProject.Target");
+        using var store = OpenStore(DbPath);
+
+        ContextCapsule Capsule(bool includeGenerated) => ContextAssembler.ResolveAndAssemble(store, store,
+            new ContextLookup(snapshotId, targetId, null, null),
+            new ContextAssemblyOptions(ContextIntent.Inspect, 8000, 5, includeGenerated), store, store, store);
+
+        Assert.DoesNotContain(Capsule(false).Uncertainties, u => u.RelationshipKind == "ReflectionNameCandidate");
+        Assert.Contains(Capsule(true).Uncertainties, u => u.RelationshipKind == "ReflectionNameCandidate");
+    }
+
+    [Fact]
     public async Task EachReflectionRelation_GivesOneUncertaintyEntry()
     {
         CreateProject("TestProject", new Dictionary<string, string>

@@ -7,6 +7,45 @@ namespace Lurp.Tests;
 public sealed class ContextCapsuleTraversalTests : IntegrationTestBase
 {
     [Fact]
+    public async Task DispatchCandidates_ExcludeTestProjectsForProductionAnchors()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Members.cs"] = """
+                namespace App;
+                public interface ICounter { int Count { get; } }
+                public class Counter : ICounter { public int Count => 1; }
+                public class Reader { public int Read(ICounter counter) => counter.Count; }
+                """
+        });
+        CreateProject("Checks", new Dictionary<string, string>
+        {
+            ["Checks.cs"] = """
+                namespace Checks;
+                public class Stub : App.ICounter { public int Count => 2; }
+                public class Reader { public int Read(App.ICounter counter) => counter.Count; }
+                """
+        }, projectReferences: ["App"], metadataReferences: [typeof(Xunit.FactAttribute).Assembly.Location]);
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        var contract = ResolveSymbolId(snapshot, "global::App.ICounter.Count");
+        var implementation = ResolveSymbolId(snapshot, "global::App.Counter.Count");
+        var stub = ResolveSymbolId(snapshot, "global::Checks.Stub.Count");
+        Check("global::App.Reader.Read", [contract, implementation]);
+        Check("global::Checks.Reader.Read", [contract, implementation, stub]);
+
+        void Check(string anchorName, string[] expected)
+        {
+            var anchor = ResolveSymbolId(snapshot, anchorName);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, new ContextLookup(snapshot, anchor, null, null),
+                new ContextAssemblyOptions(ContextIntent.Inspect, 100_000, 4), store, store);
+            var page = ContextAssembler.BuildTierPage(store, store, snapshot, SymbolId.Parse(anchor), "direct_callees", 4, false, 0, 100);
+            Assert.Equal(expected.Order(), capsule.DirectCallees.Select(item => item.SymbolId).Order());
+            Assert.Equal(expected.Order(), page.Items.Select(item => item.SymbolId).Order());
+        }
+    }
+
+    [Fact]
     public async Task Accessors_PreserveRoleSpecificImpactAndCapsuleWitnesses()
     {
         CreateProject("App", new Dictionary<string, string>
@@ -69,6 +108,7 @@ public sealed class ContextCapsuleTraversalTests : IntegrationTestBase
         string CounterId(string name) => ResolveSymbolId(snapshot, $"global::App.{name}");
 
         var dispatch = Capsule(CounterId("Counter.Read")).DirectCallees;
+        Assert.Equal(2, dispatch.Count);
         Assert.Contains(dispatch, item => item.SymbolId == CounterId("ICounter.Count") && item.Direct == true);
         Assert.Contains(dispatch, item => item.SymbolId == CounterId("Counter.Count") &&
             item.Relationship == CapsuleRelationship.IndirectDispatchCandidate && item.Direct == false);

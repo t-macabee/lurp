@@ -91,7 +91,8 @@ internal sealed class ContextAssembler
     public ContextCapsule Assemble(CancellationToken cancellationToken = default)
     {
         var snapshotMetadata = SnapshotStore?.LoadSnapshotMetadata(SnapshotId);
-        var context = new ContextTierContext(EdgeStore, DeclarationStore, SnapshotId, SymbolId, MaxHops, IncludeGenerated, cancellationToken);
+        var context = new ContextTierContext(EdgeStore, DeclarationStore, SnapshotId, SymbolId, MaxHops, IncludeGenerated,
+            snapshotMetadata is null ? null : ProjectFacts.FromRows(snapshotMetadata.Projects), cancellationToken);
         var anchor = BuildAnchor(context, snapshotMetadata?.ExtractorVersion ?? string.Empty);
         var capsule = new ContextCapsule(anchor)
         {
@@ -344,7 +345,9 @@ internal sealed class ContextAssembler
         var info = declarationStore.GetSymbolInfo(symbolId.Value, snapshotId)
                    ?? throw new InvalidOperationException($"Symbol '{symbolId.Value}' not found in snapshot '{snapshotId}'.");
 
-        var context = new ContextTierContext(edgeStore, declarationStore, snapshotId, symbolId, maxHops, includeGenerated, cancellationToken);
+        var snapshotMetadata = (declarationStore as SqliteIndexStore)?.LoadSnapshotMetadata(snapshotId);
+        var context = new ContextTierContext(edgeStore, declarationStore, snapshotId, symbolId, maxHops, includeGenerated,
+            snapshotMetadata is null ? null : ProjectFacts.FromRows(snapshotMetadata.Projects), cancellationToken);
         var builder = ResolveTierBuilder(context, tierName)
                       ?? throw new ArgumentException($"Unknown tier '{tierName}'. Valid tiers: {string.Join(", ", TierNames)}.");
 

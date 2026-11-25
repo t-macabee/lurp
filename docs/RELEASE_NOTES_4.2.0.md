@@ -40,13 +40,15 @@ The caller tiers follow constructions, as well as calls, method-group references
 
 The outgoing capsule paths now use the same default edge filter as incoming paths and default upstream impact (`Declares`, `Contains` and `TestedBy` excluded), starting at the anchor and its depth-zero seeds. They previously followed every edge kind.
 
+Direct callee dispatch candidates for property and event accesses are reported once per member, using the accessors that can execute. Production anchors omit dispatch candidates from test projects; test anchors retain them. The same rules apply to `--tier=direct_callees`. Generated edges no longer contribute relation uncertainties unless generated code is included; generated exclusion notes remain available.
+
 ### Cursor resets
 
 Start a fresh page when you continue a search, outline, impact or `--tier=` context sequence that began before 4.2.0. Each of those cursors binds its request to a fingerprint of the 4.2.0 sequence layout and rejects a 4.1.0 cursor instead of resuming at a misaligned offset.
 
 ### Output schema v8
 
-The context capsule's `OutputSchemaVersion` moves from 7 to 8. The capsule field names are unchanged, but the meaning of the path fields changed: outgoing paths use the default impact filter, caller tiers include framework entry points at every hop and constructions, and a Route item can appear in a caller tier. A consumer that reads outgoing paths as "every edge kind" must update.
+The context capsule's `OutputSchemaVersion` moves from 7 to 8. The capsule field names are unchanged, but the meaning of the path fields changed: outgoing paths use the default impact filter, caller tiers include framework entry points at every hop and constructions, and a Route item can appear in a caller tier. Direct callee candidates and generated relation uncertainties also follow the filtering rules above. A consumer that reads outgoing paths as "every edge kind" must update.
 
 ### Annotation lifecycle
 

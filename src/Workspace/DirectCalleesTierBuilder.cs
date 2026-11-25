@@ -36,8 +36,11 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                         .Where(accessor => AccessorEdges.Inherits(accessor.AccessorKind, edge.Kind))
                         .Select(accessor => accessor.SymbolId).ToList();
                     var dispatchSources = dispatchTargets.Contains(edge.TargetSymbolId)
-                        ? accessors.Prepend(edge.TargetSymbolId).Where(id => context.GetMayDispatchEdges(id).Count != 0).ToList()
+                        ? accessors.Where(id => context.GetMayDispatchEdges(id).Count != 0).ToList()
                         : [];
+                    if (dispatchTargets.Contains(edge.TargetSymbolId) && dispatchSources.Count == 0 &&
+                        context.GetMayDispatchEdges(edge.TargetSymbolId).Count != 0)
+                        dispatchSources.Add(edge.TargetSymbolId);
                     if (dispatchSources.Count == 0 && !accessors.Any(id => context.GetOutgoingEdges(id).Any(IsAccessorBodyEdge)))
                         continue;
 
@@ -85,6 +88,11 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
             foreach (var edge in context.GetMayDispatchEdges(dispatchSource))
             {
                 context.ThrowIfCancellationRequested();
+                var target = SymbolId.Parse(edge.TargetSymbolId);
+                if (context.ProjectFacts is { } projects &&
+                    !projects.IsTestProject(MetadataReferenceIdentity.SimpleName(context.SymbolId.AssemblyIdentity)) &&
+                    projects.IsTestProject(MetadataReferenceIdentity.SimpleName(target.AssemblyIdentity)))
+                    continue;
                 if (receiverAlternatives.Count > 0 && !context.GetDeclaringTypeIds(edge.TargetSymbolId)
                         .Any(candidateTypeId => context.IsReceiverCompatible(candidateTypeId, receiverAlternatives)))
                     continue;
@@ -92,7 +100,11 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                 var receiverEvidence = receiverAlternatives.Count > 0
                     ? " The containing type satisfies the call site's persisted static receiver-type constraints."
                     : "";
-                AddItem(edge.TargetSymbolId, edge.Kind, CapsuleProvenance.GlobalImplementationRelation,
+                var associated = isMemberAccess
+                    ? SymbolMetadata.GetString(context.GetSymbolMetadata(edge.TargetSymbolId), SymbolMetadataKeys.AssociatedSymbol)
+                    : null;
+                var targetId = associated is null ? edge.TargetSymbolId : SymbolId.Compose(associated, target.AssemblyIdentity);
+                AddItem(targetId, edge.Kind, CapsuleProvenance.GlobalImplementationRelation,
                     $"The anchor reaches the interface or virtual member via {callEdge.Kind} ({callEdge.Provenance}). " +
                     $"A MayDispatchTo edge ({edge.Provenance}) identifies this candidate implementation." + receiverEvidence,
                     CapsuleRelationship.IndirectDispatchCandidate, false);

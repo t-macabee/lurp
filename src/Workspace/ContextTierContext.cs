@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Lurp.Workspace;
 
-internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore declarationStore, string snapshotId, SymbolId symbolId, int maxHops, bool includeGenerated, CancellationToken cancellationToken = default)
+internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore declarationStore, string snapshotId, SymbolId symbolId, int maxHops, bool includeGenerated, ProjectFacts? projectFacts = null, CancellationToken cancellationToken = default)
 {
     private readonly Dictionary<(string CandidateTypeId, string ReceiverTypeId), bool> _assignabilityCache = [];
     private readonly Dictionary<(string SymbolId, bool IncludeGenerated), DeclarationLocation?> _locationCache = [];
@@ -20,6 +20,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     internal int MaxHops { get; } = maxHops;
     internal bool IncludeGenerated { get; } = includeGenerated;
     internal CancellationToken CancellationToken { get; } = cancellationToken;
+    internal ProjectFacts? ProjectFacts { get; } = projectFacts;
 
     // Tier builders call this at each loop that reads the store, so a cancelled
     // request stops inside the assembly. The context is per request and never
