@@ -418,7 +418,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 return true;
             }
 
-            if (constructor.DeclaringSyntaxReferences.IsEmpty && GetKnownHttpMethod(constructor.ContainingType) != null)
+            if (constructor.DeclaringSyntaxReferences.IsEmpty && IsBuiltInHttpMethodAttribute(constructor.ContainingType))
             {
                 template = arguments.FirstOrDefault() as string;
                 return true;
@@ -430,8 +430,18 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 TypeDeclarationSyntax declaration => declaration.BaseList?.Types.OfType<PrimaryConstructorBaseTypeSyntax>().FirstOrDefault(),
                 _ => null
             };
-            if (initializer == null ||
-                context.GetDeclaringSemanticModel(initializer.SyntaxTree)?.GetOperation(initializer) is not IInvocationOperation call)
+            if (initializer == null)
+            {
+                if (!context.IsSolutionSymbol(constructor.ContainingType) ||
+                    SelectImplicitBaseConstructor(constructor, context) is not { } baseConstructor)
+                    return false;
+
+                constructor = baseConstructor;
+                arguments = ReadImplicitConstructorArguments(baseConstructor);
+                continue;
+            }
+
+            if (context.GetDeclaringSemanticModel(initializer.SyntaxTree)?.GetOperation(initializer) is not IInvocationOperation call)
                 return false;
 
             var nextArguments = new object?[call.TargetMethod.Parameters.Length];
@@ -446,6 +456,56 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         }
 
         return false;
+    }
+
+    private static bool IsBuiltInHttpMethodAttribute(INamedTypeSymbol type)
+    {
+        return FrameworkTypes.Is(type, "Microsoft.AspNetCore.Mvc.HttpGetAttribute") ||
+               FrameworkTypes.Is(type, "Microsoft.AspNetCore.Mvc.HttpPostAttribute") ||
+               FrameworkTypes.Is(type, "Microsoft.AspNetCore.Mvc.HttpPutAttribute") ||
+               FrameworkTypes.Is(type, "Microsoft.AspNetCore.Mvc.HttpDeleteAttribute") ||
+               FrameworkTypes.Is(type, "Microsoft.AspNetCore.Mvc.HttpPatchAttribute") ||
+               FrameworkTypes.Is(type, "Microsoft.AspNetCore.Mvc.HttpHeadAttribute") ||
+               FrameworkTypes.Is(type, "Microsoft.AspNetCore.Mvc.HttpOptionsAttribute");
+    }
+
+    /// <summary>
+    ///     The base constructor that C# selects for a constructor without an initializer:
+    ///     the accessible parameterless constructor, or else the only accessible constructor
+    ///     whose parameters are all optional or <c>params</c> (ECMA-334, 12.6.4).
+    /// </summary>
+    private static IMethodSymbol? SelectImplicitBaseConstructor(
+        IMethodSymbol constructor, AdapterExtractionContext context)
+    {
+        if (constructor.ContainingType.BaseType is not { } baseType)
+            return null;
+
+        var accessible = baseType.InstanceConstructors
+            .Where(candidate => context.Compilation.IsSymbolAccessibleWithin(candidate, constructor.ContainingType))
+            .ToArray();
+
+        var parameterless = accessible.FirstOrDefault(candidate => candidate.Parameters.Length == 0);
+        if (parameterless != null)
+            return parameterless;
+
+        var applicable = accessible
+            .Where(candidate => candidate.Parameters.All(parameter => parameter.IsOptional || parameter.IsParams))
+            .ToArray();
+        return applicable.Length == 1 ? applicable[0] : null;
+    }
+
+    private static object?[] ReadImplicitConstructorArguments(IMethodSymbol constructor)
+    {
+        var arguments = new object?[constructor.Parameters.Length];
+        for (var i = 0; i < constructor.Parameters.Length; i++)
+        {
+            var parameter = constructor.Parameters[i];
+            arguments[i] = parameter.IsParams
+                ? Array.Empty<object?>()
+                : parameter.ExplicitDefaultValue;
+        }
+
+        return arguments;
     }
 
     private static object? ReadRouteArgument(

@@ -236,6 +236,95 @@ public sealed partial class GoldenAdapterTests
         Assert.Equal("route://PURGE /api/Demo/cache/{id}", route.SourceSymbolId);
     }
 
+    [Fact]
+    public async Task Phase3_AspNetCore_ImplicitBaseConstructorSuppliesTemplate()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Web.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                using Microsoft.AspNetCore.Mvc.Routing;
+                namespace App;
+                public abstract class ImplicitBaseAttribute : HttpMethodAttribute
+                {
+                    protected ImplicitBaseAttribute() : base(new[] { "GET" }, "implicit-base") { }
+                }
+                public abstract class OptionalBaseAttribute : HttpMethodAttribute
+                {
+                    protected OptionalBaseAttribute(string template = "opt") : base(new[] { "GET" }, template) { }
+                }
+                public abstract class ZeroOrOptionalBaseAttribute : HttpMethodAttribute
+                {
+                    protected ZeroOrOptionalBaseAttribute() : base(new[] { "GET" }, "zero") { }
+                    protected ZeroOrOptionalBaseAttribute(string template = "optional") : base(new[] { "GET" }, template) { }
+                }
+                public sealed class ExplicitEmptyAttribute : ImplicitBaseAttribute
+                {
+                    public ExplicitEmptyAttribute() { }
+                }
+                public sealed class NoConstructorAttribute : ImplicitBaseAttribute;
+                public sealed class PrimaryAttribute() : ImplicitBaseAttribute;
+                public sealed class OptionalAttribute : OptionalBaseAttribute;
+                public sealed class ZeroAttribute : ZeroOrOptionalBaseAttribute;
+                [Route("api")]
+                public class DemoController : ControllerBase
+                {
+                    [ExplicitEmpty] public int ExplicitEmpty() => 0;
+                    [NoConstructor] public int NoConstructor() => 0;
+                    [Primary] public int Primary() => 0;
+                    [Optional] public int Optional() => 0;
+                    [Zero] public int Zero() => 0;
+                }
+                """
+        }, frameworkReferences: [AspNetCoreFramework]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var routes = QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived);
+        var expected = new (string Method, string Route)[]
+        {
+            ("ExplicitEmpty", "route://GET /api/implicit-base"),
+            ("NoConstructor", "route://GET /api/implicit-base"),
+            ("Primary", "route://GET /api/implicit-base"),
+            ("Optional", "route://GET /api/opt"),
+            ("Zero", "route://GET /api/zero")
+        };
+
+        foreach (var (method, route) in expected)
+        {
+            var target = ResolveSymbolId(snapshot, "global::App.DemoController." + method);
+            Assert.Contains(routes, e => e.TargetSymbolId == target && e.SourceSymbolId == route);
+        }
+
+        Assert.Equal(5, routes.Count);
+        Assert.Equal(3, routes.Count(e => e.SourceSymbolId == "route://GET /api/implicit-base"));
+    }
+
+    [Fact]
+    public async Task Phase3_AspNetCore_ExternalHttpGetSubclass_ReadsTemplateAfterArray()
+    {
+        var externalAssembly = EmitExternalHttpGetAssembly();
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Web.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                using External;
+                namespace App;
+                [Route("api/[controller]")]
+                public class DemoController : ControllerBase
+                {
+                    [CustomGet(new[] { "IGNORED" }, "cache/{id}")]
+                    public int Get(int id) => id;
+                }
+                """
+        }, frameworkReferences: [AspNetCoreFramework], metadataReferences: [externalAssembly]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var get = ResolveSymbolId(snapshot, "global::App.DemoController.Get");
+        var route = Assert.Single(QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived),
+            e => e.TargetSymbolId == get);
+        Assert.Equal("route://GET /api/Demo/cache/{id}", route.SourceSymbolId);
+    }
+
     /// <summary>
     ///     Emits a metadata-only assembly whose custom verb attribute chains an array
     ///     constructor argument into <c>HttpMethodAttribute</c>. The adapter cannot read the
@@ -262,6 +351,36 @@ public sealed partial class GoldenAdapterTests
             .ToArray();
         Assert.Empty(errors);
         var path = Path.Combine(TestDir, "ExternalVerbs.dll");
+        var result = compilation.Emit(path);
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        return path;
+    }
+
+    /// <summary>
+    ///     Emits a metadata-only assembly whose attribute derives from the built-in
+    ///     <c>HttpGetAttribute</c> and takes the verbs array before the template. No syntax is
+    ///     available for its initializer, so the fallback reads the two constructor constants.
+    /// </summary>
+    private string EmitExternalHttpGetAssembly()
+    {
+        var references = PlatformReferencePaths()
+            .Concat(AspNetCoreReferenceAssemblyPaths())
+            .Select(path => MetadataReference.CreateFromFile(path))
+            .ToArray();
+        var compilation = CSharpCompilation.Create(
+            "ExternalHttpGet",
+            [CSharpSyntaxTree.ParseText("""
+                using Microsoft.AspNetCore.Mvc;
+                namespace External;
+                public sealed class CustomGetAttribute(string[] verbs, string template) : HttpGetAttribute(template);
+                """)],
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = compilation.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+        Assert.Empty(errors);
+        var path = Path.Combine(TestDir, "ExternalHttpGet.dll");
         var result = compilation.Emit(path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         return path;
