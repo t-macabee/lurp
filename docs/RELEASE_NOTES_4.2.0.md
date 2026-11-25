@@ -84,7 +84,7 @@ Every adapter version moves, so 4.1.0 snapshots are not reused.
 | MediatR | `mediatr-v3` | Stream requests (`IStreamRequest`, `IStreamRequestHandler`) produce `Handles`. |
 | EF Core | `efcore-v4` | `MapsTo` covers fluent, owned and complex mappings, types discovered through `model.Entity(typeof(T))`, and extension-method chains. Concrete contexts map their inherited sets, solution builder helpers, applied configurations and reachable navigations, with ignores applied across the model. Closed solution `DbSet` properties also map their entities. Configurations map their entity and explicitly configured owned and complex types. Applied configurations add `References` edges. Query filter annotations reflect the last call per entity and filter name within each root. Unique indexes add constraint annotations. |
 | Serialization | `serialization-v3` | `[JsonConstructor]` and serialization callbacks receive `included` annotations. |
-| Test | `test-v5` | `TestedBy` follows `MemberData`, `ClassData`, `TestCaseSource` and `DynamicData` sources, `IClassFixture`/`ICollectionFixture` setup and their initializers. Reflected setup also emits `framework_derived` `References` from the test to its dependency, so an edit to the dependency refreshes the coverage facts. |
+| Test | `test-v5` | `TestedBy` follows `MemberData`, `ClassData`, `TestCaseSource` and `DynamicData` sources, `IClassFixture`/`ICollectionFixture` setup and their initializers. Reflected setup also emits `framework_derived` `References` from the test to its dependency, so an edit to the dependency refreshes the coverage facts. `TestedBy` starts only at solution types, so edges from external types are gone. |
 
 ## Dead-code candidates
 

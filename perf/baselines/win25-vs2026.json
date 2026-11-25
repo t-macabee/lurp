@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "tool_cmd": "D:/a/lurp/lurp/t/lurp.exe",
-  "tool_version": "lurp 4.0.0",
-  "repo_commit": "4ffbf6f",
+  "tool_version": "lurp 4.1.0",
+  "repo_commit": "40fbbf3",
   "repo_dirty": false,
   "os": "Microsoft Windows 10.0.26100",
   "runner_image": "20261116.315.1",
@@ -11,9 +11,9 @@
   "fixture": null,
   "solution": "D:\\a\\_temp\\eNoteV2\\eNote\\eNote.sln",
   "work_dir": "D:\\a\\_temp\\perf-work",
-  "run_dir": "D:\\a\\_temp\\perf-work\\run-20261122-213924-7204",
-  "started_at_utc": "2026-11-22T21:39:23.7007863Z",
-  "finished_at_utc": "2026-11-22T21:46:57.3193278Z",
+  "run_dir": "D:\\a\\_temp\\perf-work\\run-20261124-103957-1284",
+  "started_at_utc": "2026-11-24T10:39:57.4981870Z",
+  "finished_at_utc": "2026-11-24T10:45:21.1218679Z",
   "protocol": "gate",
   "runs": 5,
   "warmup": 3,
@@ -32,80 +32,33 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 35738,
-          "peak_working_set_bytes": 458465280,
-          "peak_working_set_mb": 438,
+          "wall_ms": 27529,
+          "peak_working_set_bytes": 459911168,
+          "peak_working_set_mb": 439,
           "exit_code": 0,
-          "db_bytes": 77410304,
+          "db_bytes": 77479936,
           "db_delta_bytes": null,
-          "timings_total_ms": 35276,
+          "timings_total_ms": 27206,
           "timings_steps": [
             {
               "step": "solution_load",
-              "elapsed_ms": 5235
+              "elapsed_ms": 3549
             },
             {
               "step": "workspace_info",
-              "elapsed_ms": 243
+              "elapsed_ms": 180
             },
             {
               "step": "manifest_save",
-              "elapsed_ms": 41
+              "elapsed_ms": 48
             },
             {
               "step": "extraction_loop",
-              "elapsed_ms": 28680
+              "elapsed_ms": 22552
             },
             {
               "step": "orphan_edge_cleanup",
-              "elapsed_ms": 999
-            },
-            {
-              "step": "fts_build",
-              "elapsed_ms": 49
-            },
-            {
-              "step": "planner_statistics",
-              "elapsed_ms": 27
-            },
-            {
-              "step": "prune_snapshots",
-              "elapsed_ms": 2
-            }
-          ],
-          "metric_peak_working_set_bytes": 458465280,
-          "metric_peak_working_set_exact": true,
-          "peak_cross_check": "ok",
-          "error": null
-        },
-        {
-          "wall_ms": 35348,
-          "peak_working_set_bytes": 472354816,
-          "peak_working_set_mb": 451,
-          "exit_code": 0,
-          "db_bytes": 77410304,
-          "db_delta_bytes": 0,
-          "timings_total_ms": 34915,
-          "timings_steps": [
-            {
-              "step": "solution_load",
-              "elapsed_ms": 5044
-            },
-            {
-              "step": "workspace_info",
-              "elapsed_ms": 242
-            },
-            {
-              "step": "manifest_save",
-              "elapsed_ms": 41
-            },
-            {
-              "step": "extraction_loop",
-              "elapsed_ms": 28521
-            },
-            {
-              "step": "orphan_edge_cleanup",
-              "elapsed_ms": 993
+              "elapsed_ms": 808
             },
             {
               "step": "fts_build",
@@ -113,46 +66,46 @@
             },
             {
               "step": "planner_statistics",
-              "elapsed_ms": 25
+              "elapsed_ms": 21
             },
             {
               "step": "prune_snapshots",
-              "elapsed_ms": 2
+              "elapsed_ms": 1
             }
           ],
-          "metric_peak_working_set_bytes": 472354816,
+          "metric_peak_working_set_bytes": 459911168,
           "metric_peak_working_set_exact": true,
           "peak_cross_check": "ok",
           "error": null
         },
         {
-          "wall_ms": 35548,
-          "peak_working_set_bytes": 472399872,
-          "peak_working_set_mb": 451,
+          "wall_ms": 24653,
+          "peak_working_set_bytes": 452255744,
+          "peak_working_set_mb": 432,
           "exit_code": 0,
-          "db_bytes": 77410304,
+          "db_bytes": 77479936,
           "db_delta_bytes": 0,
-          "timings_total_ms": 35112,
+          "timings_total_ms": 24327,
           "timings_steps": [
             {
               "step": "solution_load",
-              "elapsed_ms": 5135
+              "elapsed_ms": 3473
             },
             {
               "step": "workspace_info",
-              "elapsed_ms": 242
+              "elapsed_ms": 179
             },
             {
               "step": "manifest_save",
-              "elapsed_ms": 42
+              "elapsed_ms": 45
             },
             {
               "step": "extraction_loop",
-              "elapsed_ms": 28587
+              "elapsed_ms": 19721
             },
             {
               "step": "orphan_edge_cleanup",
-              "elapsed_ms": 1031
+              "elapsed_ms": 839
             },
             {
               "step": "fts_build",
@@ -160,121 +113,168 @@
             },
             {
               "step": "planner_statistics",
-              "elapsed_ms": 26
+              "elapsed_ms": 22
             },
             {
               "step": "prune_snapshots",
-              "elapsed_ms": 2
+              "elapsed_ms": 1
             }
           ],
-          "metric_peak_working_set_bytes": 472399872,
+          "metric_peak_working_set_bytes": 452255744,
           "metric_peak_working_set_exact": true,
           "peak_cross_check": "ok",
           "error": null
         },
         {
-          "wall_ms": 35827,
-          "peak_working_set_bytes": 474103808,
-          "peak_working_set_mb": 453,
+          "wall_ms": 25022,
+          "peak_working_set_bytes": 451899392,
+          "peak_working_set_mb": 431,
           "exit_code": 0,
-          "db_bytes": 77410304,
+          "db_bytes": 77479936,
           "db_delta_bytes": 0,
-          "timings_total_ms": 35374,
+          "timings_total_ms": 24702,
           "timings_steps": [
             {
               "step": "solution_load",
-              "elapsed_ms": 5094
+              "elapsed_ms": 3520
             },
             {
               "step": "workspace_info",
-              "elapsed_ms": 244
+              "elapsed_ms": 180
             },
             {
               "step": "manifest_save",
-              "elapsed_ms": 41
+              "elapsed_ms": 37
             },
             {
               "step": "extraction_loop",
-              "elapsed_ms": 28929
+              "elapsed_ms": 20095
             },
             {
               "step": "orphan_edge_cleanup",
-              "elapsed_ms": 988
+              "elapsed_ms": 801
             },
             {
               "step": "fts_build",
-              "elapsed_ms": 49
+              "elapsed_ms": 47
             },
             {
               "step": "planner_statistics",
-              "elapsed_ms": 27
+              "elapsed_ms": 21
             },
             {
               "step": "prune_snapshots",
-              "elapsed_ms": 2
+              "elapsed_ms": 1
             }
           ],
-          "metric_peak_working_set_bytes": 474103808,
+          "metric_peak_working_set_bytes": 451883008,
           "metric_peak_working_set_exact": true,
           "peak_cross_check": "ok",
           "error": null
         },
         {
-          "wall_ms": 36064,
-          "peak_working_set_bytes": 474222592,
-          "peak_working_set_mb": 453,
+          "wall_ms": 24993,
+          "peak_working_set_bytes": 452374528,
+          "peak_working_set_mb": 432,
           "exit_code": 0,
-          "db_bytes": 77410304,
+          "db_bytes": 77479936,
           "db_delta_bytes": 0,
-          "timings_total_ms": 35614,
+          "timings_total_ms": 24658,
           "timings_steps": [
             {
               "step": "solution_load",
-              "elapsed_ms": 5228
+              "elapsed_ms": 3535
             },
             {
               "step": "workspace_info",
-              "elapsed_ms": 246
+              "elapsed_ms": 180
             },
             {
               "step": "manifest_save",
-              "elapsed_ms": 40
+              "elapsed_ms": 38
             },
             {
               "step": "extraction_loop",
-              "elapsed_ms": 29005
+              "elapsed_ms": 20004
             },
             {
               "step": "orphan_edge_cleanup",
-              "elapsed_ms": 1019
+              "elapsed_ms": 832
             },
             {
               "step": "fts_build",
-              "elapsed_ms": 49
+              "elapsed_ms": 47
             },
             {
               "step": "planner_statistics",
-              "elapsed_ms": 25
+              "elapsed_ms": 21
             },
             {
               "step": "prune_snapshots",
-              "elapsed_ms": 2
+              "elapsed_ms": 1
             }
           ],
-          "metric_peak_working_set_bytes": 474222592,
+          "metric_peak_working_set_bytes": 452374528,
+          "metric_peak_working_set_exact": true,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 25396,
+          "peak_working_set_bytes": 474718208,
+          "peak_working_set_mb": 453,
+          "exit_code": 0,
+          "db_bytes": 77479936,
+          "db_delta_bytes": 0,
+          "timings_total_ms": 25063,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 3537
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 188
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 39
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 20421
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 810
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 46
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 21
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_bytes": 474718208,
           "metric_peak_working_set_exact": true,
           "peak_cross_check": "ok",
           "error": null
         }
       ],
       "median": {
-        "wall_ms": 35738,
-        "peak_working_set_bytes": 472399872,
-        "peak_working_set_mb": 451
+        "wall_ms": 25022,
+        "peak_working_set_bytes": 452374528,
+        "peak_working_set_mb": 432
       },
       "max": {
-        "wall_ms": 36064,
-        "peak_working_set_bytes": 474222592,
+        "wall_ms": 27529,
+        "peak_working_set_bytes": 474718208,
         "peak_working_set_mb": 453
       }
     },
@@ -291,11 +291,11 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 365,
-          "peak_working_set_bytes": 51974144,
-          "peak_working_set_mb": 50,
+          "wall_ms": 273,
+          "peak_working_set_bytes": 53010432,
+          "peak_working_set_mb": 51,
           "exit_code": 0,
-          "db_bytes": 77410304,
+          "db_bytes": 77479936,
           "db_delta_bytes": null,
           "timings_total_ms": null,
           "timings_steps": null,
@@ -305,11 +305,11 @@
           "error": null
         },
         {
-          "wall_ms": 357,
-          "peak_working_set_bytes": 52060160,
+          "wall_ms": 277,
+          "peak_working_set_bytes": 51908608,
           "peak_working_set_mb": 50,
           "exit_code": 0,
-          "db_bytes": 77410304,
+          "db_bytes": 77479936,
           "db_delta_bytes": 0,
           "timings_total_ms": null,
           "timings_steps": null,
@@ -319,11 +319,25 @@
           "error": null
         },
         {
-          "wall_ms": 368,
-          "peak_working_set_bytes": 53010432,
+          "wall_ms": 274,
+          "peak_working_set_bytes": 47460352,
+          "peak_working_set_mb": 46,
+          "exit_code": 0,
+          "db_bytes": 77479936,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 274,
+          "peak_working_set_bytes": 53116928,
           "peak_working_set_mb": 51,
           "exit_code": 0,
-          "db_bytes": 77410304,
+          "db_bytes": 77479936,
           "db_delta_bytes": 0,
           "timings_total_ms": null,
           "timings_steps": null,
@@ -333,25 +347,11 @@
           "error": null
         },
         {
-          "wall_ms": 379,
-          "peak_working_set_bytes": 51957760,
-          "peak_working_set_mb": 50,
+          "wall_ms": 275,
+          "peak_working_set_bytes": 53088256,
+          "peak_working_set_mb": 51,
           "exit_code": 0,
-          "db_bytes": 77410304,
-          "db_delta_bytes": 0,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": "no-new-snapshot",
-          "error": null
-        },
-        {
-          "wall_ms": 371,
-          "peak_working_set_bytes": 51998720,
-          "peak_working_set_mb": 50,
-          "exit_code": 0,
-          "db_bytes": 77410304,
+          "db_bytes": 77479936,
           "db_delta_bytes": 0,
           "timings_total_ms": null,
           "timings_steps": null,
@@ -362,13 +362,13 @@
         }
       ],
       "median": {
-        "wall_ms": 368,
-        "peak_working_set_bytes": 51998720,
-        "peak_working_set_mb": 50
+        "wall_ms": 274,
+        "peak_working_set_bytes": 53010432,
+        "peak_working_set_mb": 51
       },
       "max": {
-        "wall_ms": 379,
-        "peak_working_set_bytes": 53010432,
+        "wall_ms": 277,
+        "peak_working_set_bytes": 53116928,
         "peak_working_set_mb": 51
       }
     },
@@ -415,9 +415,9 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 379,
-          "peak_working_set_bytes": 45957120,
-          "peak_working_set_mb": 44,
+          "wall_ms": 271,
+          "peak_working_set_bytes": 44347392,
+          "peak_working_set_mb": 43,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -429,8 +429,8 @@
           "error": null
         },
         {
-          "wall_ms": 382,
-          "peak_working_set_bytes": 46465024,
+          "wall_ms": 275,
+          "peak_working_set_bytes": 47169536,
           "peak_working_set_mb": 45,
           "exit_code": 0,
           "db_bytes": null,
@@ -443,37 +443,37 @@
           "error": null
         },
         {
-          "wall_ms": 372,
-          "peak_working_set_bytes": 45547520,
-          "peak_working_set_mb": 44,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 372,
-          "peak_working_set_bytes": 45998080,
-          "peak_working_set_mb": 44,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 375,
-          "peak_working_set_bytes": 47116288,
+          "wall_ms": 271,
+          "peak_working_set_bytes": 47038464,
           "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 276,
+          "peak_working_set_bytes": 46411776,
+          "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 274,
+          "peak_working_set_bytes": 44539904,
+          "peak_working_set_mb": 43,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -486,13 +486,13 @@
         }
       ],
       "median": {
-        "wall_ms": 375,
-        "peak_working_set_bytes": 45998080,
-        "peak_working_set_mb": 44
+        "wall_ms": 274,
+        "peak_working_set_bytes": 46411776,
+        "peak_working_set_mb": 45
       },
       "max": {
-        "wall_ms": 382,
-        "peak_working_set_bytes": 47116288,
+        "wall_ms": 276,
+        "peak_working_set_bytes": 47169536,
         "peak_working_set_mb": 45
       }
     },
@@ -509,50 +509,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 373,
-          "peak_working_set_bytes": 45391872,
-          "peak_working_set_mb": 44,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 374,
-          "peak_working_set_bytes": 45641728,
-          "peak_working_set_mb": 44,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 373,
-          "peak_working_set_bytes": 45682688,
-          "peak_working_set_mb": 44,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 380,
-          "peak_working_set_bytes": 46747648,
+          "wall_ms": 278,
+          "peak_working_set_bytes": 46419968,
           "peak_working_set_mb": 45,
           "exit_code": 0,
           "db_bytes": null,
@@ -565,9 +523,51 @@
           "error": null
         },
         {
-          "wall_ms": 373,
-          "peak_working_set_bytes": 46190592,
-          "peak_working_set_mb": 45,
+          "wall_ms": 278,
+          "peak_working_set_bytes": 47357952,
+          "peak_working_set_mb": 46,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 273,
+          "peak_working_set_bytes": 45916160,
+          "peak_working_set_mb": 44,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 279,
+          "peak_working_set_bytes": 45625344,
+          "peak_working_set_mb": 44,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 275,
+          "peak_working_set_bytes": 45146112,
+          "peak_working_set_mb": 44,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -580,14 +580,14 @@
         }
       ],
       "median": {
-        "wall_ms": 373,
-        "peak_working_set_bytes": 45682688,
+        "wall_ms": 278,
+        "peak_working_set_bytes": 45916160,
         "peak_working_set_mb": 44
       },
       "max": {
-        "wall_ms": 380,
-        "peak_working_set_bytes": 46747648,
-        "peak_working_set_mb": 45
+        "wall_ms": 279,
+        "peak_working_set_bytes": 47357952,
+        "peak_working_set_mb": 46
       }
     },
     {
@@ -603,8 +603,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 369,
-          "peak_working_set_bytes": 45342720,
+          "wall_ms": 268,
+          "peak_working_set_bytes": 45363200,
           "peak_working_set_mb": 44,
           "exit_code": 0,
           "db_bytes": null,
@@ -617,8 +617,8 @@
           "error": null
         },
         {
-          "wall_ms": 368,
-          "peak_working_set_bytes": 44826624,
+          "wall_ms": 279,
+          "peak_working_set_bytes": 45056000,
           "peak_working_set_mb": 43,
           "exit_code": 0,
           "db_bytes": null,
@@ -631,9 +631,9 @@
           "error": null
         },
         {
-          "wall_ms": 366,
-          "peak_working_set_bytes": 45498368,
-          "peak_working_set_mb": 44,
+          "wall_ms": 271,
+          "peak_working_set_bytes": 44875776,
+          "peak_working_set_mb": 43,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -645,9 +645,9 @@
           "error": null
         },
         {
-          "wall_ms": 366,
-          "peak_working_set_bytes": 45359104,
-          "peak_working_set_mb": 44,
+          "wall_ms": 279,
+          "peak_working_set_bytes": 44818432,
+          "peak_working_set_mb": 43,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -659,8 +659,8 @@
           "error": null
         },
         {
-          "wall_ms": 372,
-          "peak_working_set_bytes": 45019136,
+          "wall_ms": 274,
+          "peak_working_set_bytes": 44630016,
           "peak_working_set_mb": 43,
           "exit_code": 0,
           "db_bytes": null,
@@ -674,13 +674,13 @@
         }
       ],
       "median": {
-        "wall_ms": 368,
-        "peak_working_set_bytes": 45342720,
-        "peak_working_set_mb": 44
+        "wall_ms": 274,
+        "peak_working_set_bytes": 44875776,
+        "peak_working_set_mb": 43
       },
       "max": {
-        "wall_ms": 372,
-        "peak_working_set_bytes": 45498368,
+        "wall_ms": 279,
+        "peak_working_set_bytes": 45363200,
         "peak_working_set_mb": 44
       }
     },
@@ -697,8 +697,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 551,
-          "peak_working_set_bytes": 64950272,
+          "wall_ms": 399,
+          "peak_working_set_bytes": 64589824,
           "peak_working_set_mb": 62,
           "exit_code": 0,
           "db_bytes": null,
@@ -711,8 +711,22 @@
           "error": null
         },
         {
-          "wall_ms": 555,
-          "peak_working_set_bytes": 66441216,
+          "wall_ms": 398,
+          "peak_working_set_bytes": 64225280,
+          "peak_working_set_mb": 62,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 394,
+          "peak_working_set_bytes": 66494464,
           "peak_working_set_mb": 64,
           "exit_code": 0,
           "db_bytes": null,
@@ -725,9 +739,9 @@
           "error": null
         },
         {
-          "wall_ms": 560,
-          "peak_working_set_bytes": 64593920,
-          "peak_working_set_mb": 62,
+          "wall_ms": 394,
+          "peak_working_set_bytes": 63643648,
+          "peak_working_set_mb": 61,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -739,23 +753,9 @@
           "error": null
         },
         {
-          "wall_ms": 553,
-          "peak_working_set_bytes": 65290240,
+          "wall_ms": 399,
+          "peak_working_set_bytes": 65368064,
           "peak_working_set_mb": 63,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 557,
-          "peak_working_set_bytes": 66318336,
-          "peak_working_set_mb": 64,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -768,13 +768,13 @@
         }
       ],
       "median": {
-        "wall_ms": 555,
-        "peak_working_set_bytes": 65290240,
-        "peak_working_set_mb": 63
+        "wall_ms": 398,
+        "peak_working_set_bytes": 64589824,
+        "peak_working_set_mb": 62
       },
       "max": {
-        "wall_ms": 560,
-        "peak_working_set_bytes": 66441216,
+        "wall_ms": 399,
+        "peak_working_set_bytes": 66494464,
         "peak_working_set_mb": 64
       }
     },
@@ -791,8 +791,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 781,
-          "peak_working_set_bytes": 77217792,
+          "wall_ms": 547,
+          "peak_working_set_bytes": 76726272,
           "peak_working_set_mb": 74,
           "exit_code": 0,
           "db_bytes": null,
@@ -805,8 +805,8 @@
           "error": null
         },
         {
-          "wall_ms": 786,
-          "peak_working_set_bytes": 75022336,
+          "wall_ms": 551,
+          "peak_working_set_bytes": 74977280,
           "peak_working_set_mb": 72,
           "exit_code": 0,
           "db_bytes": null,
@@ -819,8 +819,8 @@
           "error": null
         },
         {
-          "wall_ms": 787,
-          "peak_working_set_bytes": 77131776,
+          "wall_ms": 549,
+          "peak_working_set_bytes": 77246464,
           "peak_working_set_mb": 74,
           "exit_code": 0,
           "db_bytes": null,
@@ -833,8 +833,8 @@
           "error": null
         },
         {
-          "wall_ms": 780,
-          "peak_working_set_bytes": 77279232,
+          "wall_ms": 550,
+          "peak_working_set_bytes": 77176832,
           "peak_working_set_mb": 74,
           "exit_code": 0,
           "db_bytes": null,
@@ -847,8 +847,8 @@
           "error": null
         },
         {
-          "wall_ms": 759,
-          "peak_working_set_bytes": 74723328,
+          "wall_ms": 547,
+          "peak_working_set_bytes": 74977280,
           "peak_working_set_mb": 72,
           "exit_code": 0,
           "db_bytes": null,
@@ -862,13 +862,13 @@
         }
       ],
       "median": {
-        "wall_ms": 781,
-        "peak_working_set_bytes": 77131776,
+        "wall_ms": 549,
+        "peak_working_set_bytes": 76726272,
         "peak_working_set_mb": 74
       },
       "max": {
-        "wall_ms": 787,
-        "peak_working_set_bytes": 77279232,
+        "wall_ms": 551,
+        "peak_working_set_bytes": 77246464,
         "peak_working_set_mb": 74
       }
     },
@@ -885,8 +885,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 1137,
-          "peak_working_set_bytes": 125177856,
+          "wall_ms": 828,
+          "peak_working_set_bytes": 125366272,
           "peak_working_set_mb": 120,
           "exit_code": 0,
           "db_bytes": null,
@@ -899,8 +899,8 @@
           "error": null
         },
         {
-          "wall_ms": 1146,
-          "peak_working_set_bytes": 125431808,
+          "wall_ms": 795,
+          "peak_working_set_bytes": 125480960,
           "peak_working_set_mb": 120,
           "exit_code": 0,
           "db_bytes": null,
@@ -913,8 +913,8 @@
           "error": null
         },
         {
-          "wall_ms": 1140,
-          "peak_working_set_bytes": 125431808,
+          "wall_ms": 813,
+          "peak_working_set_bytes": 125333504,
           "peak_working_set_mb": 120,
           "exit_code": 0,
           "db_bytes": null,
@@ -927,8 +927,8 @@
           "error": null
         },
         {
-          "wall_ms": 1125,
-          "peak_working_set_bytes": 125427712,
+          "wall_ms": 806,
+          "peak_working_set_bytes": 125313024,
           "peak_working_set_mb": 120,
           "exit_code": 0,
           "db_bytes": null,
@@ -941,8 +941,8 @@
           "error": null
         },
         {
-          "wall_ms": 1124,
-          "peak_working_set_bytes": 125407232,
+          "wall_ms": 812,
+          "peak_working_set_bytes": 125247488,
           "peak_working_set_mb": 120,
           "exit_code": 0,
           "db_bytes": null,
@@ -956,13 +956,13 @@
         }
       ],
       "median": {
-        "wall_ms": 1137,
-        "peak_working_set_bytes": 125427712,
+        "wall_ms": 812,
+        "peak_working_set_bytes": 125333504,
         "peak_working_set_mb": 120
       },
       "max": {
-        "wall_ms": 1146,
-        "peak_working_set_bytes": 125431808,
+        "wall_ms": 828,
+        "peak_working_set_bytes": 125480960,
         "peak_working_set_mb": 120
       }
     },
@@ -979,8 +979,22 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 339,
-          "peak_working_set_bytes": 42254336,
+          "wall_ms": 258,
+          "peak_working_set_bytes": 43900928,
+          "peak_working_set_mb": 42,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 255,
+          "peak_working_set_bytes": 42393600,
           "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
@@ -993,9 +1007,9 @@
           "error": null
         },
         {
-          "wall_ms": 340,
-          "peak_working_set_bytes": 43450368,
-          "peak_working_set_mb": 42,
+          "wall_ms": 253,
+          "peak_working_set_bytes": 42266624,
+          "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1007,9 +1021,9 @@
           "error": null
         },
         {
-          "wall_ms": 334,
-          "peak_working_set_bytes": 43859968,
-          "peak_working_set_mb": 42,
+          "wall_ms": 258,
+          "peak_working_set_bytes": 41721856,
+          "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1021,23 +1035,9 @@
           "error": null
         },
         {
-          "wall_ms": 342,
-          "peak_working_set_bytes": 43741184,
-          "peak_working_set_mb": 42,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 335,
-          "peak_working_set_bytes": 43913216,
-          "peak_working_set_mb": 42,
+          "wall_ms": 256,
+          "peak_working_set_bytes": 42233856,
+          "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1050,13 +1050,13 @@
         }
       ],
       "median": {
-        "wall_ms": 339,
-        "peak_working_set_bytes": 43741184,
-        "peak_working_set_mb": 42
+        "wall_ms": 256,
+        "peak_working_set_bytes": 42266624,
+        "peak_working_set_mb": 41
       },
       "max": {
-        "wall_ms": 342,
-        "peak_working_set_bytes": 43913216,
+        "wall_ms": 258,
+        "peak_working_set_bytes": 43900928,
         "peak_working_set_mb": 42
       }
     },
@@ -1073,36 +1073,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 338,
-          "peak_working_set_bytes": 43098112,
-          "peak_working_set_mb": 42,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 332,
-          "peak_working_set_bytes": 43925504,
-          "peak_working_set_mb": 42,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 333,
-          "peak_working_set_bytes": 42409984,
+          "wall_ms": 255,
+          "peak_working_set_bytes": 42528768,
           "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
@@ -1115,9 +1087,9 @@
           "error": null
         },
         {
-          "wall_ms": 337,
-          "peak_working_set_bytes": 43446272,
-          "peak_working_set_mb": 42,
+          "wall_ms": 254,
+          "peak_working_set_bytes": 42647552,
+          "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1129,9 +1101,37 @@
           "error": null
         },
         {
-          "wall_ms": 329,
-          "peak_working_set_bytes": 43802624,
-          "peak_working_set_mb": 42,
+          "wall_ms": 255,
+          "peak_working_set_bytes": 42229760,
+          "peak_working_set_mb": 41,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 257,
+          "peak_working_set_bytes": 41893888,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 255,
+          "peak_working_set_bytes": 42012672,
+          "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1144,14 +1144,14 @@
         }
       ],
       "median": {
-        "wall_ms": 333,
-        "peak_working_set_bytes": 43446272,
-        "peak_working_set_mb": 42
+        "wall_ms": 255,
+        "peak_working_set_bytes": 42229760,
+        "peak_working_set_mb": 41
       },
       "max": {
-        "wall_ms": 338,
-        "peak_working_set_bytes": 43925504,
-        "peak_working_set_mb": 42
+        "wall_ms": 257,
+        "peak_working_set_bytes": 42647552,
+        "peak_working_set_mb": 41
       }
     },
     {
@@ -1167,8 +1167,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 481,
-          "peak_working_set_bytes": 58294272,
+          "wall_ms": 358,
+          "peak_working_set_bytes": 58675200,
           "peak_working_set_mb": 56,
           "exit_code": 0,
           "db_bytes": null,
@@ -1181,36 +1181,8 @@
           "error": null
         },
         {
-          "wall_ms": 478,
-          "peak_working_set_bytes": 64585728,
-          "peak_working_set_mb": 62,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 493,
-          "peak_working_set_bytes": 64704512,
-          "peak_working_set_mb": 62,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 477,
-          "peak_working_set_bytes": 58671104,
+          "wall_ms": 359,
+          "peak_working_set_bytes": 58630144,
           "peak_working_set_mb": 56,
           "exit_code": 0,
           "db_bytes": null,
@@ -1223,9 +1195,37 @@
           "error": null
         },
         {
-          "wall_ms": 473,
-          "peak_working_set_bytes": 59478016,
-          "peak_working_set_mb": 57,
+          "wall_ms": 358,
+          "peak_working_set_bytes": 63844352,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 358,
+          "peak_working_set_bytes": 58171392,
+          "peak_working_set_mb": 56,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 354,
+          "peak_working_set_bytes": 58679296,
+          "peak_working_set_mb": 56,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1238,14 +1238,14 @@
         }
       ],
       "median": {
-        "wall_ms": 478,
-        "peak_working_set_bytes": 59478016,
-        "peak_working_set_mb": 57
+        "wall_ms": 358,
+        "peak_working_set_bytes": 58675200,
+        "peak_working_set_mb": 56
       },
       "max": {
-        "wall_ms": 493,
-        "peak_working_set_bytes": 64704512,
-        "peak_working_set_mb": 62
+        "wall_ms": 359,
+        "peak_working_set_bytes": 63844352,
+        "peak_working_set_mb": 61
       }
     },
     {
@@ -1261,8 +1261,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 613,
-          "peak_working_set_bytes": 74604544,
+          "wall_ms": 442,
+          "peak_working_set_bytes": 74788864,
           "peak_working_set_mb": 72,
           "exit_code": 0,
           "db_bytes": null,
@@ -1275,8 +1275,36 @@
           "error": null
         },
         {
-          "wall_ms": 625,
-          "peak_working_set_bytes": 74420224,
+          "wall_ms": 439,
+          "peak_working_set_bytes": 75927552,
+          "peak_working_set_mb": 73,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 445,
+          "peak_working_set_bytes": 74919936,
+          "peak_working_set_mb": 72,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 447,
+          "peak_working_set_bytes": 74092544,
           "peak_working_set_mb": 71,
           "exit_code": 0,
           "db_bytes": null,
@@ -1289,37 +1317,9 @@
           "error": null
         },
         {
-          "wall_ms": 662,
-          "peak_working_set_bytes": 76242944,
-          "peak_working_set_mb": 73,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 601,
-          "peak_working_set_bytes": 73236480,
-          "peak_working_set_mb": 70,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 607,
-          "peak_working_set_bytes": 75624448,
-          "peak_working_set_mb": 73,
+          "wall_ms": 447,
+          "peak_working_set_bytes": 74706944,
+          "peak_working_set_mb": 72,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1332,13 +1332,13 @@
         }
       ],
       "median": {
-        "wall_ms": 613,
-        "peak_working_set_bytes": 74604544,
+        "wall_ms": 445,
+        "peak_working_set_bytes": 74788864,
         "peak_working_set_mb": 72
       },
       "max": {
-        "wall_ms": 662,
-        "peak_working_set_bytes": 76242944,
+        "wall_ms": 447,
+        "peak_working_set_bytes": 75927552,
         "peak_working_set_mb": 73
       }
     },
@@ -1355,9 +1355,9 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 805,
-          "peak_working_set_bytes": 84168704,
-          "peak_working_set_mb": 81,
+          "wall_ms": 590,
+          "peak_working_set_bytes": 82616320,
+          "peak_working_set_mb": 79,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1369,9 +1369,9 @@
           "error": null
         },
         {
-          "wall_ms": 830,
-          "peak_working_set_bytes": 84262912,
-          "peak_working_set_mb": 81,
+          "wall_ms": 584,
+          "peak_working_set_bytes": 81063936,
+          "peak_working_set_mb": 78,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1383,9 +1383,9 @@
           "error": null
         },
         {
-          "wall_ms": 813,
-          "peak_working_set_bytes": 84082688,
-          "peak_working_set_mb": 81,
+          "wall_ms": 595,
+          "peak_working_set_bytes": 80314368,
+          "peak_working_set_mb": 77,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1397,9 +1397,9 @@
           "error": null
         },
         {
-          "wall_ms": 809,
-          "peak_working_set_bytes": 84549632,
-          "peak_working_set_mb": 81,
+          "wall_ms": 592,
+          "peak_working_set_bytes": 80674816,
+          "peak_working_set_mb": 77,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1411,9 +1411,9 @@
           "error": null
         },
         {
-          "wall_ms": 804,
-          "peak_working_set_bytes": 84140032,
-          "peak_working_set_mb": 81,
+          "wall_ms": 594,
+          "peak_working_set_bytes": 80797696,
+          "peak_working_set_mb": 78,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1426,14 +1426,14 @@
         }
       ],
       "median": {
-        "wall_ms": 809,
-        "peak_working_set_bytes": 84168704,
-        "peak_working_set_mb": 81
+        "wall_ms": 592,
+        "peak_working_set_bytes": 80797696,
+        "peak_working_set_mb": 78
       },
       "max": {
-        "wall_ms": 830,
-        "peak_working_set_bytes": 84549632,
-        "peak_working_set_mb": 81
+        "wall_ms": 595,
+        "peak_working_set_bytes": 82616320,
+        "peak_working_set_mb": 79
       }
     },
     {
@@ -1449,8 +1449,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 1081,
-          "peak_working_set_bytes": 132481024,
+          "wall_ms": 791,
+          "peak_working_set_bytes": 132694016,
           "peak_working_set_mb": 127,
           "exit_code": 0,
           "db_bytes": null,
@@ -1463,8 +1463,8 @@
           "error": null
         },
         {
-          "wall_ms": 1090,
-          "peak_working_set_bytes": 132546560,
+          "wall_ms": 786,
+          "peak_working_set_bytes": 132722688,
           "peak_working_set_mb": 127,
           "exit_code": 0,
           "db_bytes": null,
@@ -1477,8 +1477,8 @@
           "error": null
         },
         {
-          "wall_ms": 1092,
-          "peak_working_set_bytes": 132698112,
+          "wall_ms": 822,
+          "peak_working_set_bytes": 132694016,
           "peak_working_set_mb": 127,
           "exit_code": 0,
           "db_bytes": null,
@@ -1491,8 +1491,8 @@
           "error": null
         },
         {
-          "wall_ms": 1094,
-          "peak_working_set_bytes": 132472832,
+          "wall_ms": 790,
+          "peak_working_set_bytes": 132648960,
           "peak_working_set_mb": 127,
           "exit_code": 0,
           "db_bytes": null,
@@ -1505,8 +1505,8 @@
           "error": null
         },
         {
-          "wall_ms": 1109,
-          "peak_working_set_bytes": 132657152,
+          "wall_ms": 774,
+          "peak_working_set_bytes": 132952064,
           "peak_working_set_mb": 127,
           "exit_code": 0,
           "db_bytes": null,
@@ -1520,13 +1520,13 @@
         }
       ],
       "median": {
-        "wall_ms": 1092,
-        "peak_working_set_bytes": 132546560,
+        "wall_ms": 790,
+        "peak_working_set_bytes": 132694016,
         "peak_working_set_mb": 127
       },
       "max": {
-        "wall_ms": 1109,
-        "peak_working_set_bytes": 132698112,
+        "wall_ms": 822,
+        "peak_working_set_bytes": 132952064,
         "peak_working_set_mb": 127
       }
     },
@@ -1543,8 +1543,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 340,
-          "peak_working_set_bytes": 43749376,
+          "wall_ms": 259,
+          "peak_working_set_bytes": 43376640,
           "peak_working_set_mb": 42,
           "exit_code": 0,
           "db_bytes": null,
@@ -1557,8 +1557,22 @@
           "error": null
         },
         {
-          "wall_ms": 341,
-          "peak_working_set_bytes": 43057152,
+          "wall_ms": 256,
+          "peak_working_set_bytes": 41623552,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 261,
+          "peak_working_set_bytes": 43708416,
           "peak_working_set_mb": 42,
           "exit_code": 0,
           "db_bytes": null,
@@ -1571,9 +1585,9 @@
           "error": null
         },
         {
-          "wall_ms": 340,
-          "peak_working_set_bytes": 44027904,
-          "peak_working_set_mb": 42,
+          "wall_ms": 259,
+          "peak_working_set_bytes": 41820160,
+          "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1585,23 +1599,9 @@
           "error": null
         },
         {
-          "wall_ms": 341,
-          "peak_working_set_bytes": 43954176,
+          "wall_ms": 255,
+          "peak_working_set_bytes": 43233280,
           "peak_working_set_mb": 42,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 344,
-          "peak_working_set_bytes": 42459136,
-          "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1614,13 +1614,13 @@
         }
       ],
       "median": {
-        "wall_ms": 341,
-        "peak_working_set_bytes": 43749376,
+        "wall_ms": 259,
+        "peak_working_set_bytes": 43233280,
         "peak_working_set_mb": 42
       },
       "max": {
-        "wall_ms": 344,
-        "peak_working_set_bytes": 44027904,
+        "wall_ms": 261,
+        "peak_working_set_bytes": 43708416,
         "peak_working_set_mb": 42
       }
     },
@@ -1637,8 +1637,22 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 348,
-          "peak_working_set_bytes": 43892736,
+          "wall_ms": 260,
+          "peak_working_set_bytes": 45281280,
+          "peak_working_set_mb": 44,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 262,
+          "peak_working_set_bytes": 43282432,
           "peak_working_set_mb": 42,
           "exit_code": 0,
           "db_bytes": null,
@@ -1651,8 +1665,8 @@
           "error": null
         },
         {
-          "wall_ms": 344,
-          "peak_working_set_bytes": 44040192,
+          "wall_ms": 257,
+          "peak_working_set_bytes": 43798528,
           "peak_working_set_mb": 42,
           "exit_code": 0,
           "db_bytes": null,
@@ -1665,9 +1679,9 @@
           "error": null
         },
         {
-          "wall_ms": 350,
-          "peak_working_set_bytes": 43831296,
-          "peak_working_set_mb": 42,
+          "wall_ms": 256,
+          "peak_working_set_bytes": 42438656,
+          "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1679,23 +1693,9 @@
           "error": null
         },
         {
-          "wall_ms": 347,
-          "peak_working_set_bytes": 44060672,
-          "peak_working_set_mb": 43,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 346,
-          "peak_working_set_bytes": 43622400,
-          "peak_working_set_mb": 42,
+          "wall_ms": 258,
+          "peak_working_set_bytes": 42848256,
+          "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1708,14 +1708,14 @@
         }
       ],
       "median": {
-        "wall_ms": 347,
-        "peak_working_set_bytes": 43892736,
+        "wall_ms": 258,
+        "peak_working_set_bytes": 43282432,
         "peak_working_set_mb": 42
       },
       "max": {
-        "wall_ms": 350,
-        "peak_working_set_bytes": 44060672,
-        "peak_working_set_mb": 43
+        "wall_ms": 262,
+        "peak_working_set_bytes": 45281280,
+        "peak_working_set_mb": 44
       }
     },
     {
@@ -1731,8 +1731,22 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 417,
-          "peak_working_set_bytes": 51564544,
+          "wall_ms": 308,
+          "peak_working_set_bytes": 51179520,
+          "peak_working_set_mb": 49,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 303,
+          "peak_working_set_bytes": 51613696,
           "peak_working_set_mb": 50,
           "exit_code": 0,
           "db_bytes": null,
@@ -1745,8 +1759,22 @@
           "error": null
         },
         {
-          "wall_ms": 419,
-          "peak_working_set_bytes": 52117504,
+          "wall_ms": 304,
+          "peak_working_set_bytes": 51269632,
+          "peak_working_set_mb": 49,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 303,
+          "peak_working_set_bytes": 51507200,
           "peak_working_set_mb": 50,
           "exit_code": 0,
           "db_bytes": null,
@@ -1759,37 +1787,9 @@
           "error": null
         },
         {
-          "wall_ms": 411,
-          "peak_working_set_bytes": 52539392,
+          "wall_ms": 306,
+          "peak_working_set_bytes": 52633600,
           "peak_working_set_mb": 51,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 415,
-          "peak_working_set_bytes": 51875840,
-          "peak_working_set_mb": 50,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 413,
-          "peak_working_set_bytes": 52211712,
-          "peak_working_set_mb": 50,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1802,13 +1802,13 @@
         }
       ],
       "median": {
-        "wall_ms": 415,
-        "peak_working_set_bytes": 52117504,
+        "wall_ms": 304,
+        "peak_working_set_bytes": 51507200,
         "peak_working_set_mb": 50
       },
       "max": {
-        "wall_ms": 419,
-        "peak_working_set_bytes": 52539392,
+        "wall_ms": 308,
+        "peak_working_set_bytes": 52633600,
         "peak_working_set_mb": 51
       }
     },
@@ -1825,50 +1825,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 612,
-          "peak_working_set_bytes": 74231808,
-          "peak_working_set_mb": 71,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 616,
-          "peak_working_set_bytes": 74145792,
-          "peak_working_set_mb": 71,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 615,
-          "peak_working_set_bytes": 74174464,
-          "peak_working_set_mb": 71,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 614,
-          "peak_working_set_bytes": 74559488,
+          "wall_ms": 434,
+          "peak_working_set_bytes": 74563584,
           "peak_working_set_mb": 72,
           "exit_code": 0,
           "db_bytes": null,
@@ -1881,9 +1839,51 @@
           "error": null
         },
         {
-          "wall_ms": 618,
-          "peak_working_set_bytes": 73879552,
+          "wall_ms": 439,
+          "peak_working_set_bytes": 74379264,
           "peak_working_set_mb": 71,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 439,
+          "peak_working_set_bytes": 74207232,
+          "peak_working_set_mb": 71,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 447,
+          "peak_working_set_bytes": 75476992,
+          "peak_working_set_mb": 72,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 439,
+          "peak_working_set_bytes": 72376320,
+          "peak_working_set_mb": 70,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1896,13 +1896,13 @@
         }
       ],
       "median": {
-        "wall_ms": 615,
-        "peak_working_set_bytes": 74174464,
+        "wall_ms": 439,
+        "peak_working_set_bytes": 74379264,
         "peak_working_set_mb": 71
       },
       "max": {
-        "wall_ms": 618,
-        "peak_working_set_bytes": 74559488,
+        "wall_ms": 447,
+        "peak_working_set_bytes": 75476992,
         "peak_working_set_mb": 72
       }
     },
@@ -1919,8 +1919,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 672,
-          "peak_working_set_bytes": 73732096,
+          "wall_ms": 493,
+          "peak_working_set_bytes": 74407936,
           "peak_working_set_mb": 71,
           "exit_code": 0,
           "db_bytes": null,
@@ -1933,8 +1933,8 @@
           "error": null
         },
         {
-          "wall_ms": 674,
-          "peak_working_set_bytes": 72880128,
+          "wall_ms": 502,
+          "peak_working_set_bytes": 72663040,
           "peak_working_set_mb": 70,
           "exit_code": 0,
           "db_bytes": null,
@@ -1947,8 +1947,8 @@
           "error": null
         },
         {
-          "wall_ms": 683,
-          "peak_working_set_bytes": 75272192,
+          "wall_ms": 492,
+          "peak_working_set_bytes": 75354112,
           "peak_working_set_mb": 72,
           "exit_code": 0,
           "db_bytes": null,
@@ -1961,9 +1961,9 @@
           "error": null
         },
         {
-          "wall_ms": 673,
-          "peak_working_set_bytes": 72851456,
-          "peak_working_set_mb": 70,
+          "wall_ms": 488,
+          "peak_working_set_bytes": 75644928,
+          "peak_working_set_mb": 73,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1975,9 +1975,9 @@
           "error": null
         },
         {
-          "wall_ms": 693,
-          "peak_working_set_bytes": 73981952,
-          "peak_working_set_mb": 71,
+          "wall_ms": 491,
+          "peak_working_set_bytes": 72581120,
+          "peak_working_set_mb": 70,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -1990,14 +1990,14 @@
         }
       ],
       "median": {
-        "wall_ms": 674,
-        "peak_working_set_bytes": 73732096,
+        "wall_ms": 492,
+        "peak_working_set_bytes": 74407936,
         "peak_working_set_mb": 71
       },
       "max": {
-        "wall_ms": 693,
-        "peak_working_set_bytes": 75272192,
-        "peak_working_set_mb": 72
+        "wall_ms": 502,
+        "peak_working_set_bytes": 75644928,
+        "peak_working_set_mb": 73
       }
     },
     {
@@ -2013,8 +2013,22 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 1077,
-          "peak_working_set_bytes": 140337152,
+          "wall_ms": 758,
+          "peak_working_set_bytes": 145014784,
+          "peak_working_set_mb": 139,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 800,
+          "peak_working_set_bytes": 140300288,
           "peak_working_set_mb": 134,
           "exit_code": 0,
           "db_bytes": null,
@@ -2027,22 +2041,8 @@
           "error": null
         },
         {
-          "wall_ms": 1056,
-          "peak_working_set_bytes": 139177984,
-          "peak_working_set_mb": 133,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 1083,
-          "peak_working_set_bytes": 139923456,
+          "wall_ms": 778,
+          "peak_working_set_bytes": 139468800,
           "peak_working_set_mb": 134,
           "exit_code": 0,
           "db_bytes": null,
@@ -2055,8 +2055,8 @@
           "error": null
         },
         {
-          "wall_ms": 1073,
-          "peak_working_set_bytes": 139055104,
+          "wall_ms": 788,
+          "peak_working_set_bytes": 139407360,
           "peak_working_set_mb": 133,
           "exit_code": 0,
           "db_bytes": null,
@@ -2069,9 +2069,9 @@
           "error": null
         },
         {
-          "wall_ms": 1055,
-          "peak_working_set_bytes": 138993664,
-          "peak_working_set_mb": 133,
+          "wall_ms": 784,
+          "peak_working_set_bytes": 140419072,
+          "peak_working_set_mb": 134,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2084,14 +2084,14 @@
         }
       ],
       "median": {
-        "wall_ms": 1073,
-        "peak_working_set_bytes": 139177984,
-        "peak_working_set_mb": 133
+        "wall_ms": 784,
+        "peak_working_set_bytes": 140300288,
+        "peak_working_set_mb": 134
       },
       "max": {
-        "wall_ms": 1083,
-        "peak_working_set_bytes": 140337152,
-        "peak_working_set_mb": 134
+        "wall_ms": 800,
+        "peak_working_set_bytes": 145014784,
+        "peak_working_set_mb": 139
       }
     },
     {
@@ -2107,8 +2107,22 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 306,
-          "peak_working_set_bytes": 45764608,
+          "wall_ms": 237,
+          "peak_working_set_bytes": 46424064,
+          "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 240,
+          "peak_working_set_bytes": 45289472,
           "peak_working_set_mb": 44,
           "exit_code": 0,
           "db_bytes": null,
@@ -2121,8 +2135,8 @@
           "error": null
         },
         {
-          "wall_ms": 301,
-          "peak_working_set_bytes": 45326336,
+          "wall_ms": 238,
+          "peak_working_set_bytes": 45756416,
           "peak_working_set_mb": 44,
           "exit_code": 0,
           "db_bytes": null,
@@ -2135,22 +2149,8 @@
           "error": null
         },
         {
-          "wall_ms": 310,
-          "peak_working_set_bytes": 45039616,
-          "peak_working_set_mb": 43,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 307,
-          "peak_working_set_bytes": 45101056,
+          "wall_ms": 244,
+          "peak_working_set_bytes": 45830144,
           "peak_working_set_mb": 44,
           "exit_code": 0,
           "db_bytes": null,
@@ -2163,9 +2163,9 @@
           "error": null
         },
         {
-          "wall_ms": 308,
-          "peak_working_set_bytes": 45780992,
-          "peak_working_set_mb": 44,
+          "wall_ms": 238,
+          "peak_working_set_bytes": 46911488,
+          "peak_working_set_mb": 45,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2178,14 +2178,14 @@
         }
       ],
       "median": {
-        "wall_ms": 307,
-        "peak_working_set_bytes": 45326336,
+        "wall_ms": 238,
+        "peak_working_set_bytes": 45830144,
         "peak_working_set_mb": 44
       },
       "max": {
-        "wall_ms": 310,
-        "peak_working_set_bytes": 45780992,
-        "peak_working_set_mb": 44
+        "wall_ms": 244,
+        "peak_working_set_bytes": 46911488,
+        "peak_working_set_mb": 45
       }
     },
     {
@@ -2201,8 +2201,36 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 289,
-          "peak_working_set_bytes": 41648128,
+          "wall_ms": 225,
+          "peak_working_set_bytes": 38387712,
+          "peak_working_set_mb": 37,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 219,
+          "peak_working_set_bytes": 37482496,
+          "peak_working_set_mb": 36,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 218,
+          "peak_working_set_bytes": 41459712,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2215,8 +2243,8 @@
           "error": null
         },
         {
-          "wall_ms": 286,
-          "peak_working_set_bytes": 41418752,
+          "wall_ms": 228,
+          "peak_working_set_bytes": 41603072,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2229,37 +2257,9 @@
           "error": null
         },
         {
-          "wall_ms": 288,
-          "peak_working_set_bytes": 41545728,
+          "wall_ms": 224,
+          "peak_working_set_bytes": 41463808,
           "peak_working_set_mb": 40,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 289,
-          "peak_working_set_bytes": 41271296,
-          "peak_working_set_mb": 40,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 290,
-          "peak_working_set_bytes": 39612416,
-          "peak_working_set_mb": 38,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2272,13 +2272,13 @@
         }
       ],
       "median": {
-        "wall_ms": 289,
-        "peak_working_set_bytes": 41418752,
+        "wall_ms": 224,
+        "peak_working_set_bytes": 41459712,
         "peak_working_set_mb": 40
       },
       "max": {
-        "wall_ms": 290,
-        "peak_working_set_bytes": 41648128,
+        "wall_ms": 228,
+        "peak_working_set_bytes": 41603072,
         "peak_working_set_mb": 40
       }
     },
@@ -2295,7 +2295,49 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 289,
+          "wall_ms": 226,
+          "peak_working_set_bytes": 41598976,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 220,
+          "peak_working_set_bytes": 41447424,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 229,
+          "peak_working_set_bytes": 41312256,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 219,
           "peak_working_set_bytes": 41787392,
           "peak_working_set_mb": 40,
           "exit_code": 0,
@@ -2309,50 +2351,8 @@
           "error": null
         },
         {
-          "wall_ms": 295,
-          "peak_working_set_bytes": 41144320,
-          "peak_working_set_mb": 40,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 292,
-          "peak_working_set_bytes": 41058304,
-          "peak_working_set_mb": 40,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 297,
-          "peak_working_set_bytes": 40845312,
-          "peak_working_set_mb": 39,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 292,
-          "peak_working_set_bytes": 41512960,
+          "wall_ms": 222,
+          "peak_working_set_bytes": 41537536,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2366,12 +2366,12 @@
         }
       ],
       "median": {
-        "wall_ms": 292,
-        "peak_working_set_bytes": 41144320,
+        "wall_ms": 222,
+        "peak_working_set_bytes": 41537536,
         "peak_working_set_mb": 40
       },
       "max": {
-        "wall_ms": 297,
+        "wall_ms": 229,
         "peak_working_set_bytes": 41787392,
         "peak_working_set_mb": 40
       }
@@ -2389,8 +2389,36 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 309,
-          "peak_working_set_bytes": 42356736,
+          "wall_ms": 241,
+          "peak_working_set_bytes": 41418752,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 241,
+          "peak_working_set_bytes": 41590784,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 234,
+          "peak_working_set_bytes": 42754048,
           "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
@@ -2403,8 +2431,8 @@
           "error": null
         },
         {
-          "wall_ms": 312,
-          "peak_working_set_bytes": 41132032,
+          "wall_ms": 236,
+          "peak_working_set_bytes": 41943040,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2417,37 +2445,9 @@
           "error": null
         },
         {
-          "wall_ms": 313,
-          "peak_working_set_bytes": 40927232,
-          "peak_working_set_mb": 40,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 307,
-          "peak_working_set_bytes": 41529344,
-          "peak_working_set_mb": 40,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 314,
-          "peak_working_set_bytes": 41263104,
-          "peak_working_set_mb": 40,
+          "wall_ms": 237,
+          "peak_working_set_bytes": 37683200,
+          "peak_working_set_mb": 36,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2460,13 +2460,13 @@
         }
       ],
       "median": {
-        "wall_ms": 312,
-        "peak_working_set_bytes": 41263104,
+        "wall_ms": 237,
+        "peak_working_set_bytes": 41590784,
         "peak_working_set_mb": 40
       },
       "max": {
-        "wall_ms": 314,
-        "peak_working_set_bytes": 42356736,
+        "wall_ms": 241,
+        "peak_working_set_bytes": 42754048,
         "peak_working_set_mb": 41
       }
     },
@@ -2483,22 +2483,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 299,
-          "peak_working_set_bytes": 41283584,
-          "peak_working_set_mb": 40,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 292,
-          "peak_working_set_bytes": 42164224,
+          "wall_ms": 222,
+          "peak_working_set_bytes": 42442752,
           "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
@@ -2511,8 +2497,22 @@
           "error": null
         },
         {
-          "wall_ms": 295,
-          "peak_working_set_bytes": 42450944,
+          "wall_ms": 218,
+          "peak_working_set_bytes": 38957056,
+          "peak_working_set_mb": 38,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 220,
+          "peak_working_set_bytes": 42405888,
           "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
@@ -2525,9 +2525,9 @@
           "error": null
         },
         {
-          "wall_ms": 289,
-          "peak_working_set_bytes": 41697280,
-          "peak_working_set_mb": 40,
+          "wall_ms": 224,
+          "peak_working_set_bytes": 38973440,
+          "peak_working_set_mb": 38,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2539,8 +2539,8 @@
           "error": null
         },
         {
-          "wall_ms": 282,
-          "peak_working_set_bytes": 41975808,
+          "wall_ms": 214,
+          "peak_working_set_bytes": 42729472,
           "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
@@ -2554,13 +2554,13 @@
         }
       ],
       "median": {
-        "wall_ms": 292,
-        "peak_working_set_bytes": 41975808,
+        "wall_ms": 220,
+        "peak_working_set_bytes": 42405888,
         "peak_working_set_mb": 41
       },
       "max": {
-        "wall_ms": 299,
-        "peak_working_set_bytes": 42450944,
+        "wall_ms": 224,
+        "peak_working_set_bytes": 42729472,
         "peak_working_set_mb": 41
       }
     },
@@ -2577,8 +2577,22 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 285,
-          "peak_working_set_bytes": 40939520,
+          "wall_ms": 220,
+          "peak_working_set_bytes": 39428096,
+          "peak_working_set_mb": 38,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 218,
+          "peak_working_set_bytes": 41869312,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2591,8 +2605,8 @@
           "error": null
         },
         {
-          "wall_ms": 291,
-          "peak_working_set_bytes": 41570304,
+          "wall_ms": 221,
+          "peak_working_set_bytes": 41713664,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2605,8 +2619,8 @@
           "error": null
         },
         {
-          "wall_ms": 289,
-          "peak_working_set_bytes": 41308160,
+          "wall_ms": 222,
+          "peak_working_set_bytes": 41623552,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2619,23 +2633,9 @@
           "error": null
         },
         {
-          "wall_ms": 293,
-          "peak_working_set_bytes": 41181184,
-          "peak_working_set_mb": 40,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 284,
-          "peak_working_set_bytes": 41652224,
-          "peak_working_set_mb": 40,
+          "wall_ms": 220,
+          "peak_working_set_bytes": 39800832,
+          "peak_working_set_mb": 38,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2648,13 +2648,13 @@
         }
       ],
       "median": {
-        "wall_ms": 289,
-        "peak_working_set_bytes": 41308160,
+        "wall_ms": 220,
+        "peak_working_set_bytes": 41623552,
         "peak_working_set_mb": 40
       },
       "max": {
-        "wall_ms": 293,
-        "peak_working_set_bytes": 41652224,
+        "wall_ms": 222,
+        "peak_working_set_bytes": 41869312,
         "peak_working_set_mb": 40
       }
     },
@@ -2671,8 +2671,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 286,
-          "peak_working_set_bytes": 39809024,
+          "wall_ms": 219,
+          "peak_working_set_bytes": 39616512,
           "peak_working_set_mb": 38,
           "exit_code": 0,
           "db_bytes": null,
@@ -2685,8 +2685,22 @@
           "error": null
         },
         {
-          "wall_ms": 287,
-          "peak_working_set_bytes": 42704896,
+          "wall_ms": 213,
+          "peak_working_set_bytes": 43008000,
+          "peak_working_set_mb": 42,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 221,
+          "peak_working_set_bytes": 42586112,
           "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
@@ -2699,9 +2713,9 @@
           "error": null
         },
         {
-          "wall_ms": 284,
-          "peak_working_set_bytes": 42987520,
-          "peak_working_set_mb": 41,
+          "wall_ms": 216,
+          "peak_working_set_bytes": 43053056,
+          "peak_working_set_mb": 42,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2713,22 +2727,8 @@
           "error": null
         },
         {
-          "wall_ms": 287,
-          "peak_working_set_bytes": 42237952,
-          "peak_working_set_mb": 41,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 281,
-          "peak_working_set_bytes": 42885120,
+          "wall_ms": 216,
+          "peak_working_set_bytes": 42913792,
           "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
@@ -2742,14 +2742,14 @@
         }
       ],
       "median": {
-        "wall_ms": 286,
-        "peak_working_set_bytes": 42704896,
+        "wall_ms": 216,
+        "peak_working_set_bytes": 42913792,
         "peak_working_set_mb": 41
       },
       "max": {
-        "wall_ms": 287,
-        "peak_working_set_bytes": 42987520,
-        "peak_working_set_mb": 41
+        "wall_ms": 221,
+        "peak_working_set_bytes": 43053056,
+        "peak_working_set_mb": 42
       }
     },
     {
@@ -2765,22 +2765,8 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 296,
-          "peak_working_set_bytes": 42610688,
-          "peak_working_set_mb": 41,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 297,
-          "peak_working_set_bytes": 43454464,
+          "wall_ms": 220,
+          "peak_working_set_bytes": 43782144,
           "peak_working_set_mb": 42,
           "exit_code": 0,
           "db_bytes": null,
@@ -2793,8 +2779,8 @@
           "error": null
         },
         {
-          "wall_ms": 293,
-          "peak_working_set_bytes": 43286528,
+          "wall_ms": 220,
+          "peak_working_set_bytes": 43438080,
           "peak_working_set_mb": 42,
           "exit_code": 0,
           "db_bytes": null,
@@ -2807,9 +2793,9 @@
           "error": null
         },
         {
-          "wall_ms": 291,
-          "peak_working_set_bytes": 42704896,
-          "peak_working_set_mb": 41,
+          "wall_ms": 217,
+          "peak_working_set_bytes": 40722432,
+          "peak_working_set_mb": 39,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2821,9 +2807,23 @@
           "error": null
         },
         {
-          "wall_ms": 300,
-          "peak_working_set_bytes": 42414080,
-          "peak_working_set_mb": 41,
+          "wall_ms": 218,
+          "peak_working_set_bytes": 43802624,
+          "peak_working_set_mb": 42,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 230,
+          "peak_working_set_bytes": 43479040,
+          "peak_working_set_mb": 42,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2836,13 +2836,13 @@
         }
       ],
       "median": {
-        "wall_ms": 296,
-        "peak_working_set_bytes": 42704896,
-        "peak_working_set_mb": 41
+        "wall_ms": 220,
+        "peak_working_set_bytes": 43479040,
+        "peak_working_set_mb": 42
       },
       "max": {
-        "wall_ms": 300,
-        "peak_working_set_bytes": 43454464,
+        "wall_ms": 230,
+        "peak_working_set_bytes": 43802624,
         "peak_working_set_mb": 42
       }
     },
@@ -2874,8 +2874,8 @@
       "freshness_changed_document_count": 0,
       "runs": [
         {
-          "wall_ms": 297,
-          "peak_working_set_bytes": 41099264,
+          "wall_ms": 215,
+          "peak_working_set_bytes": 41897984,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2888,8 +2888,8 @@
           "error": null
         },
         {
-          "wall_ms": 289,
-          "peak_working_set_bytes": 40951808,
+          "wall_ms": 222,
+          "peak_working_set_bytes": 41943040,
           "peak_working_set_mb": 40,
           "exit_code": 0,
           "db_bytes": null,
@@ -2902,9 +2902,9 @@
           "error": null
         },
         {
-          "wall_ms": 292,
-          "peak_working_set_bytes": 41168896,
-          "peak_working_set_mb": 40,
+          "wall_ms": 217,
+          "peak_working_set_bytes": 42020864,
+          "peak_working_set_mb": 41,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2916,9 +2916,9 @@
           "error": null
         },
         {
-          "wall_ms": 303,
-          "peak_working_set_bytes": 41349120,
-          "peak_working_set_mb": 40,
+          "wall_ms": 214,
+          "peak_working_set_bytes": 39538688,
+          "peak_working_set_mb": 38,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2930,9 +2930,9 @@
           "error": null
         },
         {
-          "wall_ms": 298,
-          "peak_working_set_bytes": 41357312,
-          "peak_working_set_mb": 40,
+          "wall_ms": 222,
+          "peak_working_set_bytes": 37163008,
+          "peak_working_set_mb": 36,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -2945,14 +2945,14 @@
         }
       ],
       "median": {
-        "wall_ms": 297,
-        "peak_working_set_bytes": 41168896,
+        "wall_ms": 217,
+        "peak_working_set_bytes": 41897984,
         "peak_working_set_mb": 40
       },
       "max": {
-        "wall_ms": 303,
-        "peak_working_set_bytes": 41357312,
-        "peak_working_set_mb": 40
+        "wall_ms": 222,
+        "peak_working_set_bytes": 42020864,
+        "peak_working_set_mb": 41
       }
     },
     {
@@ -2968,8 +2968,8 @@
       "freshness_changed_document_count": 0,
       "runs": [
         {
-          "wall_ms": 321,
-          "peak_working_set_bytes": 49721344,
+          "wall_ms": 247,
+          "peak_working_set_bytes": 49856512,
           "peak_working_set_mb": 48,
           "exit_code": 0,
           "db_bytes": null,
@@ -2982,22 +2982,8 @@
           "error": null
         },
         {
-          "wall_ms": 321,
-          "peak_working_set_bytes": 48082944,
-          "peak_working_set_mb": 46,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 320,
-          "peak_working_set_bytes": 49893376,
+          "wall_ms": 240,
+          "peak_working_set_bytes": 49430528,
           "peak_working_set_mb": 48,
           "exit_code": 0,
           "db_bytes": null,
@@ -3010,8 +2996,8 @@
           "error": null
         },
         {
-          "wall_ms": 322,
-          "peak_working_set_bytes": 48852992,
+          "wall_ms": 247,
+          "peak_working_set_bytes": 48775168,
           "peak_working_set_mb": 47,
           "exit_code": 0,
           "db_bytes": null,
@@ -3024,9 +3010,23 @@
           "error": null
         },
         {
-          "wall_ms": 325,
-          "peak_working_set_bytes": 49881088,
+          "wall_ms": 239,
+          "peak_working_set_bytes": 49516544,
           "peak_working_set_mb": 48,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 242,
+          "peak_working_set_bytes": 48726016,
+          "peak_working_set_mb": 47,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3039,13 +3039,13 @@
         }
       ],
       "median": {
-        "wall_ms": 321,
-        "peak_working_set_bytes": 49721344,
+        "wall_ms": 242,
+        "peak_working_set_bytes": 49430528,
         "peak_working_set_mb": 48
       },
       "max": {
-        "wall_ms": 325,
-        "peak_working_set_bytes": 49893376,
+        "wall_ms": 247,
+        "peak_working_set_bytes": 49856512,
         "peak_working_set_mb": 48
       }
     },
@@ -3062,9 +3062,9 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 760,
-          "peak_working_set_bytes": 91824128,
-          "peak_working_set_mb": 88,
+          "wall_ms": 572,
+          "peak_working_set_bytes": 91205632,
+          "peak_working_set_mb": 87,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3076,8 +3076,8 @@
           "error": null
         },
         {
-          "wall_ms": 773,
-          "peak_working_set_bytes": 93138944,
+          "wall_ms": 568,
+          "peak_working_set_bytes": 92758016,
           "peak_working_set_mb": 89,
           "exit_code": 0,
           "db_bytes": null,
@@ -3090,8 +3090,22 @@
           "error": null
         },
         {
-          "wall_ms": 757,
-          "peak_working_set_bytes": 91525120,
+          "wall_ms": 578,
+          "peak_working_set_bytes": 92307456,
+          "peak_working_set_mb": 89,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 577,
+          "peak_working_set_bytes": 91799552,
           "peak_working_set_mb": 88,
           "exit_code": 0,
           "db_bytes": null,
@@ -3104,23 +3118,9 @@
           "error": null
         },
         {
-          "wall_ms": 769,
-          "peak_working_set_bytes": 91828224,
-          "peak_working_set_mb": 88,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 764,
-          "peak_working_set_bytes": 93523968,
-          "peak_working_set_mb": 90,
+          "wall_ms": 580,
+          "peak_working_set_bytes": 92930048,
+          "peak_working_set_mb": 89,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3133,14 +3133,14 @@
         }
       ],
       "median": {
-        "wall_ms": 764,
-        "peak_working_set_bytes": 91828224,
-        "peak_working_set_mb": 88
+        "wall_ms": 577,
+        "peak_working_set_bytes": 92307456,
+        "peak_working_set_mb": 89
       },
       "max": {
-        "wall_ms": 773,
-        "peak_working_set_bytes": 93523968,
-        "peak_working_set_mb": 90
+        "wall_ms": 580,
+        "peak_working_set_bytes": 92930048,
+        "peak_working_set_mb": 89
       }
     },
     {
@@ -3156,9 +3156,9 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 18,
-          "peak_working_set_bytes": 59781120,
-          "peak_working_set_mb": 58,
+          "wall_ms": 13,
+          "peak_working_set_bytes": 63410176,
+          "peak_working_set_mb": 61,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3170,22 +3170,8 @@
           "error": null
         },
         {
-          "wall_ms": 23,
-          "peak_working_set_bytes": 61366272,
-          "peak_working_set_mb": 59,
-          "exit_code": 0,
-          "db_bytes": null,
-          "db_delta_bytes": null,
-          "timings_total_ms": null,
-          "timings_steps": null,
-          "metric_peak_working_set_bytes": null,
-          "metric_peak_working_set_exact": null,
-          "peak_cross_check": null,
-          "error": null
-        },
-        {
-          "wall_ms": 23,
-          "peak_working_set_bytes": 64098304,
+          "wall_ms": 14,
+          "peak_working_set_bytes": 64929792,
           "peak_working_set_mb": 62,
           "exit_code": 0,
           "db_bytes": null,
@@ -3198,8 +3184,8 @@
           "error": null
         },
         {
-          "wall_ms": 18,
-          "peak_working_set_bytes": 66584576,
+          "wall_ms": 21,
+          "peak_working_set_bytes": 66789376,
           "peak_working_set_mb": 64,
           "exit_code": 0,
           "db_bytes": null,
@@ -3212,9 +3198,23 @@
           "error": null
         },
         {
-          "wall_ms": 18,
-          "peak_working_set_bytes": 66584576,
-          "peak_working_set_mb": 64,
+          "wall_ms": 14,
+          "peak_working_set_bytes": 71340032,
+          "peak_working_set_mb": 69,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_bytes": null,
+          "metric_peak_working_set_exact": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 14,
+          "peak_working_set_bytes": 71340032,
+          "peak_working_set_mb": 69,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3227,14 +3227,14 @@
         }
       ],
       "median": {
-        "wall_ms": 18,
-        "peak_working_set_bytes": 64098304,
-        "peak_working_set_mb": 62
+        "wall_ms": 14,
+        "peak_working_set_bytes": 66789376,
+        "peak_working_set_mb": 64
       },
       "max": {
-        "wall_ms": 23,
-        "peak_working_set_bytes": 66584576,
-        "peak_working_set_mb": 64
+        "wall_ms": 21,
+        "peak_working_set_bytes": 71340032,
+        "peak_working_set_mb": 69
       }
     },
     {
@@ -3250,9 +3250,9 @@
       "freshness_changed_document_count": null,
       "runs": [
         {
-          "wall_ms": 4371,
-          "peak_working_set_bytes": 217669632,
-          "peak_working_set_mb": 208,
+          "wall_ms": 2959,
+          "peak_working_set_bytes": 225239040,
+          "peak_working_set_mb": 215,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3264,9 +3264,9 @@
           "error": null
         },
         {
-          "wall_ms": 4450,
-          "peak_working_set_bytes": 236953600,
-          "peak_working_set_mb": 226,
+          "wall_ms": 3074,
+          "peak_working_set_bytes": 225239040,
+          "peak_working_set_mb": 215,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3278,9 +3278,9 @@
           "error": null
         },
         {
-          "wall_ms": 4212,
-          "peak_working_set_bytes": 282660864,
-          "peak_working_set_mb": 270,
+          "wall_ms": 2940,
+          "peak_working_set_bytes": 233930752,
+          "peak_working_set_mb": 224,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3292,9 +3292,9 @@
           "error": null
         },
         {
-          "wall_ms": 4294,
-          "peak_working_set_bytes": 282660864,
-          "peak_working_set_mb": 270,
+          "wall_ms": 2938,
+          "peak_working_set_bytes": 237469696,
+          "peak_working_set_mb": 227,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3306,9 +3306,9 @@
           "error": null
         },
         {
-          "wall_ms": 4243,
-          "peak_working_set_bytes": 282660864,
-          "peak_working_set_mb": 270,
+          "wall_ms": 2882,
+          "peak_working_set_bytes": 237469696,
+          "peak_working_set_mb": 227,
           "exit_code": 0,
           "db_bytes": null,
           "db_delta_bytes": null,
@@ -3321,14 +3321,14 @@
         }
       ],
       "median": {
-        "wall_ms": 4294,
-        "peak_working_set_bytes": 282660864,
-        "peak_working_set_mb": 270
+        "wall_ms": 2940,
+        "peak_working_set_bytes": 233930752,
+        "peak_working_set_mb": 224
       },
       "max": {
-        "wall_ms": 4450,
-        "peak_working_set_bytes": 282660864,
-        "peak_working_set_mb": 270
+        "wall_ms": 3074,
+        "peak_working_set_bytes": 237469696,
+        "peak_working_set_mb": 227
       }
     },
     {
