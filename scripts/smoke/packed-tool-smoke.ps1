@@ -35,11 +35,31 @@ function Start-Serve {
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
+    # The MCP stdio transport uses the raw stdin/stdout byte streams as UTF-8
+    # (MCP C# SDK 2.2.0 StdioServerTransport), so the redirected streams of the
+    # client must be no-BOM UTF-8 too. Drain stderr from the start: an undrained
+    # pipe fills on Windows and blocks the server's console logger.
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $psi.StandardInputEncoding = $utf8NoBom
+    $psi.StandardOutputEncoding = $utf8NoBom
+    $psi.StandardErrorEncoding = $utf8NoBom
     $psi.ArgumentList.Add('--mode=serve')
     if ($WriteTools) { $psi.ArgumentList.Add('--enable-write-tools') }
     $psi.ArgumentList.Add("--solution=$Solution")
     $psi.ArgumentList.Add("--output-dir=$OutDir")
-    return [System.Diagnostics.Process]::Start($psi)
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $proc | Add-Member -NotePropertyName StderrDrain -NotePropertyValue $proc.StandardError.ReadToEndAsync()
+    return $proc
+}
+
+function Stop-Serve {
+    param([System.Diagnostics.Process]$Proc, [int]$TimeoutMs = 60000)
+    try { $Proc.StandardInput.Close() } catch { }
+    try { if (-not $Proc.WaitForExit($TimeoutMs)) { $Proc.Kill($true) } } catch { }
+    $stderr = ''
+    try { $stderr = $Proc.StderrDrain.GetAwaiter().GetResult() } catch { }
+    $Proc.Dispose()
+    return $stderr
 }
 
 function Send-McpMessage {
@@ -170,8 +190,7 @@ function Test-WindowsServeRestart {
         Write-Host "  stop: $($stopWatch.ElapsedMilliseconds) ms"
     } finally {
         try { if (-not $first.HasExited) { $first.Kill($true) } } catch { }
-        try { $first.WaitForExit($StepTimeoutSeconds * 1000) | Out-Null } catch { }
-        $first.Dispose()
+        $null = Stop-Serve $first -TimeoutMs ($StepTimeoutSeconds * 1000)
     }
 
     $restart = Start-Serve -Solution $wr3Solution -OutDir $wr3Db -WriteTools
@@ -182,9 +201,7 @@ function Test-WindowsServeRestart {
         Assert-True (-not [string]::IsNullOrEmpty($restartStatus.snapshot_id)) 'WR3: restarted serve did not report a snapshot'
         Write-Host "  restart: $($restartWatch.ElapsedMilliseconds) ms"
     } finally {
-        try { $restart.StandardInput.Close() } catch { }
-        try { if (-not $restart.WaitForExit($StepTimeoutSeconds * 1000)) { $restart.Kill($true) } } catch { }
-        $restart.Dispose()
+        $null = Stop-Serve $restart -TimeoutMs ($StepTimeoutSeconds * 1000)
     }
 
     # A surviving writer leaves index.db (or a lock file) open on Windows: the
@@ -410,9 +427,7 @@ try {
     $afterRetract = Get-McpToolJson $serve 20 'lurp_get_annotations' @{ symbol = $symbolId }
     Assert-True (@($afterRetract.annotations | Where-Object { $_.annotation_id -eq $mcpAnnotationId }).Count -eq 0) 'lurp_retract_annotation did not remove the annotation'
 } finally {
-    try { $serve.StandardInput.Close() } catch { }
-    try { if (-not $serve.WaitForExit(60000)) { $serve.Kill($true) } } catch { }
-    $serve.Dispose()
+    $null = Stop-Serve $serve
 }
 
 # Run both reproductions even when one fails: the CI log must show the result
@@ -434,9 +449,9 @@ try {
         $markerLine = @($mcpMarkerSource.source -split "`r?`n" | Where-Object { $_.Contains('public const string Marker') })
         Assert-True ($markerLine.Count -eq 1 -and $markerLine[0] -ceq '    public const string Marker = "Café — Δ";') "get-source over MCP did not return the exact text Café — Δ: $($mcpMarkerSource.source)"
 
-        # The MCP host logs every tool call to stderr at Trace level. Do not drain
-        # stderr while it does so: a full pipe blocks serve before it can answer the
-        # next request on Windows. Every response has its own bounded wait.
+        # The MCP host logs every tool call to stderr at Trace level. Start-Serve
+        # drains that pipe asynchronously; with the old undrained pipe the logger
+        # blocked after about 4 KB on Windows. Every response has a bounded wait.
         $floodCalls = 60
         $floodId = 210
         for ($i = 0; $i -lt $floodCalls; $i++) {
@@ -447,10 +462,7 @@ try {
         Send-McpMessage $pipeServe 'tools/list' @{} $floodId
         $null = Read-McpResponse $pipeServe $floodId ($StderrResponseTimeoutSeconds * 1000)
     } finally {
-        try { $pipeServe.StandardInput.Close() } catch { }
-        try { if (-not $pipeServe.WaitForExit($StepTimeoutSeconds * 1000)) { $pipeServe.Kill($true) } } catch { }
-        $pipeStderr = $pipeServe.StandardError.ReadToEnd()
-        $pipeServe.Dispose()
+        $pipeStderr = Stop-Serve $pipeServe -TimeoutMs ($StepTimeoutSeconds * 1000)
     }
     $stderrBytes = [Text.Encoding]::UTF8.GetByteCount($pipeStderr)
     Write-Host "  stderr from serve: $stderrBytes byte(s)"
@@ -512,9 +524,8 @@ if ($SkipKillTest) {
         Assert-True $exited 'server did not exit after stdin close'
         Assert-True ($killServe.ExitCode -eq 0) "server exited $($killServe.ExitCode) after stdin close"
     } finally {
-        try { $killServe.StandardInput.Close() } catch { }
         try { if (-not $killServe.HasExited) { $killServe.Kill($true) } } catch { }
-        $killServe.Dispose()
+        $null = Stop-Serve $killServe -TimeoutMs ($KillTestTimeoutSeconds * 1000)
     }
 
     $killDbPath = Join-Path $killDbDir 'index.db'
