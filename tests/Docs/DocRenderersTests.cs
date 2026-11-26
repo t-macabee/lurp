@@ -110,7 +110,7 @@ public sealed class DocRenderersTests
         var table = DocRenderers.RenderMcpToolTable();
 
         Assert.Contains("| `lurp_index` | write (needs `--enable-write-tools`) |", table);
-        Assert.Contains("Both from_snapshot and to_snapshot are required.", table);
+        Assert.Contains("Both snapshots are required; limit defaults to 100. Pass next_cursor to continue.", table);
         Assert.Contains("`from_snapshot` (string, required)", table);
         Assert.Contains("(bool, default `false`)", table);
         Assert.Contains("`affected_project` (string[])", table);
@@ -129,7 +129,7 @@ public sealed class DocRenderersTests
             .Where(field => field.IsLiteral)
             .ToList();
 
-        Assert.Equal(7, fields.Count);
+        Assert.Equal(8, fields.Count);
         Assert.All(fields, field =>
             Assert.False(string.IsNullOrWhiteSpace(field.GetCustomAttribute<DescriptionAttribute>()?.Description), field.Name));
     }
@@ -139,6 +139,7 @@ public sealed class DocRenderersTests
     {
         var expected =
             "\n| Parameter | Maximum |\n|---|---|\n" +
+            "| First-page groups on `lurp_impact` | 50 |\n" +
             "| `limit` and `tier_limit` on every tool except `lurp_dead_candidates`; `max_documents`, `max_mismatches` and the length of `documents` on `lurp_status` | 500 |\n" +
             "| `limit` on `lurp_dead_candidates` | 200 |\n" +
             "| `content_budget` on `lurp_context` (estimated tokens) | 200000 |\n" +

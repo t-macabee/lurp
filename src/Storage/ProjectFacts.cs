@@ -152,6 +152,8 @@ internal sealed class ProjectFacts
     internal IReadOnlyCollection<string> GetDocumentOwners(string relativePath)
     {
         var path = PathNormalizer.ToForwardSlash(relativePath);
+        if (PathNormalizer.IsOutsideRoot(path))
+            return [];
         // Walk from the file's directory toward the root. A slash at the end of each
         // prefix keeps similarly named sibling directories distinct.
         for (var end = path.LastIndexOf('/'); end >= 0; end = path.LastIndexOf('/', end - 1))
@@ -162,8 +164,7 @@ internal sealed class ProjectFacts
                 break;
         }
 
-        if (!path.StartsWith("../", StringComparison.Ordinal) &&
-            _assembliesByProjectDirectory.TryGetValue(string.Empty, out var rootOwners))
+        if (_assembliesByProjectDirectory.TryGetValue(string.Empty, out var rootOwners))
             return rootOwners;
 
         return [];

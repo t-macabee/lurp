@@ -36,6 +36,11 @@ public static class PathNormalizer
         return path.Replace('\\', '/');
     }
 
+    /// <summary>Returns whether a forward-slashed relative path lies outside its root.</summary>
+    public static bool IsOutsideRoot(string path) =>
+        path == ".." || path.StartsWith("../", StringComparison.Ordinal) ||
+        path.StartsWith('/') || (path.Length >= 2 && char.IsLetter(path[0]) && path[1] == ':');
+
     /// <summary>
     ///     Convert an absolute path to git-root-relative, forward-slashed form. The
     ///     git root is fully resolved and its trailing separators trimmed before the

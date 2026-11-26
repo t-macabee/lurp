@@ -34,6 +34,8 @@ Indexing accepts only `.sln` and `.slnx` solution files. A `.slnf` filter file n
 
 Declaration locations include attached comments and end on the line containing the last declaration token. Outline and navigation use the same line boundaries as symbol metadata. Indexing a multi-targeted project keeps each distinct conditional declaration span and collapses copies with identical spans. Fields and field-like events store their variable declarator span only, so `start_line` is the declarator line; an indexer has no identifier name span, so `name_start_line` equals `start_line`.
 
+Paths on another drive no longer acquire the solution-root project as their physical owner, and external build outputs are not recorded as repository-local exclusions.
+
 Run a full index to extract the new declaration spans. The database migration rebuilds the symbol search index for stored snapshots.
 
 ### Symbol search

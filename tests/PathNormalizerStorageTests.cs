@@ -4,6 +4,18 @@ namespace Lurp.Tests;
 
 public sealed class PathNormalizerStorageTests
 {
+    [Theory]
+    [InlineData("..", true)]
+    [InlineData("../Shared/Linked.cs", true)]
+    [InlineData("/Shared/Linked.cs", true)]
+    [InlineData("X:/Shared/Linked.cs", true)]
+    [InlineData("..hidden/Linked.cs", false)]
+    [InlineData("Shared/Linked.cs", false)]
+    public void IsOutsideRoot_identifies_paths_outside_the_root(string path, bool expected)
+    {
+        Assert.Equal(expected, PathNormalizer.IsOutsideRoot(path));
+    }
+
     [Fact]
     public void NormalizeForStorage_preserves_rooted_foreign_path_without_cwd_prefix()
     {

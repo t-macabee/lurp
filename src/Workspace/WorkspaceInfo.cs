@@ -161,7 +161,7 @@ public sealed class WorkspaceInfo
                 // Skip build output directories (bin/ and obj/); record repository-local ones as excluded documents.
                 if (BuildOutputPaths.IsBuildOutputPath(relPath))
                 {
-                    if (!relPath.StartsWith("..", StringComparison.Ordinal))
+                    if (!PathNormalizer.IsOutsideRoot(relPath))
                         excludedPaths.Add(relPath);
                     continue;
                 }
