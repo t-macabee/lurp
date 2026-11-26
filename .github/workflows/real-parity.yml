@@ -9,8 +9,8 @@ name: Real Parity
 # solution and compares the incremental index with a fresh full index after
 # every cycle. eNoteV2 is public, so it is cloned with no credentials. The nupkg
 # is installed with `dotnet tool install --tool-path` and the R1 script runs it
-# via LURP_CMD; scripts/r1-compare is the only project built from source
-# (Release), because it is not part of the nupkg.
+# via LURP_CMD. The R1 comparator is built from the package commit so that
+# it reads the same database schema as the installed tool.
 #
 # Fails closed: the `resolve` job resolves the push ci.yml run and nupkg digest
 # once; every leg of `real-parity` and `record` checks that exact run id and
@@ -157,13 +157,20 @@ jobs:
           & $exe --version
           "LURP_CMD=$($exe -replace '\\', '/')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
-      # r1-compare is not part of the nupkg, so it is the only project built
-      # from source in this job (Release, as the R1 script expects).
+      # The comparator must use the database schema of the package under test.
+      - name: Check out the package source for r1-compare
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.sha }}
+          path: r1-package-source
+          persist-credentials: false
+
       - name: Build r1-compare (Release)
         shell: pwsh
         run: |
-          dotnet build scripts/r1-compare/r1-compare.csproj -c Release
-          $exe = if ($IsWindows) { "$env:GITHUB_WORKSPACE/scripts/r1-compare/bin/Release/net10.0/r1-compare.exe" } else { "$env:GITHUB_WORKSPACE/scripts/r1-compare/bin/Release/net10.0/r1-compare" }
+          dotnet build r1-package-source/scripts/r1-compare/r1-compare.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = if ($IsWindows) { "$env:GITHUB_WORKSPACE/r1-package-source/scripts/r1-compare/bin/Release/net10.0/r1-compare.exe" } else { "$env:GITHUB_WORKSPACE/r1-package-source/scripts/r1-compare/bin/Release/net10.0/r1-compare" }
           if (-not (Test-Path $exe)) { throw "r1-compare Release build not found: $exe." }
           "R1_COMPARE_CMD=$($exe -replace '\\', '/')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
