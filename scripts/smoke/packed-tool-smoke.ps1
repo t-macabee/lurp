@@ -11,7 +11,12 @@ param(
     [Parameter(Mandatory)][string]$ExpectedVersion,
     [string]$RepoRoot = '',
     [switch]$SkipKillTest,
-    [int]$KillTestTimeoutSeconds = 420
+    [int]$KillTestTimeoutSeconds = 420,
+    # Bounded waits for the WR3/WR4 reproductions: a blocked pipe or a locked
+    # output directory must fail its check, not hold the CI job until its timeout.
+    [int]$WindowsRestartTimeoutSeconds = 150,
+    [int]$StepTimeoutSeconds = 30,
+    [int]$StderrResponseTimeoutSeconds = 10
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,9 +83,9 @@ function Initialize-Mcp {
 }
 
 function Get-McpToolJson {
-    param([System.Diagnostics.Process]$Proc, [int]$Id, [string]$Name, $Arguments)
+    param([System.Diagnostics.Process]$Proc, [int]$Id, [string]$Name, $Arguments, [int]$TimeoutMs = 60000)
     Send-McpMessage $Proc 'tools/call' @{ name = $Name; arguments = $Arguments } $Id
-    $rawResponse = Read-McpResponse $Proc $Id -Raw
+    $rawResponse = Read-McpResponse $Proc $Id $TimeoutMs -Raw
     $resp = $rawResponse | ConvertFrom-Json
     if ($resp.PSObject.Properties.Name -contains 'error') {
         throw "tool ${Name} returned error: $($resp.error | ConvertTo-Json -Compress)"
@@ -119,6 +124,85 @@ function Get-SnapshotState([string]$DbPath) {
     $stateJson = & $py (Join-Path $PSScriptRoot 'snapshot-state.py') $DbPath
     if ($LASTEXITCODE -ne 0) { throw "snapshot-state.py failed with exit code $LASTEXITCODE" }
     return $stateJson | ConvertFrom-Json
+}
+
+# WR3 reproduction. Runs only on Windows: a stopped serve must be restartable
+# at once and must not leave a process holding the output directory. Every step
+# is bounded, so a locked file or a hung child fails the check instead of the job.
+function Test-WindowsServeRestart {
+    if (-not $IsWindows) {
+        Write-Host '== WR3 (Windows only): skipped on this runner =='
+        return
+    }
+    Write-Host '== WR3 (Windows only): stop serve mid-index, restart, delete output dir =='
+    $wr3Db = Join-Path $WorkDir 'wr3-db'
+    New-Item -ItemType Directory -Path $wr3Db | Out-Null
+    $wr3Src = Join-Path $WorkDir 'wr3-src'
+    Copy-Item -Recurse $FixturesDir $wr3Src
+    $wr3Solution = Join-Path $wr3Src $SolutionName
+
+    & dotnet restore $wr3Solution 2>&1 | Out-String | Out-Null
+    Assert-True ($LASTEXITCODE -eq 0) "WR3: dotnet restore failed with exit code $LASTEXITCODE"
+    $baseline = Invoke-Lurp @('--mode=index', "--solution=$wr3Solution", "--output-dir=$wr3Db", '--strategy=full')
+    Assert-True ($baseline.Text -match 'Index complete for snapshot') 'WR3: baseline index did not complete'
+
+    $first = Start-Serve -Solution $wr3Solution -OutDir $wr3Db -WriteTools
+    try {
+        Initialize-Mcp $first 401
+        $start = Get-McpToolJson $first 402 'lurp_index' @{ strategy = 'full'; force = $true }
+        Assert-True (-not [string]::IsNullOrEmpty($start.operation_id)) 'WR3: lurp_index did not return an operation id'
+
+        $sawExtraction = $false
+        $deadline = [DateTime]::UtcNow.AddSeconds($WindowsRestartTimeoutSeconds)
+        $pollId = 403
+        while ([DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+            $poll = Get-McpToolJson $first $pollId 'lurp_index' @{ operation_id = $start.operation_id } ($StepTimeoutSeconds * 1000)
+            $pollId++
+            if ($poll.status -ne 'running') { throw "WR3: index finished before the serve stop (status=$($poll.status))" }
+            if (@($poll.progress | Where-Object { $_ -match '^\s*\[' }).Count -ge 1) { $sawExtraction = $true; break }
+        }
+        Assert-True $sawExtraction 'WR3: never observed extraction progress; cannot claim a mid-run stop'
+
+        $stopWatch = [Diagnostics.Stopwatch]::StartNew()
+        try { $first.Kill($true) } catch { }
+        Assert-True $first.WaitForExit($StepTimeoutSeconds * 1000) "WR3: serve did not stop within $StepTimeoutSeconds s after Kill"
+        Write-Host "  stop: $($stopWatch.ElapsedMilliseconds) ms"
+    } finally {
+        try { if (-not $first.HasExited) { $first.Kill($true) } } catch { }
+        try { $first.WaitForExit($StepTimeoutSeconds * 1000) | Out-Null } catch { }
+        $first.Dispose()
+    }
+
+    $restart = Start-Serve -Solution $wr3Solution -OutDir $wr3Db -WriteTools
+    try {
+        $restartWatch = [Diagnostics.Stopwatch]::StartNew()
+        Initialize-Mcp $restart 411
+        $restartStatus = Get-McpToolJson $restart 412 'lurp_status' @{} ($StepTimeoutSeconds * 1000)
+        Assert-True (-not [string]::IsNullOrEmpty($restartStatus.snapshot_id)) 'WR3: restarted serve did not report a snapshot'
+        Write-Host "  restart: $($restartWatch.ElapsedMilliseconds) ms"
+    } finally {
+        try { $restart.StandardInput.Close() } catch { }
+        try { if (-not $restart.WaitForExit($StepTimeoutSeconds * 1000)) { $restart.Kill($true) } } catch { }
+        $restart.Dispose()
+    }
+
+    # A surviving writer leaves index.db (or a lock file) open on Windows: the
+    # delete then fails or hangs. Run it in a job so the step has a time limit.
+    $deleteWatch = [Diagnostics.Stopwatch]::StartNew()
+    $deleteJob = Start-Job -ScriptBlock { param($path) [IO.Directory]::Delete($path, $true) } -ArgumentList $wr3Db
+    try {
+        if (-not (Wait-Job $deleteJob -Timeout $StepTimeoutSeconds)) {
+            throw "deleting the output directory took more than $StepTimeoutSeconds s"
+        }
+        $null = Receive-Job $deleteJob -ErrorAction Stop
+    } catch {
+        throw "WR3: the output directory could not be deleted: $($_.Exception.Message)"
+    } finally {
+        Remove-Job $deleteJob -Force -ErrorAction SilentlyContinue
+    }
+    Assert-True (-not (Test-Path $wr3Db)) 'WR3: the output directory still exists after delete'
+    Write-Host "  delete: $($deleteWatch.ElapsedMilliseconds) ms"
 }
 
 Write-Host "packed-tool smoke: tool=$Lurp"
@@ -329,6 +413,58 @@ try {
     try { $serve.StandardInput.Close() } catch { }
     try { if (-not $serve.WaitForExit(60000)) { $serve.Kill($true) } } catch { }
     $serve.Dispose()
+}
+
+# Run both reproductions even when one fails: the CI log must show the result
+# of WR3 as well as WR4 before any fix is applied.
+$reproFailures = @()
+try {
+    Write-Host '== WR4: Unicode and a full stderr pipe over MCP =='
+    $pipeServe = Start-Serve -Solution $solutionPath -OutDir $DbDir -WriteTools
+    $pipeStderr = ''
+    try {
+        Initialize-Mcp $pipeServe 201
+
+        # Both directions carry non-ASCII text: the symbol argument is written to
+        # stdin and the source line comes back on stdout. With the present default
+        # redirected-stream encoding on Windows neither round trip is exact.
+        $mcpMarker = Get-McpToolJson $pipeServe 202 'lurp_find_symbol' @{ symbol = 'Smoke.App.Café.Marker' }
+        Assert-True ($mcpMarker.symbol_id -clike 'F:Smoke.App.Café.Marker*') "find-symbol over MCP lost the Unicode symbol: $($mcpMarker.symbol_id)"
+        $mcpMarkerSource = Get-McpToolJson $pipeServe 203 'lurp_get_source' @{ document = 'App/Unicode.cs' }
+        $markerLine = @($mcpMarkerSource.source -split "`r?`n" | Where-Object { $_.Contains('public const string Marker') })
+        Assert-True ($markerLine.Count -eq 1 -and $markerLine[0] -ceq '    public const string Marker = "Café — Δ";') "get-source over MCP did not return the exact text Café — Δ: $($mcpMarkerSource.source)"
+
+        # The MCP host logs every tool call to stderr at Trace level. Do not drain
+        # stderr while it does so: a full pipe blocks serve before it can answer the
+        # next request on Windows. Every response has its own bounded wait.
+        $floodCalls = 60
+        $floodId = 210
+        for ($i = 0; $i -lt $floodCalls; $i++) {
+            Send-McpMessage $pipeServe 'tools/call' @{ name = 'lurp_get_symbol'; arguments = @{} } $floodId
+            $null = Read-McpResponse $pipeServe $floodId ($StderrResponseTimeoutSeconds * 1000)
+            $floodId++
+        }
+        Send-McpMessage $pipeServe 'tools/list' @{} $floodId
+        $null = Read-McpResponse $pipeServe $floodId ($StderrResponseTimeoutSeconds * 1000)
+    } finally {
+        try { $pipeServe.StandardInput.Close() } catch { }
+        try { if (-not $pipeServe.WaitForExit($StepTimeoutSeconds * 1000)) { $pipeServe.Kill($true) } } catch { }
+        $pipeStderr = $pipeServe.StandardError.ReadToEnd()
+        $pipeServe.Dispose()
+    }
+    $stderrBytes = [Text.Encoding]::UTF8.GetByteCount($pipeStderr)
+    Write-Host "  stderr from serve: $stderrBytes byte(s)"
+    Assert-True ($stderrBytes -gt 16384) "serve wrote $stderrBytes byte(s) of stderr, expected more than 16384"
+} catch {
+    $reproFailures += "WR4: $($_.Exception.Message)"
+}
+try {
+    Test-WindowsServeRestart
+} catch {
+    $reproFailures += "WR3: $($_.Exception.Message)"
+}
+if ($reproFailures.Count -gt 0) {
+    throw "Windows reproduction(s) failed:`n$($reproFailures -join "`n")"
 }
 
 $runModes = @((Get-LurpModesRun) + 'serve' | Sort-Object -Unique)
