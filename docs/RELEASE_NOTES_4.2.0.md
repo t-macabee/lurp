@@ -44,7 +44,7 @@ The caller tiers follow constructions, as well as calls, method-group references
 
 The outgoing capsule paths now use the same default edge filter as incoming paths and default upstream impact (`Declares`, `Contains` and `TestedBy` excluded), starting at the anchor and its depth-zero seeds. They previously followed every edge kind.
 
-Direct callee dispatch candidates for property and event accesses are reported once per member, using the accessors that can execute. Production anchors omit dispatch candidates from test projects; test anchors retain them. The same rules apply to `--tier=direct_callees`. Generated edges no longer contribute relation uncertainties unless generated code is included; generated exclusion notes remain available.
+Direct callee dispatch candidates for property and event accesses are reported once per member, using the accessors that can execute. The member-level fallback is used only when no accessor matches the access, so a write does not include an override that only declares a getter. Production anchors omit dispatch candidates from test projects; test anchors retain them. The same rules apply to `--tier=direct_callees`. Generated edges no longer contribute relation uncertainties unless generated code is included; generated exclusion notes remain available.
 
 ### Cursor resets
 

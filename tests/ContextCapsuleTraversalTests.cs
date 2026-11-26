@@ -7,6 +7,38 @@ namespace Lurp.Tests;
 public sealed class ContextCapsuleTraversalTests : IntegrationTestBase
 {
     [Fact]
+    public async Task VirtualPropertyDispatch_UsesOnlyTheAccessorForTheAccess()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Members.cs"] = """
+                namespace App;
+                public class VBase { public virtual int Q { get => 1; set { } } }
+                public class VGetOnly : VBase { public override int Q { get => 2; } }
+                public class User
+                {
+                    public void WriteQ(VBase v) { v.Q = 3; }
+                    public int ReadQ(VBase v) => v.Q;
+                }
+                """
+        });
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        var baseProperty = ResolveSymbolId(snapshot, "global::App.VBase.Q");
+        var overrideProperty = ResolveSymbolId(snapshot, "global::App.VGetOnly.Q");
+        Check("WriteQ", [baseProperty]);
+        Check("ReadQ", [baseProperty, overrideProperty]);
+
+        void Check(string method, string[] expected)
+        {
+            var anchor = ResolveSymbolId(snapshot, $"global::App.User.{method}");
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, new ContextLookup(snapshot, anchor, null, null),
+                new ContextAssemblyOptions(ContextIntent.Inspect, 100_000, 4), store, store);
+            Assert.Equal(expected.Order(), capsule.DirectCallees.Select(item => item.SymbolId).Order());
+        }
+    }
+
+    [Fact]
     public async Task DispatchCandidates_ExcludeTestProjectsForProductionAnchors()
     {
         CreateProject("App", new Dictionary<string, string>

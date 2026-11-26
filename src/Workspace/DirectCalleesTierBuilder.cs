@@ -38,10 +38,11 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                     var dispatchSources = dispatchTargets.Contains(edge.TargetSymbolId)
                         ? accessors.Where(id => context.GetMayDispatchEdges(id).Count != 0).ToList()
                         : [];
-                    if (dispatchTargets.Contains(edge.TargetSymbolId) && dispatchSources.Count == 0 &&
+                    if (dispatchTargets.Contains(edge.TargetSymbolId) && accessors.Count == 0 &&
                         context.GetMayDispatchEdges(edge.TargetSymbolId).Count != 0)
                         dispatchSources.Add(edge.TargetSymbolId);
-                    if (dispatchSources.Count == 0 && !accessors.Any(id => context.GetOutgoingEdges(id).Any(IsAccessorBodyEdge)))
+                    if (dispatchSources.Count == 0 && !(dispatchTargets.Contains(edge.TargetSymbolId) && accessors.Count > 0) &&
+                        !accessors.Any(id => context.GetOutgoingEdges(id).Any(IsAccessorBodyEdge)))
                         continue;
 
                     foreach (var source in dispatchSources)
