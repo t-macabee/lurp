@@ -6,6 +6,54 @@ namespace Lurp.Tests;
 public sealed partial class GoldenAdapterTests
 {
     [Fact]
+    public async Task EfModel_FollowsBuilderMethodGroupsAndConverges()
+    {
+        const string helpers = """
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+            namespace App;
+            public class Root { public Nav Navigation { get; set; } = null!; }
+            public class Nav;
+            public class Owned;
+            public static class Helpers
+            {
+                public static void Configure(EntityTypeBuilder<Root> b) { b.OwnsOne<Owned>("X"); }
+            }
+            """;
+        CreateProject("Helpers", new Dictionary<string, string> { ["Helpers.cs"] = helpers },
+            ["Microsoft.EntityFrameworkCore@10.0.13"]);
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Context.cs"] = """
+                using Microsoft.EntityFrameworkCore;
+                using Microsoft.EntityFrameworkCore.Metadata.Builders;
+                namespace App;
+                public class LocalRoot;
+                public class LocalOwned;
+                public class Context : DbContext
+                {
+                    protected override void OnModelCreating(ModelBuilder model)
+                    {
+                        model.Entity<Root>(Helpers.Configure);
+                        model.Entity<LocalRoot>(ConfigureLocal);
+                        void ConfigureLocal(EntityTypeBuilder<LocalRoot> b)
+                        {
+                            b.OwnsOne<LocalOwned>("X");
+                            model.Entity<LocalRoot>(ConfigureLocal);
+                        }
+                    }
+                }
+                """
+        }, ["Microsoft.EntityFrameworkCore@10.0.13"], projectReferences: ["Helpers"]);
+        RestoreSolution();
+        var initial = await RunFullIndexAsync(DbPath);
+        AssertEfMappings(initial, "Context", "LocalOwned", "LocalRoot", "Nav", "Owned", "Root");
+        WriteFile("Helpers", "Helpers.cs", helpers.Replace("b.OwnsOne<Owned>(\"X\");", "b.OwnsOne<Owned>(\"X\"); b.Ignore(x => x.Navigation);"));
+        var incremental = await RunIncrementalIndexAsync();
+        await AssertEfIncrementalParityAsync(incremental);
+        AssertEfMappings(incremental, "Context", "LocalOwned", "LocalRoot", "Owned", "Root");
+    }
+
+    [Fact]
     public async Task EfModel_CrossFrameworkIgnoresUseStableTypeIdentity()
     {
         CreateProject("Lib", new Dictionary<string, string>

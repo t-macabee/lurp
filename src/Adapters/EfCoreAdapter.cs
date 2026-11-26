@@ -343,7 +343,13 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     .OfType<ITypeOfOperation>().FirstOrDefault()?.TypeOperand;
             var explicitType = body.ResolveEntityType(rawType);
 
-            if (FrameworkTypes.Is(target.ContainingType, ModelBuilderMetadataName))
+            var isModelBuilder = FrameworkTypes.Is(target.ContainingType, ModelBuilderMetadataName);
+            if (isModelBuilder || IsEntityBuilderType(target.ContainingType))
+                FollowBuilderMethodGroups(invocation, body, mappingsOnly,
+                    GetModelBuilderEntity(invocation, body) ?? explicitType ??
+                    GetBuilderEntity(InvocationReceiver(invocation), body));
+
+            if (isModelBuilder)
             {
                 if (contextRoot && target.Name == "Entity" && explicitType != null)
                     mappings.Explicit.Add(new Mapping(explicitType, anchorId, location));
@@ -404,6 +410,38 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 EmitQueryFilter(invocation, builderEntity, mappings);
             else if (target.Name == "HasIndex" && ctx.Adapter.MakeSymbolId(builderEntity) is { } id)
                 EmitUniqueIndexIfUnique(invocation, builderEntity, id, anchorLocation.path, ctx);
+        }
+
+        private void FollowBuilderMethodGroups(IInvocationOperation invocation, MethodBody body, bool mappingsOnly,
+            INamedTypeSymbol? entity)
+        {
+            foreach (var argument in invocation.Arguments)
+            {
+                if (UnwrapConversionAndDelegate(argument.Value) is not IMethodReferenceOperation reference)
+                    continue;
+                var target = reference.Method.PartialImplementationPart ?? reference.Method;
+                if (!ctx.Adapter.IsSolutionSymbol(target) || target.DeclaringSyntaxReferences.Length == 0)
+                    continue;
+                Dictionary<int, INamedTypeSymbol>? builderArguments = null;
+                var hasBuilder = false;
+                foreach (var parameter in target.Parameters)
+                {
+                    if (parameter.Type is not INamedTypeSymbol builder || !IsEntityBuilderType(builder))
+                        continue;
+                    hasBuilder = true;
+                    var parameterEntity = body.ResolveEntityType(builder.TypeArguments.LastOrDefault()) ?? entity;
+                    if (parameterEntity != null)
+                        (builderArguments ??= [])[parameter.Ordinal] = parameterEntity;
+                }
+                if (!hasBuilder)
+                    continue;
+                var onContextInstance = body.OnContextInstance &&
+                    (IsThisReference(reference.Instance) || target is { MethodKind: MethodKind.LocalFunction, IsStatic: false });
+                if (IsThisReference(reference.Instance) && (target.IsVirtual || target.IsAbstract || target.IsOverride))
+                    target = MostDerivedOverride(body.DispatchType, target);
+                VisitMethod(body.BindMethod(target), configEntity: null, builderArguments, mappingsOnly,
+                    onContextInstance, body.DispatchType);
+            }
         }
 
         private bool FollowSolutionCall(IInvocationOperation invocation, MethodBody body, bool mappingsOnly)
