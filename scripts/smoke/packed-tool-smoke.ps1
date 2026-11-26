@@ -53,12 +53,24 @@ function Start-Serve {
 }
 
 function Stop-Serve {
-    param([System.Diagnostics.Process]$Proc, [int]$TimeoutMs = 60000)
+    param([System.Diagnostics.Process]$Proc, [int]$TimeoutMs = 60000, [switch]$RequireStderr)
     try { $Proc.StandardInput.Close() } catch { }
     try { if (-not $Proc.WaitForExit($TimeoutMs)) { $Proc.Kill($true) } } catch { }
     $stderr = ''
-    try { $stderr = $Proc.StderrDrain.GetAwaiter().GetResult() } catch { }
+    $drained = $false
+    try {
+        if ($Proc.StderrDrain.Wait($TimeoutMs)) {
+            $stderr = $Proc.StderrDrain.GetAwaiter().GetResult()
+            $drained = $true
+        }
+    } catch { }
     $Proc.Dispose()
+    if (-not $drained) {
+        if ($RequireStderr) {
+            throw "serve's stderr pipe did not close within $TimeoutMs ms"
+        }
+        Write-Host "  stderr pipe still open after $TimeoutMs ms; a child process holds it"
+    }
     return $stderr
 }
 
@@ -146,9 +158,77 @@ function Get-SnapshotState([string]$DbPath) {
     return $stateJson | ConvertFrom-Json
 }
 
+# Waits until the operation reports extraction progress. Throws when the
+# operation finishes first or the deadline passes, so a caller can claim a
+# mid-run stop or kill. The message parts keep each caller's wording exact.
+function Wait-ExtractionProgress {
+    param(
+        [System.Diagnostics.Process]$Proc,
+        [string]$OperationId,
+        [int]$FirstPollId,
+        [int]$TimeoutSeconds,
+        [int]$PollTimeoutMs = 60000,
+        [string]$Prefix = '',
+        [string]$StopName,
+        [string]$RunKind
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $pollId = $FirstPollId
+    while ([DateTime]::UtcNow -lt $deadline) {
+        Start-Sleep -Milliseconds 250
+        $poll = Get-McpToolJson $Proc $pollId 'lurp_index' @{ operation_id = $OperationId } $PollTimeoutMs
+        $pollId++
+        if ($poll.status -ne 'running') {
+            throw "${Prefix}index finished before $StopName (status=$($poll.status))"
+        }
+        if (@($poll.progress | Where-Object { $_ -match '^\s*\[' }).Count -ge 1) { return $pollId }
+    }
+    throw "${Prefix}never observed extraction progress; cannot claim a mid-run $RunKind"
+}
+
+# Snapshots serve's descendants before it is stopped. A child that survives can
+# then be identified after the parent exits; Win32_Process keeps ParentProcessId,
+# but a recursive walk after the kill could miss a subtree whose intermediate
+# process exited.
+function Get-DescendantProcess {
+    param([int]$RootId)
+    $children = [System.Collections.Generic.List[object]]::new()
+    $frontier = @($RootId)
+    while ($frontier.Count -gt 0) {
+        $next = @()
+        foreach ($parentId in $frontier) {
+            $found = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $parentId" -OperationTimeoutSec 10 -ErrorAction Stop |
+                Select-Object ProcessId, ParentProcessId, Name, CreationDate)
+            foreach ($child in $found) {
+                $children.Add($child)
+                $next += [int]$child.ProcessId
+            }
+        }
+        $frontier = $next
+    }
+    return $children.ToArray()
+}
+
+# Returns the snapshot entries whose PID and CreationDate still match a live
+# process. CreationDate guards against Windows reusing a dead process's PID.
+function Get-LiveProcessSnapshot {
+    param([object[]]$Snapshot)
+    $live = @()
+    foreach ($entry in $Snapshot) {
+        $current = @(Get-CimInstance Win32_Process -Filter "ProcessId = $([int]$entry.ProcessId)" -OperationTimeoutSec 10 -ErrorAction SilentlyContinue |
+            Select-Object ProcessId, ParentProcessId, Name, CreationDate)
+        if ($current.Count -eq 0) { continue }
+        if ($current[0].CreationDate -ne $entry.CreationDate) { continue }
+        $live += $current[0]
+    }
+    return $live
+}
+
 # WR3 reproduction. Runs only on Windows: a stopped serve must be restartable
-# at once and must not leave a process holding the output directory. Every step
-# is bounded, so a locked file or a hung child fails the check instead of the job.
+# at once and must not leave a process holding the output directory. Stop only
+# serve (Kill($false)), not its process tree: a surviving BuildHost or MSBuild
+# node is the condition decision 4 names. Every step is bounded, so a locked
+# file or a hung child fails the check instead of the job.
 function Test-WindowsServeRestart {
     if (-not $IsWindows) {
         Write-Host '== WR3 (Windows only): skipped on this runner =='
@@ -167,30 +247,35 @@ function Test-WindowsServeRestart {
     Assert-True ($baseline.Text -match 'Index complete for snapshot') 'WR3: baseline index did not complete'
 
     $first = Start-Serve -Solution $wr3Solution -OutDir $wr3Db -WriteTools
+    $firstChildren = @()
+    $childSnapshot = $false
     try {
         Initialize-Mcp $first 401
         $start = Get-McpToolJson $first 402 'lurp_index' @{ strategy = 'full'; force = $true }
         Assert-True (-not [string]::IsNullOrEmpty($start.operation_id)) 'WR3: lurp_index did not return an operation id'
 
-        $sawExtraction = $false
-        $deadline = [DateTime]::UtcNow.AddSeconds($WindowsRestartTimeoutSeconds)
-        $pollId = 403
-        while ([DateTime]::UtcNow -lt $deadline) {
-            Start-Sleep -Milliseconds 250
-            $poll = Get-McpToolJson $first $pollId 'lurp_index' @{ operation_id = $start.operation_id } ($StepTimeoutSeconds * 1000)
-            $pollId++
-            if ($poll.status -ne 'running') { throw "WR3: index finished before the serve stop (status=$($poll.status))" }
-            if (@($poll.progress | Where-Object { $_ -match '^\s*\[' }).Count -ge 1) { $sawExtraction = $true; break }
+        $nextPollId = Wait-ExtractionProgress -Proc $first -OperationId $start.operation_id -FirstPollId 403 `
+            -TimeoutSeconds $WindowsRestartTimeoutSeconds -PollTimeoutMs ($StepTimeoutSeconds * 1000) `
+            -Prefix 'WR3: ' -StopName 'the serve stop' -RunKind 'stop'
+
+        try {
+            $firstChildren = @(Get-DescendantProcess -RootId $first.Id)
+            $childSnapshot = $true
+        } catch {
+            Write-Host "  could not snapshot child processes: $($_.Exception.Message)"
         }
-        Assert-True $sawExtraction 'WR3: never observed extraction progress; cannot claim a mid-run stop'
+        $stopPoll = Get-McpToolJson $first $nextPollId 'lurp_index' @{ operation_id = $start.operation_id } ($StepTimeoutSeconds * 1000)
+        Assert-True ($stopPoll.status -eq 'running') "WR3: index finished before the serve stop (status=$($stopPoll.status))"
+        Assert-True (-not $first.HasExited) 'WR3: serve exited before the stop'
 
         $stopWatch = [Diagnostics.Stopwatch]::StartNew()
-        try { $first.Kill($true) } catch { }
+        try { $first.Kill($false) } catch { }
         Assert-True $first.WaitForExit($StepTimeoutSeconds * 1000) "WR3: serve did not stop within $StepTimeoutSeconds s after Kill"
         Write-Host "  stop: $($stopWatch.ElapsedMilliseconds) ms"
     } finally {
         try { if (-not $first.HasExited) { $first.Kill($true) } } catch { }
-        $null = Stop-Serve $first -TimeoutMs ($StepTimeoutSeconds * 1000)
+        try { $null = $first.WaitForExit($StepTimeoutSeconds * 1000) } catch { }
+        $first.Dispose()
     }
 
     $restart = Start-Serve -Solution $wr3Solution -OutDir $wr3Db -WriteTools
@@ -205,7 +290,22 @@ function Test-WindowsServeRestart {
     }
 
     # A surviving writer leaves index.db (or a lock file) open on Windows: the
-    # delete then fails or hangs. Run it in a job so the step has a time limit.
+    # delete then fails or hangs. Name the survivors before the delete, use them
+    # in the failure message, and remove them afterwards so they cannot hold
+    # files during the kill test. Run the delete in a job so the step has a time
+    # limit.
+    $survivors = @()
+    if ($childSnapshot) {
+        $survivors = @(Get-LiveProcessSnapshot -Snapshot $firstChildren)
+    }
+    $survivorText = ($survivors | ForEach-Object { "$($_.Name)($($_.ProcessId))" }) -join ', '
+    if (-not $childSnapshot) {
+        Write-Host '  child process snapshot unavailable; survivor check skipped'
+    } elseif ($survivors.Count -gt 0) {
+        Write-Host "  surviving children before the delete: $survivorText"
+    } else {
+        Write-Host '  no child processes survived the stop'
+    }
     $deleteWatch = [Diagnostics.Stopwatch]::StartNew()
     $deleteJob = Start-Job -ScriptBlock { param($path) [IO.Directory]::Delete($path, $true) } -ArgumentList $wr3Db
     try {
@@ -214,9 +314,17 @@ function Test-WindowsServeRestart {
         }
         $null = Receive-Job $deleteJob -ErrorAction Stop
     } catch {
-        throw "WR3: the output directory could not be deleted: $($_.Exception.Message)"
+        $detail = $_.Exception.Message
+        if ($survivorText) { $detail = "$detail (surviving children: $survivorText)" }
+        throw "WR3: the output directory could not be deleted: $detail"
     } finally {
         Remove-Job $deleteJob -Force -ErrorAction SilentlyContinue
+        foreach ($survivor in @(Get-LiveProcessSnapshot -Snapshot $firstChildren)) {
+            try { Stop-Process -Id ([int]$survivor.ProcessId) -Force -ErrorAction Stop } catch { }
+            if (Get-LiveProcessSnapshot -Snapshot @($survivor)) {
+                Write-Host "  could not stop surviving child $($survivor.Name)($($survivor.ProcessId))"
+            }
+        }
     }
     Assert-True (-not (Test-Path $wr3Db)) 'WR3: the output directory still exists after delete'
     Write-Host "  delete: $($deleteWatch.ElapsedMilliseconds) ms"
@@ -430,19 +538,19 @@ try {
     $null = Stop-Serve $serve
 }
 
-# Run both reproductions even when one fails: the CI log must show the result
-# of WR3 as well as WR4 before any fix is applied.
+# Run both reproductions even when one fails: WR3 and WR4 report together, so
+# one failure does not hide the other.
 $reproFailures = @()
 try {
     Write-Host '== WR4: Unicode and a full stderr pipe over MCP =='
-    $pipeServe = Start-Serve -Solution $solutionPath -OutDir $DbDir -WriteTools
+    $pipeServe = Start-Serve -Solution $solutionPath -OutDir $DbDir
     $pipeStderr = ''
     try {
         Initialize-Mcp $pipeServe 201
 
         # Both directions carry non-ASCII text: the symbol argument is written to
-        # stdin and the source line comes back on stdout. With the present default
-        # redirected-stream encoding on Windows neither round trip is exact.
+        # stdin and the source line comes back on stdout. The check guards the
+        # UTF-8 contract of the MCP stdio transport.
         $mcpMarker = Get-McpToolJson $pipeServe 202 'lurp_find_symbol' @{ symbol = 'Smoke.App.Café.Marker' }
         Assert-True ($mcpMarker.symbol_id -clike 'F:Smoke.App.Café.Marker*') "find-symbol over MCP lost the Unicode symbol: $($mcpMarker.symbol_id)"
         $mcpMarkerSource = Get-McpToolJson $pipeServe 203 'lurp_get_source' @{ document = 'App/Unicode.cs' }
@@ -462,7 +570,7 @@ try {
         Send-McpMessage $pipeServe 'tools/list' @{} $floodId
         $null = Read-McpResponse $pipeServe $floodId ($StderrResponseTimeoutSeconds * 1000)
     } finally {
-        $pipeStderr = Stop-Serve $pipeServe -TimeoutMs ($StepTimeoutSeconds * 1000)
+        $pipeStderr = Stop-Serve $pipeServe -TimeoutMs ($StepTimeoutSeconds * 1000) -RequireStderr
     }
     $stderrBytes = [Text.Encoding]::UTF8.GetByteCount($pipeStderr)
     Write-Host "  stderr from serve: $stderrBytes byte(s)"
@@ -507,17 +615,8 @@ if ($SkipKillTest) {
         Assert-True (-not [string]::IsNullOrEmpty($operationId)) 'lurp_index did not return an operation id'
         Assert-True ($start.status -eq 'running') "lurp_index did not start running: $($start.status)"
 
-        $sawExtraction = $false
-        $deadline = [DateTime]::UtcNow.AddSeconds($KillTestTimeoutSeconds)
-        $pollId = 103
-        while ([DateTime]::UtcNow -lt $deadline) {
-            Start-Sleep -Milliseconds 250
-            $poll = Get-McpToolJson $killServe $pollId 'lurp_index' @{ operation_id = $operationId }
-            $pollId++
-            if ($poll.status -ne 'running') { throw "index finished before stdin kill (status=$($poll.status))" }
-            if (@($poll.progress | Where-Object { $_ -match '^\s*\[' }).Count -ge 1) { $sawExtraction = $true; break }
-        }
-        Assert-True $sawExtraction 'never observed extraction progress; cannot claim a mid-run kill'
+        $null = Wait-ExtractionProgress -Proc $killServe -OperationId $operationId -FirstPollId 103 `
+            -TimeoutSeconds $KillTestTimeoutSeconds -Prefix '' -StopName 'stdin kill' -RunKind 'kill'
 
         $killServe.StandardInput.Close()
         $exited = $killServe.WaitForExit($KillTestTimeoutSeconds * 1000)
