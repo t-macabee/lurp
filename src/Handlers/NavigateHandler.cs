@@ -16,6 +16,9 @@ internal static class NavigateHandler
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshot) =>
         {
+            if (!store.DocumentExists(file!, snapshot))
+                HandlerBootstrap.Fail($"ERROR: {DocumentMessages.NotFound(file!, snapshot)}");
+
             var target = store.NavigateToLocation(file!, line, snapshot, args.Contains("--include-generated"));
             if (target == null) HandlerBootstrap.Fail($"ERROR: No indexed declaration contains {file}:{line} in snapshot '{snapshot}'.");
 

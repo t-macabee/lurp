@@ -18,7 +18,7 @@ internal sealed class NavigateTool
 
     [McpServerTool(Name = "lurp_navigate", Title = "Lurp Navigate", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
         OutputSchemaType = typeof(NavigateResponse))]
-    [Description("Navigate to the declaration containing a file+line in the pinned snapshot. Null target is success, not an error.")]
+    [Description("Navigate to the declaration containing a file+line in the pinned snapshot. A null target is success when no declaration contains the line; an unknown document is an error.")]
     public string LurpNavigate(
         [McpRequired] string? file = null,
         [McpRequired] int? line = null,
@@ -33,6 +33,9 @@ internal sealed class NavigateTool
 
             if (line.Value < 1)
                 throw new McpProtocolException("line must be a positive integer.", McpErrorCode.InvalidParams);
+
+            if (!store.DocumentExists(normalized, snapshotId))
+                throw new McpProtocolException(DocumentMessages.NotFound(normalized, snapshotId), McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
 

@@ -572,6 +572,19 @@ public sealed class CliExitSmokeTests : IDisposable
         AssertSingleCliError(result, "ERROR: Index database not found at " + Path.Combine(Path.GetFullPath(dir), "index.db"));
     }
 
+    [Fact]
+    public void ModeHelp_IsScoped_AndRejectsUnknownMode()
+    {
+        var help = RunCli("--mode=annotate", "--help");
+        Assert.Equal(0, help.ExitCode);
+        Assert.Contains("--mode=annotate", help.Stdout);
+        Assert.Contains("--symbol", help.Stdout);
+        Assert.DoesNotContain("--mode=index", help.Stdout);
+        var unknown = RunCli("--mode=bogus", "--help");
+        Assert.Equal(1, unknown.ExitCode);
+        Assert.Contains("Unknown mode", unknown.Stderr);
+    }
+
     // R135: each bad input must fail the whole CLI with exit 1, one ERROR line on
     // stderr, and no stdout. These run the built CLI as a child process, so the
     // assertions cover Program.Main's stderr write and exit code, not only the

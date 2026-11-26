@@ -8,6 +8,10 @@ Run a full index after the upgrade to schema v53. Extractor 1.14.0 and the adapt
 
 `lurp_impact` returns at most 50 first-hop groups on the first page and none on later pages. `group_count_total` and `groups_truncated` describe the complete group set; CLI impact continues to return all groups. `lurp_diff` returns 100 changes by default; use `limit` and `next_cursor` to page through the complete diff. Change IDs and ordering are stable for the same snapshot pair.
 
+### Navigation and help
+
+`lurp_navigate` rejects a document absent from the snapshot with `InvalidParams`; a line outside declarations in an indexed document still returns a null target. CLI navigation reports an unknown document separately. `--mode=<name> --help` shows that mode only, and an unknown mode exits 1. Cursor mismatch errors request a fresh page on both surfaces.
+
 ### MCP indexing requests
 
 `lurp_index` rejects `cancel: true` without an `operation_id` and rejects an empty-string `operation_id`. These requests previously started an index run.
@@ -67,6 +71,8 @@ User annotations now survive full and `--strategy=full --force` re-indexes: the 
 `--output-json` exports the selected snapshot after indexing, including reused snapshots and incremental runs that skip the workspace load. If the export fails, the command exits 1 and the selected snapshot stays complete.
 
 ### Changed descriptions
+
+- `lurp_navigate` describes the error for an unknown document and when a null target is returned.
 
 - `lurp_impact` describes its group limit; `lurp_diff` describes paging and its default page size.
 - `lurp_dead_candidates`: the description reflects the revised classification ladder, and the assembly-scan step now comes after the entry-point and public-surface steps. Linked declarations share incoming liveness, public surface uses effective accessibility for every symbol, and record and framework conventions protect members.

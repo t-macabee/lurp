@@ -371,6 +371,12 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _pinStore!.IsPinnedSnapshot(snapshotId);
     }
 
+    public bool DocumentExists(string relativePath, string snapshotId)
+    {
+        EnsureOpen();
+        return _documents!.DocumentExists(relativePath, snapshotId);
+    }
+
     public string? GetSource(string relativePath, string snapshotId)
     {
         EnsureOpen();

@@ -15,6 +15,20 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
 {
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
+    internal bool DocumentExists(string relativePath, string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT EXISTS (SELECT 1 FROM snapshot_documents sd
+              JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+              JOIN documents d ON d.document_id = dv.document_id
+              WHERE sd.snapshot_id = @snapshotId AND d.relative_path = @relativePath);
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@relativePath", relativePath);
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 0;
+    }
+
     internal string? GetSource(string relativePath, string snapshotId)
     {
         var slice = GetSourceSlice(relativePath, snapshotId, null, null, null);

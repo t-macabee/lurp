@@ -52,12 +52,7 @@ internal static class HelpText
         foreach (var entry in Program.ModeRegistry)
         {
             output.WriteLine();
-            output.WriteLine($"  --mode={entry.Name}");
-            foreach (var spec in entry.Specs)
-                WriteFlag(spec, output);
-            if (ModeNotes.TryGetValue(entry.Name, out var note))
-                foreach (var line in WrapWords(PlainText(note), 72))
-                    output.WriteLine($"      {line}");
+            PrintModeHelp(entry, output);
         }
 
         output.WriteLine();
@@ -72,6 +67,16 @@ internal static class HelpText
         output.WriteLine("ENVIRONMENT VARIABLES");
         output.WriteLine("  LURP_SOLUTION_PATH      Equivalent to --solution=.");
         output.WriteLine("  LURP_OUTPUT_DIR         Equivalent to --output-dir=.");
+    }
+
+    internal static void PrintModeHelp(Program.ModeRegistryEntry entry, IOutputSink output)
+    {
+        output.WriteLine($"  --mode={entry.Name}");
+        foreach (var spec in entry.Specs)
+            WriteFlag(spec, output);
+        if (ModeNotes.TryGetValue(entry.Name, out var note))
+            foreach (var line in WrapWords(PlainText(note), 72))
+                output.WriteLine($"      {line}");
     }
 
     /// <summary>Removes the Markdown backticks from a flag description for the plain-text help.</summary>

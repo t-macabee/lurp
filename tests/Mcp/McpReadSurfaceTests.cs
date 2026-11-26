@@ -130,6 +130,27 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Navigate_UnknownDocument_IsDistinctFromMissingDeclaration()
+    {
+        var snapshot = await IndexFixtureAndGetSnapshot();
+        var (session, _, navigate, _, _) = CreateTools();
+        await using (session)
+        {
+            var ex = Assert.Throws<McpProtocolException>(() => navigate.LurpNavigate(file: "missing.cs", line: 1));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Equal(DocumentMessages.NotFound("missing.cs", snapshot), ex.Message);
+            var args = new[] { "--file=missing.cs", "--line=1", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+            var missing = Assert.Throws<CliExitException>(() => NavigateHandler.Run(args, new CapturingOutputSink()));
+            Assert.Equal($"ERROR: {DocumentMessages.NotFound("missing.cs", snapshot)}", missing.Message);
+            using var store = OpenStore(DbPath);
+            var path = store.GetDocumentVersionIdsByPath(snapshot).Keys.First();
+            var outside = Assert.Throws<CliExitException>(() => NavigateHandler.Run(
+                [$"--file={path}", "--line=9999", $"--output-dir={Path.GetDirectoryName(DbPath)!}"], new CapturingOutputSink()));
+            Assert.Contains("No indexed declaration contains", outside.Message);
+        }
+    }
+
+    [Fact]
     public async Task Navigate_UnknownSnapshot_ReturnsInvalidParams()
     {
         await IndexFixtureAndGetSnapshot();

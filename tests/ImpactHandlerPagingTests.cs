@@ -214,7 +214,7 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
             $"--output-dir={TestDir}", "--output=json", "--limit=1", $"--cursor={stale.Encode()}"
         ], sink));
         Assert.NotNull(rejected.Failure);
-        Assert.Contains("re-run without --cursor", rejected.Failure.Message);
+        Assert.Contains("request a fresh page", rejected.Failure.Message);
     }
 
     // Contract/acceptance: pins the v2 summary and jsonl renderings.

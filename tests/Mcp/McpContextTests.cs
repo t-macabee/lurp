@@ -247,7 +247,7 @@ public sealed class McpContextTests : IntegrationTestBase
             var ex = Assert.Throws<McpProtocolException>(() =>
                 tool.LurpContext(symbol: "CtxProj.Foo.Bar", tier: "direct_callers", tier_limit: 1, cursor: stale.Encode()));
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-            Assert.Contains("re-run without --cursor", ex.Message);
+            Assert.Contains("request a fresh page", ex.Message);
         }
     }
 

@@ -46,6 +46,6 @@ public sealed record SequenceCursor(string SnapshotId, string Fingerprint, strin
         if (!string.Equals(Kind, kind, StringComparison.Ordinal))
             throw new ArgumentException($"Cursor was issued for '{Kind}', not '{kind}'.");
         CursorUtils.RequireBinding(SnapshotId, Fingerprint, snapshotId, fingerprint,
-            "Cursor was issued for a different request; re-run without --cursor.");
+            "Cursor was issued for a different request; request a fresh page.");
     }
 }

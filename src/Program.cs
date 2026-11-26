@@ -238,7 +238,16 @@ public static class Program
 
         if (args.Contains("--help") || args.Contains("-h") || args.Contains("--mode=help") || args.Length == 0)
         {
-            HelpText.PrintHelp(output);
+            var requestedMode = args.FirstOrDefault(a => a.StartsWith("--mode=", StringComparison.Ordinal));
+            if (requestedMode is null || requestedMode == "--mode=help")
+                HelpText.PrintHelp(output);
+            else if (FindMode(requestedMode["--mode=".Length..]) is { } helpEntry)
+                HelpText.PrintModeHelp(helpEntry, output);
+            else
+            {
+                HelpText.PrintUnknownModeError(output);
+                Environment.Exit(1);
+            }
             return;
         }
 
