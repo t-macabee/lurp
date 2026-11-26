@@ -332,6 +332,7 @@ internal sealed class ContextAssembler
     internal static CapsuleTierPage BuildTierPage(
         IEdgeStore edgeStore,
         IDeclarationStore declarationStore,
+        SqliteIndexStore snapshotStore,
         string snapshotId,
         SymbolId symbolId,
         string tierName,
@@ -345,7 +346,7 @@ internal sealed class ContextAssembler
         var info = declarationStore.GetSymbolInfo(symbolId.Value, snapshotId)
                    ?? throw new InvalidOperationException($"Symbol '{symbolId.Value}' not found in snapshot '{snapshotId}'.");
 
-        var snapshotMetadata = (declarationStore as SqliteIndexStore)?.LoadSnapshotMetadata(snapshotId);
+        var snapshotMetadata = snapshotStore.LoadSnapshotMetadata(snapshotId);
         var context = new ContextTierContext(edgeStore, declarationStore, snapshotId, symbolId, maxHops, includeGenerated,
             snapshotMetadata is null ? null : ProjectFacts.FromRows(snapshotMetadata.Projects), cancellationToken);
         var builder = ResolveTierBuilder(context, tierName)

@@ -6,6 +6,169 @@ namespace Lurp.Tests;
 public sealed partial class GoldenAdapterTests
 {
     [Fact]
+    public async Task EfModel_CrossFrameworkIgnoresUseStableTypeIdentity()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Model.cs"] = """
+                using System;
+                using System.Linq.Expressions;
+                using Microsoft.EntityFrameworkCore;
+                using Microsoft.EntityFrameworkCore.Metadata.Builders;
+                namespace Microsoft.EntityFrameworkCore
+                {
+                    public class DbContext { protected virtual void OnModelCreating(ModelBuilder model) { } }
+                    public class DbSet<T> where T : class { }
+                    public class ModelBuilder
+                    {
+                        public EntityTypeBuilder<T> Entity<T>() where T : class => new();
+                        public void Ignore<T>() where T : class { }
+                        public void ApplyConfiguration<T>(IEntityTypeConfiguration<T> config) where T : class { }
+                    }
+                    public interface IEntityTypeConfiguration<T> where T : class { void Configure(EntityTypeBuilder<T> b); }
+                }
+                namespace Microsoft.EntityFrameworkCore.Metadata.Builders
+                {
+                    public class EntityTypeBuilder<T> where T : class
+                    {
+                        public void Ignore<TProperty>(Expression<Func<T,TProperty>> expression) { }
+                    }
+                }
+                namespace Lib
+                {
+                    public class Root { public Nav Navigation { get; set; } = null!; }
+                    public class Nav { }
+                    public class Gone { }
+                    public class A { }
+                    public class B { }
+                    public class Box<T> { }
+                    public class Config : IEntityTypeConfiguration<Root>
+                    {
+                        public void Configure(EntityTypeBuilder<Root> b) { b.Ignore(x => x.Navigation); }
+                    }
+                    public static class Helper { public static void Remove(ModelBuilder model) { model.Ignore<Gone>(); model.Ignore<Box<A>>(); } }
+                }
+                """
+        }, targetFramework: "net9.0");
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Context.cs"] = """
+                using Lib;
+                using Microsoft.EntityFrameworkCore;
+                namespace App;
+                public class Context : DbContext
+                {
+                    public DbSet<Root> Roots { get; set; } = null!;
+                    public DbSet<Gone> Gone { get; set; } = null!;
+                    public DbSet<Box<B>> Boxes { get; set; } = null!;
+                    protected override void OnModelCreating(ModelBuilder model) { model.ApplyConfiguration(new Config()); Helper.Remove(model); }
+                }
+                """
+        }, projectReferences: ["Lib"]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var context = ResolveSymbolId(snapshot, "global::App.Context");
+        var targets = QueryEdges(snapshot, "MapsTo", Provenance.FrameworkDerived)
+            .Where(edge => edge.SourceSymbolId == context).Select(edge => edge.TargetSymbolId).ToArray();
+        Assert.Contains(ResolveSymbolId(snapshot, "global::Lib.Root"), targets);
+        Assert.Contains(ResolveSymbolId(snapshot, "global::Lib.Box<T>"), targets);
+        Assert.DoesNotContain(ResolveSymbolId(snapshot, "global::Lib.Nav"), targets);
+        Assert.DoesNotContain(ResolveSymbolId(snapshot, "global::Lib.Gone"), targets);
+    }
+
+    [Fact]
+    public async Task EfModel_UsesOverridesForContextAndConfiguration()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Model.cs"] = """
+                using Microsoft.EntityFrameworkCore;
+                using Microsoft.EntityFrameworkCore.Metadata.Builders;
+                namespace App;
+                public class BaseEntity { public int Id { get; set; } }
+                public class DerivedEntity { public int Id { get; set; } }
+                public class Root { public int Id { get; set; } public Nav Navigation { get; set; } = null!; public Owned Owned { get; set; } = null!; }
+                public class Nav { public int Id { get; set; } }
+                public class Owned { public int Id { get; set; } }
+                public class TplRoot { public int Id { get; set; } public TplOwned Owned { get; set; } = null!; }
+                public class TplOwned { public int Id { get; set; } }
+                public abstract class BaseContext : DbContext
+                {
+                    protected override void OnModelCreating(ModelBuilder model) { Virt(model); model.ApplyConfiguration(new Config()); }
+                    protected virtual void Virt(ModelBuilder model) { model.Entity<BaseEntity>(); }
+                }
+                public class Context : BaseContext { protected override void Virt(ModelBuilder model) { model.Entity<DerivedEntity>(); } }
+                public class BaseConfig : IEntityTypeConfiguration<Root>
+                {
+                    public virtual void Configure(EntityTypeBuilder<Root> builder) { }
+                }
+                public class Config : BaseConfig
+                {
+                    public override void Configure(EntityTypeBuilder<Root> builder) { builder.Ignore(x => x.Navigation); builder.OwnsOne(x => x.Owned); builder.HasQueryFilter(x => true); }
+                }
+                public abstract class Template : IEntityTypeConfiguration<TplRoot>
+                {
+                    public void Configure(EntityTypeBuilder<TplRoot> builder) { Inner(builder); }
+                    protected abstract void Inner(EntityTypeBuilder<TplRoot> builder);
+                }
+                public class TplConfig : Template
+                {
+                    protected override void Inner(EntityTypeBuilder<TplRoot> builder) { builder.OwnsOne(x => x.Owned); }
+                }
+                """
+        }, ["Microsoft.EntityFrameworkCore@10.0.13"]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        AssertEfMappings(snapshot, "Context", "DerivedEntity", "Root", "Owned");
+        AssertEfMappings(snapshot, "Config", "Root", "Owned");
+        AssertEfMappings(snapshot, "TplConfig", "TplRoot", "TplOwned");
+        using var store = OpenStore(DbPath);
+        var root = ResolveSymbolId(snapshot, "global::App.Root");
+        Assert.Contains(store.GetAnnotations(snapshot), a => a.SymbolId == root && a.Kind == "ef_query_filter_constraint");
+    }
+
+    [Fact]
+    public async Task EfModel_FollowsCapturedLocalFunctionAndPartialMethod()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Context.cs"] = """
+                using Microsoft.EntityFrameworkCore;
+                namespace App;
+                public class LocalEntity { public int Id { get; set; } }
+                public class PartialEntity { public int Id { get; set; } }
+                public partial class Context : DbContext
+                {
+                    protected override void OnModelCreating(ModelBuilder model)
+                    {
+                        Map();
+                        OnModelCreatingPartial(model);
+                        void Map()
+                        {
+                            model.Entity<LocalEntity>().HasQueryFilter(x => true).HasQueryFilter((System.Linq.Expressions.Expression<System.Func<LocalEntity, bool>>?)null);
+                            model.Entity<LocalEntity>().HasIndex(x => x.Id).IsUnique();
+                            if (false) Map();
+                        }
+                    }
+                    partial void OnModelCreatingPartial(ModelBuilder model);
+                }
+                public partial class Context
+                {
+                    partial void OnModelCreatingPartial(ModelBuilder model) { model.Entity<PartialEntity>(); }
+                }
+                """
+        }, ["Microsoft.EntityFrameworkCore@10.0.13"]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        AssertEfMappings(snapshot, "Context", "LocalEntity", "PartialEntity");
+        using var store = OpenStore(DbPath);
+        var local = ResolveSymbolId(snapshot, "global::App.LocalEntity");
+        var annotations = store.GetAnnotations(snapshot).Where(a => a.SymbolId == local).ToList();
+        Assert.DoesNotContain(annotations, a => a.Kind == "ef_query_filter_constraint");
+        Assert.Contains(annotations, a => a.Kind == "ef_unique_index_constraint");
+    }
+
+    [Fact]
     public async Task EfModel_InheritedSetsMapFromConcreteContextsAndClosedProperties()
     {
         const string contexts = """

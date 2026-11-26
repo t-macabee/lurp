@@ -59,7 +59,7 @@ public sealed class ContextCancellationTests : IntegrationTestBase
         foreach (var tier in ContextAssembler.TierNames)
         {
             var (fullEdges, fullProbe) = NewProbe(store, null);
-            ContextAssembler.BuildTierPage(fullEdges, store, snapshotId, typeId, tier, 5, false, 0, 100, CancellationToken.None);
+            ContextAssembler.BuildTierPage(fullEdges, store, store, snapshotId, typeId, tier, 5, false, 0, 100, CancellationToken.None);
             var fullReads = fullProbe.Reads;
 
             using var cts = new CancellationTokenSource();
@@ -67,7 +67,7 @@ public sealed class ContextCancellationTests : IntegrationTestBase
             var threw = false;
             try
             {
-                ContextAssembler.BuildTierPage(cancelledEdges, store, snapshotId, typeId, tier, 5, false, 0, 100, cts.Token);
+                ContextAssembler.BuildTierPage(cancelledEdges, store, store, snapshotId, typeId, tier, 5, false, 0, 100, cts.Token);
             }
             catch (OperationCanceledException)
             {

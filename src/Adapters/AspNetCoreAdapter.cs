@@ -343,7 +343,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (TryReadHttpMethodConstructor(attr, context, out var constructorTemplate, out var verbs))
                 template = constructorTemplate;
             else
-                TryReadFallbackConstructorArguments(attr, out template, out verbs);
+                TryReadFallbackConstructorArguments(RouteArguments(attr), out template, out verbs);
 
             if (fixedMethod != null)
                 methods.Add(fixedMethod);
@@ -360,38 +360,33 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     }
 
     /// <summary>
-    ///     Reads the constructor constants of an <c>HttpMethodAttribute</c> subclass whose base
-    ///     initializer is not available (a metadata-only attribute type). The first constant is
-    ///     either the template or the verbs array; an array constant must never be dereferenced.
+    ///     Reads the arguments that reached a metadata-only HTTP attribute constructor.
+    ///     The first argument is either the template or the verbs array.
     /// </summary>
     private static void TryReadFallbackConstructorArguments(
-        AttributeData attr, out string? template, out string[]? verbs)
+        object?[] arguments, out string? template, out string[]? verbs)
     {
         template = null;
         verbs = null;
-        if (attr.ConstructorArguments.Length == 0)
+        if (arguments.Length == 0)
             return;
 
-        var first = attr.ConstructorArguments[0];
-        if (first.Kind == TypedConstantKind.Array)
+        var first = arguments[0];
+        if (first is object?[] array)
         {
-            if (!first.IsNull)
-            {
-                verbs = first.Values
-                    .Select(value => value.Value as string)
-                    .Where(verb => !string.IsNullOrEmpty(verb))
-                    .Select(verb => verb!.ToUpperInvariant())
-                    .Distinct(StringComparer.Ordinal)
-                    .ToArray();
-            }
+            verbs = array
+                .Select(value => value as string)
+                .Where(verb => !string.IsNullOrEmpty(verb))
+                .Select(verb => verb!.ToUpperInvariant())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
 
-            if (attr.ConstructorArguments.Length > 1 &&
-                attr.ConstructorArguments[1].Kind == TypedConstantKind.Primitive)
-                template = attr.ConstructorArguments[1].Value as string;
+            if (arguments.Length > 1)
+                template = arguments[1] as string;
         }
-        else if (first.Kind == TypedConstantKind.Primitive)
+        else
         {
-            template = first.Value as string;
+            template = first as string;
         }
     }
 
@@ -402,13 +397,18 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         template = null;
         verbs = null;
         var constructor = attribute.AttributeConstructor;
-        var arguments = attribute.ConstructorArguments.Select(constant => constant.Kind == TypedConstantKind.Array
-            ? constant.IsNull ? null : constant.Values.Select(c => c.Value).ToArray()
-            : constant.Value).ToArray();
+        var arguments = RouteArguments(attribute);
 
         var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
         while (constructor != null && visited.Add(constructor))
         {
+            if (constructor.DeclaringSyntaxReferences.IsEmpty && !context.IsSolutionSymbol(constructor.ContainingType) &&
+                !FrameworkTypes.Is(constructor.ContainingType, httpMethodAttribute) &&
+                !IsBuiltInHttpMethodAttribute(constructor.ContainingType))
+            {
+                TryReadFallbackConstructorArguments(arguments, out template, out verbs);
+                return true;
+            }
             if (FrameworkTypes.Is(constructor.ContainingType, httpMethodAttribute))
             {
                 verbs = (arguments.FirstOrDefault() as object?[])?.OfType<string>()
@@ -433,7 +433,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (initializer == null)
             {
                 if (!context.IsSolutionSymbol(constructor.ContainingType) ||
-                    SelectImplicitBaseConstructor(constructor, context) is not { } baseConstructor)
+                    SelectImplicitBaseConstructor(constructor) is not { } baseConstructor)
                     return false;
 
                 constructor = baseConstructor;
@@ -458,6 +458,11 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return false;
     }
 
+    private static object?[] RouteArguments(AttributeData attribute) =>
+        attribute.ConstructorArguments.Select(constant => constant.Kind == TypedConstantKind.Array
+            ? constant.IsNull ? null : constant.Values.Select(c => c.Value).ToArray()
+            : constant.Value).ToArray();
+
     private static bool IsBuiltInHttpMethodAttribute(INamedTypeSymbol type)
     {
         return FrameworkTypes.Is(type, "Microsoft.AspNetCore.Mvc.HttpGetAttribute") ||
@@ -474,14 +479,13 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     ///     the accessible parameterless constructor, or else the only accessible constructor
     ///     whose parameters are all optional or <c>params</c> (ECMA-334, 12.6.4).
     /// </summary>
-    private static IMethodSymbol? SelectImplicitBaseConstructor(
-        IMethodSymbol constructor, AdapterExtractionContext context)
+    private static IMethodSymbol? SelectImplicitBaseConstructor(IMethodSymbol constructor)
     {
         if (constructor.ContainingType.BaseType is not { } baseType)
             return null;
 
         var accessible = baseType.InstanceConstructors
-            .Where(candidate => context.Compilation.IsSymbolAccessibleWithin(candidate, constructor.ContainingType))
+            .Where(candidate => IsAccessibleFrom(candidate, constructor.ContainingType))
             .ToArray();
 
         var parameterless = accessible.FirstOrDefault(candidate => candidate.Parameters.Length == 0);
@@ -494,6 +498,27 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return applicable.Length == 1 ? applicable[0] : null;
     }
 
+    /// <summary>
+    ///     Whether <paramref name="containingType" /> can invoke this base constructor. The type is
+    ///     derived from the constructor's type, so protected access is enough. Internal access also
+    ///     needs the same assembly identity or an <c>InternalsVisibleTo</c> grant. The decision uses
+    ///     the declared accessibility only: the two symbols can come from different compilations,
+    ///     where <c>Compilation.IsSymbolAccessibleWithin</c> rejects the other compilation's symbols.
+    /// </summary>
+    private static bool IsAccessibleFrom(IMethodSymbol constructor, INamedTypeSymbol containingType)
+    {
+        return constructor.DeclaredAccessibility switch
+        {
+            Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal => true,
+            Accessibility.Internal or Accessibility.ProtectedAndInternal =>
+                constructor.ContainingAssembly is { } assembly &&
+                containingType.ContainingAssembly is { } containingAssembly &&
+                (assembly.Identity.Equals(containingAssembly.Identity) ||
+                 assembly.GivesAccessTo(containingAssembly)),
+            _ => false
+        };
+    }
+
     private static object?[] ReadImplicitConstructorArguments(IMethodSymbol constructor)
     {
         var arguments = new object?[constructor.Parameters.Length];
@@ -502,7 +527,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             var parameter = constructor.Parameters[i];
             arguments[i] = parameter.IsParams
                 ? Array.Empty<object?>()
-                : parameter.ExplicitDefaultValue;
+                : parameter.HasExplicitDefaultValue ? parameter.ExplicitDefaultValue : null;
         }
 
         return arguments;

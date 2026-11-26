@@ -320,6 +320,77 @@ public sealed partial class GoldenAdapterTests
     }
 
     [Fact]
+    public async Task Phase3_AspNetCore_CrossFrameworkImplicitConstructorKeepsRoutes()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Attributes.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                namespace Lib;
+                public abstract class MidAttribute : HttpGetAttribute { protected MidAttribute(string value) { } }
+                public class LeafAttribute() : MidAttribute("x");
+                """
+        }, frameworkReferences: [AspNetCoreFramework], targetFramework: "net9.0");
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Controller.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                namespace App;
+                [Route("api")] public class DemoController : ControllerBase
+                {
+                    [Lib.Leaf] public int Leaf() => 0;
+                    [HttpGet("plain")] public int Plain() => 0;
+                }
+                """
+        }, projectReferences: ["Lib"], frameworkReferences: [AspNetCoreFramework]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var routes = QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived);
+        Assert.Contains(routes, e => e.TargetSymbolId == ResolveSymbolId(snapshot, "global::App.DemoController.Leaf"));
+        Assert.Contains(routes, e => e.SourceSymbolId == "route://GET /api/plain");
+    }
+
+    [Fact]
+    public async Task Phase3_AspNetCore_CrossFrameworkAppliedAttributeWithoutInitializerKeepsRoutes()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Attributes.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                namespace Lib;
+                public sealed class NoCtorAttribute : HttpGetAttribute;
+                public sealed class ExplicitAttribute : HttpGetAttribute { public ExplicitAttribute() { } }
+                """
+        }, frameworkReferences: [AspNetCoreFramework], targetFramework: "net9.0");
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Controller.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                namespace App;
+                [Route("api")] public class DemoController : ControllerBase
+                {
+                    [Lib.NoCtor] public int NoCtor() => 0;
+                    [Lib.Explicit] public int Explicit() => 0;
+                    [HttpGet("plain")] public int Plain() => 0;
+                }
+                """
+        }, projectReferences: ["Lib"], frameworkReferences: [AspNetCoreFramework]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var routes = QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived);
+        Assert.Contains(routes, e =>
+            e.TargetSymbolId == ResolveSymbolId(snapshot, "global::App.DemoController.NoCtor") &&
+            e.SourceSymbolId == "route://GET /api");
+        Assert.Contains(routes, e =>
+            e.TargetSymbolId == ResolveSymbolId(snapshot, "global::App.DemoController.Explicit") &&
+            e.SourceSymbolId == "route://GET /api");
+        Assert.Contains(routes, e =>
+            e.TargetSymbolId == ResolveSymbolId(snapshot, "global::App.DemoController.Plain") &&
+            e.SourceSymbolId == "route://GET /api/plain");
+        Assert.Equal(3, routes.Count);
+    }
+
+    [Fact]
     public async Task Phase3_AspNetCore_ImplicitBaseConstructorSuppliesTemplate()
     {
         CreateProject("App", new Dictionary<string, string>
@@ -327,7 +398,13 @@ public sealed partial class GoldenAdapterTests
             ["Web.cs"] = """
                 using Microsoft.AspNetCore.Mvc;
                 using Microsoft.AspNetCore.Mvc.Routing;
+                using System.Runtime.InteropServices;
                 namespace App;
+                public abstract class InteropBaseAttribute : HttpGetAttribute
+                {
+                    protected InteropBaseAttribute([System.Runtime.InteropServices.Optional] string template) : base("fixed") { }
+                }
+                public sealed class InteropAttribute : InteropBaseAttribute;
                 public abstract class ImplicitBaseAttribute : HttpMethodAttribute
                 {
                     protected ImplicitBaseAttribute() : base(new[] { "GET" }, "implicit-base") { }
@@ -357,6 +434,8 @@ public sealed partial class GoldenAdapterTests
                     [Primary] public int Primary() => 0;
                     [Optional] public int Optional() => 0;
                     [Zero] public int Zero() => 0;
+                    [Interop] public int Interop() => 0;
+                    [HttpGet("plain")] public int Plain() => 0;
                 }
                 """
         }, frameworkReferences: [AspNetCoreFramework]);
@@ -369,7 +448,9 @@ public sealed partial class GoldenAdapterTests
             ("NoConstructor", "route://GET /api/implicit-base"),
             ("Primary", "route://GET /api/implicit-base"),
             ("Optional", "route://GET /api/opt"),
-            ("Zero", "route://GET /api/zero")
+            ("Zero", "route://GET /api/zero"),
+            ("Interop", "route://GET /api/fixed"),
+            ("Plain", "route://GET /api/plain")
         };
 
         foreach (var (method, route) in expected)
@@ -378,7 +459,7 @@ public sealed partial class GoldenAdapterTests
             Assert.Contains(routes, e => e.TargetSymbolId == target && e.SourceSymbolId == route);
         }
 
-        Assert.Equal(5, routes.Count);
+        Assert.Equal(7, routes.Count);
         Assert.Equal(3, routes.Count(e => e.SourceSymbolId == "route://GET /api/implicit-base"));
     }
 
@@ -392,11 +473,13 @@ public sealed partial class GoldenAdapterTests
                 using Microsoft.AspNetCore.Mvc;
                 using External;
                 namespace App;
+                public sealed class ItemsAttribute() : CustomStringGetAttribute("items/{id}");
                 [Route("api/[controller]")]
                 public class DemoController : ControllerBase
                 {
                     [CustomGet(new[] { "IGNORED" }, "cache/{id}")]
                     public int Get(int id) => id;
+                    [Items] public int Items(int id) => id;
                 }
                 """
         }, frameworkReferences: [AspNetCoreFramework], metadataReferences: [externalAssembly]);
@@ -406,6 +489,9 @@ public sealed partial class GoldenAdapterTests
         var route = Assert.Single(QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived),
             e => e.TargetSymbolId == get);
         Assert.Equal("route://GET /api/Demo/cache/{id}", route.SourceSymbolId);
+        var items = ResolveSymbolId(snapshot, "global::App.DemoController.Items");
+        Assert.Contains(QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived),
+            e => e.TargetSymbolId == items && e.SourceSymbolId == "route://GET /api/Demo/items/{id}");
     }
 
     /// <summary>
@@ -456,6 +542,7 @@ public sealed partial class GoldenAdapterTests
                 using Microsoft.AspNetCore.Mvc;
                 namespace External;
                 public sealed class CustomGetAttribute(string[] verbs, string template) : HttpGetAttribute(template);
+                public class CustomStringGetAttribute(string template) : HttpGetAttribute(template);
                 """)],
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));

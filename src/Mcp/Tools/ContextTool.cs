@@ -70,7 +70,7 @@ internal sealed class ContextTool
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var page = ContextAssembler.BuildTierPage(
-                    store, store, snapshotId, SymbolId.Parse(binding!.ResolvedSymbolId!), request.Tier,
+                    store, store, store, snapshotId, SymbolId.Parse(binding!.ResolvedSymbolId!), request.Tier,
                     request.MaxHops, request.IncludeGenerated, binding.Offset, request.TierLimit, cancellationToken);
 
                 var nextCursor = page.HasMore

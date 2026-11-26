@@ -90,15 +90,23 @@ internal sealed class UncertaintyDetector
             capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, description));
     }
 
+    private IEnumerable<EdgeRecord> IncomingEdges(string symbolId) =>
+        _edgeStore.GetIncomingEdges(_snapshotId, symbolId).Where(IncludeEdge);
+
+    private IEnumerable<EdgeRecord> OutgoingEdges(string symbolId) =>
+        _edgeStore.GetOutgoingEdges(_snapshotId, symbolId).Where(IncludeEdge);
+
+    private bool IncludeEdge(EdgeRecord edge) => _includeGenerated || !edge.IsCrossGenerated;
+
     private void CollectReflectionUncertainties(ContextCapsule capsule, HashSet<string> neighborhood, HashSet<(string Kind, string Source, string Target)> relations)
     {
         foreach (var symbolId in neighborhood)
         {
             _cancellationToken.ThrowIfCancellationRequested();
-            var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
-                .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
+            var edges = IncomingEdges(symbolId)
+                .Concat(OutgoingEdges(symbolId));
 
-            foreach (var edge in edges.Where(edge => _includeGenerated || !edge.IsCrossGenerated))
+            foreach (var edge in edges)
                 if (edge.Kind == nameof(EdgeKind.ReflectionNameCandidate))
                     AddRelationUncertainty(capsule, relations, edge, UncertaintyDescriptions.NameCandidate(edge.TargetSymbolId));
                 else if (edge.Kind == nameof(EdgeKind.ReflectionTargetUnknown))
@@ -111,10 +119,10 @@ internal sealed class UncertaintyDetector
         foreach (var symbolId in neighborhood)
         {
             _cancellationToken.ThrowIfCancellationRequested();
-            var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
+            var outgoing = OutgoingEdges(symbolId);
             foreach (var edge in outgoing)
             {
-                if ((!_includeGenerated && edge.IsCrossGenerated) || edge.Kind != nameof(EdgeKind.MayDispatchTo))
+                if (edge.Kind != nameof(EdgeKind.MayDispatchTo))
                     continue;
                 if (edge.Provenance is Provenance.CompilerProved or Provenance.FrameworkDerived)
                     continue;
@@ -130,16 +138,16 @@ internal sealed class UncertaintyDetector
         foreach (var symbolId in neighborhood)
         {
             _cancellationToken.ThrowIfCancellationRequested();
-            foreach (var call in _edgeStore.GetOutgoingEdges(_snapshotId, symbolId))
+            foreach (var call in OutgoingEdges(symbolId))
             {
-                if ((!_includeGenerated && call.IsCrossGenerated) || call.Kind != nameof(EdgeKind.Calls) ||
+                if (call.Kind != nameof(EdgeKind.Calls) ||
                     ReceiverTypeConstraints.Deserialize(call.ReceiverTypeConstraintsJson).Count > 0 ||
                     !seen.Add((call.SourceSymbolId, call.TargetSymbolId)))
                     continue;
 
                 _cancellationToken.ThrowIfCancellationRequested();
-                var hasDispatchRelation = _edgeStore.GetOutgoingEdges(_snapshotId, call.TargetSymbolId)
-                    .Any(edge => (_includeGenerated || !edge.IsCrossGenerated) && edge.Kind == nameof(EdgeKind.MayDispatchTo));
+                var hasDispatchRelation = OutgoingEdges(call.TargetSymbolId)
+                    .Any(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo));
                 if (!hasDispatchRelation)
                     continue;
 
@@ -166,12 +174,12 @@ internal sealed class UncertaintyDetector
         foreach (var symbolId in neighborhood)
         {
             _cancellationToken.ThrowIfCancellationRequested();
-            var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
-                .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
+            var edges = IncomingEdges(symbolId)
+                .Concat(OutgoingEdges(symbolId));
 
             foreach (var edge in edges)
             {
-                if ((!_includeGenerated && edge.IsCrossGenerated) || !frameworkKinds.Contains(edge.Kind))
+                if (!frameworkKinds.Contains(edge.Kind))
                     continue;
                 if (edge.Provenance != Provenance.Convention)
                     continue;
@@ -186,12 +194,12 @@ internal sealed class UncertaintyDetector
         foreach (var symbolId in neighborhood)
         {
             _cancellationToken.ThrowIfCancellationRequested();
-            var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
-                .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
+            var edges = IncomingEdges(symbolId)
+                .Concat(OutgoingEdges(symbolId));
 
             foreach (var edge in edges)
             {
-                if ((!_includeGenerated && edge.IsCrossGenerated) || edge.Kind != nameof(EdgeKind.Registers))
+                if (edge.Kind != nameof(EdgeKind.Registers))
                     continue;
                 if (edge.Provenance != Provenance.RuntimeUnknown)
                     continue;

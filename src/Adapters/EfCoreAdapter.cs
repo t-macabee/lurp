@@ -50,10 +50,24 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
     private sealed class ModelMappings
     {
+        internal ModelMappings(AdapterExtractionContext adapter)
+        {
+            TypeIds = new TypeIdComparer(adapter);
+            IgnoredTypes = new HashSet<INamedTypeSymbol>(TypeIds);
+            var members = new TypeMemberComparer(TypeIds);
+            IgnoredProperties = new HashSet<(INamedTypeSymbol Type, string? Name)>(members);
+            QueryFilters = new Dictionary<(INamedTypeSymbol Type, string? Name), string>(members);
+        }
+
+        /// <summary>
+        ///     One key cache for the whole walk: every comparer of this walk and its emission shares it.
+        /// </summary>
+        internal TypeIdComparer TypeIds { get; }
+
         internal List<Mapping> Explicit { get; } = [];
-        internal HashSet<INamedTypeSymbol> IgnoredTypes { get; } = new(SymbolEqualityComparer.Default);
-        internal HashSet<(INamedTypeSymbol Type, string? Name)> IgnoredProperties { get; } = new(TypeMemberComparer.Instance);
-        internal Dictionary<(INamedTypeSymbol Type, string? Name), string> QueryFilters { get; } = new(TypeMemberComparer.Instance);
+        internal HashSet<INamedTypeSymbol> IgnoredTypes { get; }
+        internal HashSet<(INamedTypeSymbol Type, string? Name)> IgnoredProperties { get; }
+        internal Dictionary<(INamedTypeSymbol Type, string? Name), string> QueryFilters { get; }
     }
 
     private readonly record struct Mapping(
@@ -63,15 +77,50 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         INamedTypeSymbol? NavigationOwner = null,
         string? NavigationName = null);
 
-    private sealed class TypeMemberComparer : IEqualityComparer<(INamedTypeSymbol Type, string? Name)>
+    private sealed class TypeIdComparer(AdapterExtractionContext adapter) : IEqualityComparer<INamedTypeSymbol>
     {
-        internal static readonly TypeMemberComparer Instance = new();
+        private readonly Dictionary<ITypeSymbol, string> _keys = new(SymbolEqualityComparer.Default);
 
+        public bool Equals(INamedTypeSymbol? x, INamedTypeSymbol? y)
+            => x != null && y != null && Key(x) == Key(y);
+        public int GetHashCode(INamedTypeSymbol item)
+            => Key(item).GetHashCode(StringComparison.Ordinal);
+
+        private string Key(ITypeSymbol type)
+        {
+            if (_keys.TryGetValue(type, out var key))
+                return key;
+
+            key = ComputeKey(type);
+            _keys[type] = key;
+            return key;
+        }
+
+        private string ComputeKey(ITypeSymbol type)
+        {
+            if (type is IArrayTypeSymbol array)
+                return $"array{array.Rank}[{Key(array.ElementType)}]";
+            if (type is not INamedTypeSymbol named)
+                return type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+            var id = adapter.MakeSymbolId(named) ?? named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var owner = named.ContainingType == null ? "" : Key(named.ContainingType);
+            var arguments = string.Concat(named.TypeArguments.Select(argument =>
+            {
+                var key = Key(argument);
+                return $"{key.Length}:{key}";
+            }));
+            return $"{id.Length}:{id}{owner.Length}:{owner}{arguments}";
+        }
+    }
+
+    private sealed class TypeMemberComparer(TypeIdComparer types) : IEqualityComparer<(INamedTypeSymbol Type, string? Name)>
+    {
         public bool Equals((INamedTypeSymbol Type, string? Name) x, (INamedTypeSymbol Type, string? Name) y)
-            => SymbolEqualityComparer.Default.Equals(x.Type, y.Type) && StringComparer.Ordinal.Equals(x.Name, y.Name);
+            => types.Equals(x.Type, y.Type) && StringComparer.Ordinal.Equals(x.Name, y.Name);
 
         public int GetHashCode((INamedTypeSymbol Type, string? Name) item)
-            => HashCode.Combine(SymbolEqualityComparer.Default.GetHashCode(item.Type), item.Name == null ? 0 : StringComparer.Ordinal.GetHashCode(item.Name));
+            => HashCode.Combine(types.GetHashCode(item.Type), item.Name == null ? 0 : StringComparer.Ordinal.GetHashCode(item.Name));
     }
 
     private static void ExtractDbContextMappings(List<INamedTypeSymbol> allTypes, EfEmitContext ctx)
@@ -86,7 +135,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 continue;
 
             var anchorLocation = ctx.Adapter.LocationResolver.Resolve(type);
-            var mappings = new ModelMappings();
+            var mappings = new ModelMappings(ctx.Adapter);
             ExtractDbSetProperties(type, dbContextId, anchorLocation, ctx, mappings);
 
             for (var current = type; current != null && !FrameworkTypes.Is(current, DbContextMetadataName); current = current.BaseType)
@@ -155,7 +204,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 continue;
 
             var anchorLocation = ctx.Adapter.LocationResolver.Resolve(type);
-            var mappings = new ModelMappings();
+            var mappings = new ModelMappings(ctx.Adapter);
             foreach (var (entity, configure) in ConfigurationEntries(type))
             {
                 mappings.Explicit.Add(new Mapping(entity, configId, anchorLocation));
@@ -177,8 +226,19 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 continue;
 
             var member = iface.GetMembers("Configure").OfType<IMethodSymbol>().FirstOrDefault();
-            yield return (entity, member == null ? null : type.FindImplementationForInterfaceMember(member) as IMethodSymbol);
+            var implementation = member == null ? null : type.FindImplementationForInterfaceMember(member) as IMethodSymbol;
+            yield return (entity, implementation == null ? null : MostDerivedOverride(type, implementation));
         }
+    }
+
+    private static IMethodSymbol MostDerivedOverride(INamedTypeSymbol type, IMethodSymbol method)
+    {
+        for (var current = type; current != null; current = current.BaseType)
+            foreach (var candidate in current.GetMembers(method.Name).OfType<IMethodSymbol>())
+                for (var overridden = candidate.OverriddenMethod; overridden != null; overridden = overridden.OverriddenMethod)
+                    if (SymbolEqualityComparer.Default.Equals(overridden.OriginalDefinition, method.OriginalDefinition))
+                        return candidate;
+        return method;
     }
 
     private static bool HasConfigurationInterface(INamedTypeSymbol type)
@@ -218,7 +278,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     {
         var walk = new ModelWalk(anchorType, anchorId, anchorLocation, ctx, mappings, configEntityType == null);
         walk.VisitMethod(method, configEntityType, builderArguments: null,
-            mappingsOnly: false, onContextInstance: configEntityType == null);
+            mappingsOnly: false, onContextInstance: configEntityType == null, dispatchType: anchorType);
     }
 
     private sealed class ModelWalk(
@@ -237,8 +297,10 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             INamedTypeSymbol? configEntity,
             IReadOnlyDictionary<int, INamedTypeSymbol>? builderArguments,
             bool mappingsOnly,
-            bool onContextInstance)
+            bool onContextInstance,
+            INamedTypeSymbol dispatchType)
         {
+            method = method.PartialImplementationPart ?? method;
             // Use definitions to bound recursion even if a helper constructs a deeper generic type on each call.
             var definition = method.OriginalDefinition;
             var entity = (configEntity ?? builderArguments?.Values.FirstOrDefault() ??
@@ -257,7 +319,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     continue;
 
                 var body = new MethodBody(method, declaration, ctx.Adapter.Compilation, configEntity, builderArguments,
-                    onContextInstance);
+                    onContextInstance, dispatchType);
                 var walker = new InvocationWalker(invocation => VisitInvocation(invocation, body, mappingsOnly));
                 walker.Visit(root is ILocalFunctionOperation local ? local.Body : root);
             }
@@ -346,7 +408,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
         private bool FollowSolutionCall(IInvocationOperation invocation, MethodBody body, bool mappingsOnly)
         {
-            var target = invocation.TargetMethod;
+            var target = invocation.TargetMethod.PartialImplementationPart ?? invocation.TargetMethod;
             if (!ctx.Adapter.IsSolutionSymbol(target) || target.DeclaringSyntaxReferences.Length == 0)
                 return false;
 
@@ -370,12 +432,16 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             var callsBaseOverride = invocation.Syntax is InvocationExpressionSyntax
                 { Expression: MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax } } &&
                 OverridesOnModelCreating(target);
-            if (!passesBuilder && !callsBaseOverride)
+            if (!passesBuilder && !callsBaseOverride && target.MethodKind != MethodKind.LocalFunction)
                 return false;
 
             var onContextInstance = body.OnContextInstance &&
                 (IsThisReference(invocation.Instance) || target is { MethodKind: MethodKind.LocalFunction, IsStatic: false });
-            VisitMethod(body.BindMethod(target), configEntity: null, builderArguments, mappingsOnly, onContextInstance);
+            var baseCall = invocation.Syntax is InvocationExpressionSyntax
+                { Expression: MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax } };
+            if (!baseCall && IsThisReference(invocation.Instance) && (target.IsVirtual || target.IsAbstract || target.IsOverride))
+                target = MostDerivedOverride(body.DispatchType, target);
+            VisitMethod(body.BindMethod(target), configEntity: null, builderArguments, mappingsOnly, onContextInstance, body.DispatchType);
             return true;
         }
 
@@ -474,7 +540,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     Provenance.FrameworkDerived, ctx.ExtractorVersion, anchorLocation));
                 mappings.Explicit.Add(new Mapping(entity, anchorId, anchorLocation));
                 if (configure != null)
-                    VisitMethod(configure, entity, builderArguments: null, mappingsOnly: true, onContextInstance: false);
+                    VisitMethod(configure, entity, builderArguments: null, mappingsOnly: true, onContextInstance: false, dispatchType: type);
             }
         }
     }
@@ -499,7 +565,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         Compilation Compilation,
         INamedTypeSymbol? ConfigurationEntity,
         IReadOnlyDictionary<int, INamedTypeSymbol>? BuilderArguments,
-        bool OnContextInstance)
+        bool OnContextInstance,
+        INamedTypeSymbol DispatchType)
     {
         internal INamedTypeSymbol? ResolveEntityType(ITypeSymbol? candidate)
             => ResolveType(candidate) is INamedTypeSymbol { TypeKind: not TypeKind.Error } named &&
@@ -705,8 +772,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 AddConstraintAnnotation(id, "ef_query_filter_constraint", value, anchorLocation.path, ctx);
         }
 
-        var mappedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-        var expandedDefinitions = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        var mappedTypes = new HashSet<INamedTypeSymbol>(mappings.TypeIds);
+        var expandedDefinitions = new HashSet<INamedTypeSymbol>(mappings.TypeIds);
         var queue = new Queue<INamedTypeSymbol>();
 
         foreach (var mapping in mappings.Explicit)

@@ -519,7 +519,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
                 Assert.DoesNotContain("larger --content-budget", template);
 
             var page = ContextAssembler.BuildTierPage(
-                store, store, snapshotId, SymbolId.Parse(targetId),
+                store, store, store, snapshotId, SymbolId.Parse(targetId),
                 "direct_callers", 1, false,
                 0, 100);
 

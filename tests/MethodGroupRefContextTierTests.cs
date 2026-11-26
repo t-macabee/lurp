@@ -109,7 +109,7 @@ public sealed class MethodGroupRefContextTierTests : IntegrationTestBase
         {
             for (var offset = 0; offset < expected.Length; offset++)
             {
-                var page = ContextAssembler.BuildTierPage(store, store, snapshotId, SymbolId.Parse(field),
+                var page = ContextAssembler.BuildTierPage(store, store, store, snapshotId, SymbolId.Parse(field),
                     tier, 2, false, offset, 1);
                 Assert.Equal(expected[offset], Assert.Single(page.Items).SymbolId);
                 Assert.Equal(offset, page.Offset);
@@ -219,7 +219,7 @@ public sealed class MethodGroupRefContextTierTests : IntegrationTestBase
 
         var fieldAtThree = CapsuleForId(fieldId, 3);
         var getter = CapsuleForId(SymbolId.Compose("M:Uses.State.get_Count", assembly), 2);
-        var testsPage = ContextAssembler.BuildTierPage(store, store, snapshot, SymbolId.Parse(fieldId),
+        var testsPage = ContextAssembler.BuildTierPage(store, store, store, snapshot, SymbolId.Parse(fieldId),
             "relevant_tests", 3, false, 0, 10);
 
         Assert.Multiple(

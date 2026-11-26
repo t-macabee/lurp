@@ -39,7 +39,7 @@ public sealed class ContextCapsuleTraversalTests : IntegrationTestBase
             var anchor = ResolveSymbolId(snapshot, anchorName);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, new ContextLookup(snapshot, anchor, null, null),
                 new ContextAssemblyOptions(ContextIntent.Inspect, 100_000, 4), store, store);
-            var page = ContextAssembler.BuildTierPage(store, store, snapshot, SymbolId.Parse(anchor), "direct_callees", 4, false, 0, 100);
+            var page = ContextAssembler.BuildTierPage(store, store, store, snapshot, SymbolId.Parse(anchor), "direct_callees", 4, false, 0, 100);
             Assert.Equal(expected.Order(), capsule.DirectCallees.Select(item => item.SymbolId).Order());
             Assert.Equal(expected.Order(), page.Items.Select(item => item.SymbolId).Order());
         }

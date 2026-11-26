@@ -72,7 +72,7 @@ internal static class ContextHandler
         OutputMode outputMode, IOutputSink output)
     {
         var page = ContextAssembler.BuildTierPage(
-            store, store, snapshotId, SymbolId.Parse(binding.ResolvedSymbolId!), request.Tier!,
+            store, store, store, snapshotId, SymbolId.Parse(binding.ResolvedSymbolId!), request.Tier!,
             request.MaxHops, request.IncludeGenerated, binding.Offset, request.TierLimit);
 
         var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
