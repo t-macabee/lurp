@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Lurp.Workspace;
 
@@ -148,7 +150,31 @@ public class SemanticDiffer
 
         DiffEdges(fromEdges, toEdges, fromSnapshotId, toSnapshotId, changes);
 
-        return (changes, skippedComparisons);
+        var ordered = changes.OrderBy(c => c.SymbolId, StringComparer.Ordinal)
+            .ThenBy(c => c.ChangeType, StringComparer.Ordinal)
+            .ThenBy(c => c.DetailJson, StringComparer.Ordinal).ToList();
+        var ordinal = 0;
+        SemanticChange? previous = null;
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var c = ordered[i];
+            ordinal = previous != null && previous.SymbolId == c.SymbolId &&
+                previous.ChangeType == c.ChangeType && previous.DetailJson == c.DetailJson
+                ? ordinal + 1 : 0;
+            var payload = JsonSerializer.Serialize(new object?[] { fromSnapshotId, toSnapshotId, c.ChangeType, c.SymbolId, c.DetailJson, ordinal });
+            ordered[i] = new SemanticChange
+            {
+                ChangeId = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
+                FromSnapshotId = c.FromSnapshotId,
+                ToSnapshotId = c.ToSnapshotId,
+                ChangeType = c.ChangeType,
+                SymbolId = c.SymbolId,
+                DetailJson = c.DetailJson,
+                CreatedAtUtc = c.CreatedAtUtc
+            };
+            previous = c;
+        }
+        return (ordered, skippedComparisons);
     }
 
     private (List<SemanticChange> Changes, int SkippedComparisons) ComputeSymbolDiff(string symbolId, SymbolDiffInfo? fromInfo, SymbolDiffInfo? toInfo, string fromSnapshotId, string toSnapshotId, List<string>? fromDocumentVersionIds, List<string>? toDocumentVersionIds)

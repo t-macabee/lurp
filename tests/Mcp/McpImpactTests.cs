@@ -15,6 +15,34 @@ public sealed class McpImpactTests : ImpactIndexFixture
 
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
+    [Theory]
+    [InlineData(50)]
+    [InlineData(60)]
+    public async Task Impact_GroupsAreLimitedOnlyOnMcpFirstPage(int count)
+    {
+        var methods = string.Join("\n", Enumerable.Range(0, count).Select(i => $"public void M{i:D2}() {{ Target(); }}"));
+        var snapshot = await IndexFullAsync("Groups", new Dictionary<string, string>
+        {
+            ["Groups.cs"] = $"namespace Groups; public class C {{ public void Target() {{ }} {methods} }}"
+        });
+        var target = ResolveSymbolId(snapshot, "global::Groups.C.Target");
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+        using var first = JsonDocument.Parse(tool.LurpImpact(symbol: target, direction: "upstream", kinds: CallsKind, limit: 1));
+        Assert.Equal(count, first.RootElement.GetProperty("group_count_total").GetInt32());
+        Assert.Equal(count > 50, first.RootElement.GetProperty("groups_truncated").GetBoolean());
+        Assert.Equal(50, first.RootElement.GetProperty("groups").GetArrayLength());
+        var cursor = first.RootElement.GetProperty("truncated").GetProperty("cursor").GetString();
+        using var second = JsonDocument.Parse(tool.LurpImpact(symbol: target, direction: "upstream", kinds: CallsKind, limit: 1, cursor: cursor));
+        Assert.Empty(second.RootElement.GetProperty("groups").EnumerateArray());
+        var cli = CapturingOutputSink.Capture(sink => ImpactHandler.Run(["--mode=impact", $"--symbol={target}", "--direction=upstream", "--kinds=Calls", "--limit=1", $"--output-dir={TestDir}", "--output=json"], sink));
+        Assert.Null(cli.Failure);
+        using var cliDoc = JsonDocument.Parse(cli.Stdout);
+        Assert.Equal(count, cliDoc.RootElement.GetProperty("groups").GetArrayLength());
+        if (count == 50)
+            Assert.Equal(cliDoc.RootElement.GetProperty("groups").GetRawText(), first.RootElement.GetProperty("groups").GetRawText());
+    }
+
     // Contract/acceptance: pins the v2 lurp_impact response shape.
     [Fact]
     public async Task Impact_Kinds_Provenance_MaxDepth_Limit_Pagination_SemanticCauses()
@@ -81,6 +109,10 @@ public sealed class McpImpactTests : ImpactIndexFixture
             var jsonPage = impact.LurpImpact(symbol: barId, direction: "upstream", limit: 1, cursor: cursor);
             using var docPage = JsonDocument.Parse(jsonPage);
             var pageRoot = docPage.RootElement;
+            Assert.True(pageRoot.GetProperty("group_count_total").GetInt32() > 0);
+            Assert.False(pageRoot.GetProperty("groups_truncated").GetBoolean());
+            if (cursor != null)
+                Assert.Empty(pageRoot.GetProperty("groups").EnumerateArray());
             pagedSymbols.AddRange(pageRoot.GetProperty("symbols").EnumerateArray()
                 .Select(s => s.GetProperty("symbol_id").GetString()!));
             if (pageRoot.TryGetProperty("truncated", out var trunc) && trunc.ValueKind != JsonValueKind.Null)
@@ -227,7 +259,7 @@ public sealed class McpImpactTests : ImpactIndexFixture
 
         var cliFields = cliDoc.RootElement.EnumerateObject().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
         var mcpFields = mcpDoc.RootElement.EnumerateObject().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
-        Assert.True(cliFields.SetEquals(mcpFields.Except(["pinned", "limit"])));
+        Assert.True(cliFields.SetEquals(mcpFields.Except(["pinned", "limit", "group_count_total", "groups_truncated"])));
 
         Assert.True(cliDoc.RootElement.TryGetProperty("symbols", out var cliSymbols));
         Assert.True(mcpDoc.RootElement.TryGetProperty("symbols", out var mcpSymbols));

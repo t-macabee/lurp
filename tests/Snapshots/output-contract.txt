@@ -1654,6 +1654,7 @@ mcp:diff $.freshness.scope string
 mcp:diff $.freshness.snapshot_id string
 mcp:diff $.freshness.state string
 mcp:diff $.from_snapshot string
+mcp:diff $.next_cursor null
 mcp:diff $.pinned boolean
 mcp:diff $.skipped_comparisons number
 mcp:diff $.snapshot_id string
@@ -1851,6 +1852,7 @@ mcp:impact $.freshness.scope string
 mcp:impact $.freshness.snapshot_id string
 mcp:impact $.freshness.state string
 mcp:impact $.frontier_count number
+mcp:impact $.group_count_total number
 mcp:impact $.groups array
 mcp:impact $.groups[] object
 mcp:impact $.groups[].edge_kind string
@@ -1859,6 +1861,7 @@ mcp:impact $.groups[].first_hop_target_symbol_id string
 mcp:impact $.groups[].max_depth number
 mcp:impact $.groups[].provenance string
 mcp:impact $.groups[].symbol_count number
+mcp:impact $.groups_truncated boolean
 mcp:impact $.limit number
 mcp:impact $.max_depth number
 mcp:impact $.offset number

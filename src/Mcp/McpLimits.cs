@@ -10,6 +10,9 @@ namespace Lurp.Mcp;
 /// </summary>
 internal static class McpLimits
 {
+    [Description("First-page groups on `lurp_impact`")]
+    public const int MaxImpactGroups = 50;
+
     [Description("`limit` and `tier_limit` on every tool except `lurp_dead_candidates`; `max_documents`, `max_mismatches` and the length of `documents` on `lurp_status`")]
     public const int MaxLimit = 500;
 

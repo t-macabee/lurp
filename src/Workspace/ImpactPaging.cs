@@ -27,6 +27,8 @@ internal sealed record ImpactResponse(
     int symbol_count_total,
     int frontier_count,
     int offset,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? group_count_total,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? groups_truncated,
     IReadOnlyList<ImpactSymbolGroup> groups,
     IReadOnlyList<SemanticCauseJson> semantic_causes,
     object? truncated,
@@ -56,7 +58,8 @@ internal static class ImpactPaging
         string fingerprint,
         string cursorKind,
         bool pinned = false,
-        bool includeLimitEcho = false)
+        bool includeLimitEcho = false,
+        int? groupLimit = null)
     {
         var allSymbols = reachability.Symbols;
         var page = allSymbols.Skip(offset).Take(limit).ToList();
@@ -74,6 +77,7 @@ internal static class ImpactPaging
             }
             : null;
 
+        var groups = BuildFirstHopGroups(allSymbols, reachability, direction);
         return new ImpactResponse(
             snapshot_id: snapshotId,
             freshness: freshness,
@@ -85,7 +89,9 @@ internal static class ImpactPaging
             symbol_count_total: allSymbols.Count,
             frontier_count: allSymbols.Count(static symbol => symbol.IsFrontier),
             offset: offset,
-            groups: BuildFirstHopGroups(allSymbols, reachability, direction),
+            group_count_total: groupLimit.HasValue ? groups.Count : null,
+            groups_truncated: groupLimit.HasValue ? groups.Count > groupLimit.Value : null,
+            groups: groupLimit.HasValue ? (offset == 0 ? groups.Take(groupLimit.Value).ToList() : []) : groups,
             semantic_causes: semanticCauses.Select(SemanticCauseJson.From).ToList(),
             truncated: truncated,
             symbols: page.Zip(pagePaths, ToSymbolJson).ToList());
@@ -124,6 +130,8 @@ internal static class ImpactPaging
             .ThenBy(group => direction == ImpactDirection.Downstream
                 ? group.first_hop_target_symbol_id
                 : group.first_hop_source_symbol_id, StringComparer.Ordinal)
+            .ThenBy(group => direction == ImpactDirection.Downstream ? group.first_hop_source_symbol_id : group.first_hop_target_symbol_id, StringComparer.Ordinal)
+            .ThenBy(group => group.edge_kind, StringComparer.Ordinal)
             .ToList();
     }
 

@@ -97,6 +97,7 @@ tool error (`isError: true`).
 <!-- generated:mcp-limits -->
 | Parameter | Maximum |
 |---|---|
+| First-page groups on `lurp_impact` | 50 |
 | `limit` and `tier_limit` on every tool except `lurp_dead_candidates`; `max_documents`, `max_mismatches` and the length of `documents` on `lurp_status` | 500 |
 | `limit` on `lurp_dead_candidates` | 200 |
 | `content_budget` on `lurp_context` (estimated tokens) | 200000 |

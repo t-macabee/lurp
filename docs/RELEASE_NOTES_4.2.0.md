@@ -4,6 +4,10 @@ Run a full index after the upgrade to schema v53. Extractor 1.14.0 and the adapt
 
 ## Breaking changes (CLI/MCP contract version 9)
 
+### MCP impact and diff paging
+
+`lurp_impact` returns at most 50 first-hop groups on the first page and none on later pages. `group_count_total` and `groups_truncated` describe the complete group set; CLI impact continues to return all groups. `lurp_diff` returns 100 changes by default; use `limit` and `next_cursor` to page through the complete diff. Change IDs and ordering are stable for the same snapshot pair.
+
 ### MCP indexing requests
 
 `lurp_index` rejects `cancel: true` without an `operation_id` and rejects an empty-string `operation_id`. These requests previously started an index run.
@@ -64,6 +68,7 @@ User annotations now survive full and `--strategy=full --force` re-indexes: the 
 
 ### Changed descriptions
 
+- `lurp_impact` describes its group limit; `lurp_diff` describes paging and its default page size.
 - `lurp_dead_candidates`: the description reflects the revised classification ladder, and the assembly-scan step now comes after the entry-point and public-surface steps. Linked declarations share incoming liveness, public surface uses effective accessibility for every symbol, and record and framework conventions protect members.
 - `lurp_index`: cancellation requires an operation ID, and an empty ID is rejected.
 - `--query=` (search): the new ranking tiers.

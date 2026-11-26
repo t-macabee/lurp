@@ -20,7 +20,7 @@ internal sealed class ImpactTool
 
     [McpServerTool(Name = "lurp_impact", Title = "Lurp Impact", ReadOnly = true, OpenWorld = false, UseStructuredContent = true,
         OutputSchemaType = typeof(ImpactResponse))]
-    [Description("Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination. Both directions exclude Declares, Contains and TestedBy by default. Supply kinds to use a different set.")]
+    [Description("Trace impact downstream or upstream for a symbol: reached symbols and witness paths, plus up to 50 first-hop groups on the first page. group_count_total and groups_truncated describe the full group set. Supports kinds/provenance filtering and cursor pagination. Both directions exclude Declares, Contains and TestedBy by default. Supply kinds to use a different set.")]
     public string LurpImpact(
         [McpRequired] string? symbol = null,
         string? direction = null,
@@ -69,7 +69,8 @@ internal sealed class ImpactTool
                 binding.Fingerprint,
                 ImpactRequest.CursorKind,
                 pinned: true,
-                includeLimitEcho: true);
+                includeLimitEcho: true,
+                groupLimit: McpLimits.MaxImpactGroups);
 
             return JsonSerializer.Serialize(response, LurpJsonOptions.Indented);
         }, cancellationToken);

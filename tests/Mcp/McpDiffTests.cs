@@ -43,6 +43,50 @@ public sealed class McpDiffTests : IntegrationTestBase
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
     [Fact]
+    public async Task Diff_RepeatedComputations_HaveStableChangeIds()
+    {
+        var from = await IndexInitialAsync();
+        var to = await IndexSecondAsync();
+        using var store = OpenStore(DbPath);
+        var differ = new SemanticDiffer(store, store, store);
+        var first = differ.ComputeDiff(from, to).Changes;
+        var second = differ.ComputeDiff(from, to).Changes;
+        Assert.NotEmpty(first);
+        Assert.Equal(first.Select(c => c.ChangeId), second.Select(c => c.ChangeId));
+    }
+
+    [Fact]
+    public async Task Diff_PagesAreStableAndBoundToBothSnapshots()
+    {
+        var from = await IndexInitialAsync();
+        var to = await IndexSecondAsync();
+        await using var session = CreateSession();
+        var tool = new DiffTool(session);
+        List<string> ReadPages()
+        {
+            var ids = new List<string>();
+            string? cursor = null;
+            do
+            {
+                using var page = JsonDocument.Parse(tool.LurpDiff(from, to, limit: 2, cursor: cursor));
+                var root = page.RootElement;
+                ids.AddRange(root.GetProperty("changes").EnumerateArray().Select(c => c.GetProperty("change_id").GetString()!));
+                Assert.True(root.GetProperty("changes").GetArrayLength() <= 2);
+                Assert.True(root.GetProperty("change_count").GetInt32() > 2);
+                cursor = root.GetProperty("next_cursor").GetString();
+            } while (cursor != null);
+            return ids;
+        }
+        var first = ReadPages();
+        Assert.Equal(first, ReadPages());
+        Assert.Equal(first.Count, first.Distinct().Count());
+        using var firstPage = JsonDocument.Parse(tool.LurpDiff(from, to, limit: 2));
+        var token = firstPage.RootElement.GetProperty("next_cursor").GetString();
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpDiff(from, from, limit: 2, cursor: token));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+    }
+
+    [Fact]
     public async Task Diff_FromTo_Parity_WithDirectDiffer()
     {
         var snap1 = await IndexInitialAsync();

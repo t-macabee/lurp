@@ -112,7 +112,7 @@ public sealed class CliMcpContractSnapshotTests
             "lurp_context[ro=true,open=false](symbol:string,file:string,line:int,intent:string,content_budget:int,max_hops:int,scope:string,affected_project:string[],include_generated:bool,completeness_detail:bool,tier:string,tier_limit:int,cursor:string,snapshot_id:string)",
             "lurp_dead_candidates[ro=true,open=false](limit:int,cursor:string,snapshot_id:string,project:string,document:string,kind:string,include_public:bool,include_generated:bool,include_tests:bool)",
             "lurp_diagnostics[ro=true,open=false](document:string,project:string,severity:string,id:string,limit:int,cursor:string,include_generated:bool,snapshot_id:string)",
-            "lurp_diff[ro=true,open=false](from_snapshot:string!,to_snapshot:string!)",
+            "lurp_diff[ro=true,open=false](from_snapshot:string!,to_snapshot:string!,limit:int,cursor:string)",
             "lurp_find_symbol[ro=true,open=false](symbol:string!,include_generated:bool,snapshot_id:string)",
             "lurp_get_annotations[ro=true,open=false](symbol:string,document:string,kind:string,limit:int,cursor:string,snapshot_id:string)",
             "lurp_get_source[ro=true,open=false](document:string!,start_line:int,end_line:int,context_lines:int,snapshot_id:string,outline:bool)",
