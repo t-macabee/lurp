@@ -18,6 +18,13 @@ public sealed class TargetTreeIntegrityTests
     private static readonly TimeSpan CliTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan IndexTimeout = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    ///     The default-cache tests must see the cache that <c>--solution=</c>
+    ///     selects, not the directory the runner exported for the test process
+    ///     (T19).
+    /// </summary>
+    private static readonly string[] RemoveLurpOutputDir = ["LURP_OUTPUT_DIR"];
+
     [Fact]
     public async Task CallShapesTree_IsByteIdentical_AfterEveryCliModeAndMcpTool()
     {
@@ -99,7 +106,9 @@ public sealed class TargetTreeIntegrityTests
                 $"no redirected generated sources under {Path.Combine(cacheDir, "obj")}");
 
             // ── MCP: --mode=serve, all 18 tools (read plus gated write tools) ──
-            server = McpServeProcess.Start(LurpTool.Argv(["--mode=serve", "--enable-write-tools", $"--solution={solutionPath}"]));
+            server = McpServeProcess.Start(
+                LurpTool.Argv(["--mode=serve", "--enable-write-tools", $"--solution={solutionPath}"]),
+                removeEnvironment: RemoveLurpOutputDir);
             var client = server.Client;
             await client.InitializeAsync("target-tree-integrity");
             cliModesRun.Add("serve");
@@ -241,7 +250,7 @@ public sealed class TargetTreeIntegrityTests
     {
         var (fileName, dllPath) = LurpTool.ResolveCommand();
         var fullArgs = dllPath == null ? args : [dllPath, .. args];
-        return TestProcess.Run(fileName, fullArgs, timeout);
+        return TestProcess.Run(fileName, fullArgs, timeout, removeEnvironment: RemoveLurpOutputDir);
     }
 
 }

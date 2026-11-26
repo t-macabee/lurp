@@ -27,7 +27,7 @@ internal static class StatusHandler
         if (explicitSolutionArg != null && !File.Exists(explicitSolutionArg))
             HandlerBootstrap.Fail($"ERROR: --solution=<path> must point to an existing file: '{explicitSolutionArg}'.");
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output, Environment.GetEnvironmentVariable);
         var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
 
         if (!File.Exists(dbPath))

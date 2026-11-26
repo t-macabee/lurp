@@ -39,7 +39,15 @@ public sealed class McpServeProcess : IDisposable
         }
     }
 
-    public static McpServeProcess Start(IReadOnlyList<string> argv, Action<string>? onStdoutLine = null)
+    /// <param name="removeEnvironment">
+    ///     Inherited variables to delete from the child's environment. A test that
+    ///     asserts on the default cache uses this when the runner exported
+    ///     <c>LURP_OUTPUT_DIR</c> for the test process itself.
+    /// </param>
+    public static McpServeProcess Start(
+        IReadOnlyList<string> argv,
+        Action<string>? onStdoutLine = null,
+        IReadOnlyCollection<string>? removeEnvironment = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -50,6 +58,11 @@ public sealed class McpServeProcess : IDisposable
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+        if (removeEnvironment != null)
+        {
+            foreach (var name in removeEnvironment)
+                psi.Environment.Remove(name);
+        }
         for (var i = 1; i < argv.Count; i++)
             psi.ArgumentList.Add(argv[i]);
 

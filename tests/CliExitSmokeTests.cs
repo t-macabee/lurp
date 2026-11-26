@@ -236,10 +236,20 @@ public sealed class CliExitSmokeTests : IDisposable
         Assert.Equal("ERROR: --context-lines must be a non-negative integer.", invalid.Message);
     }
 
+    /// <summary>
+    ///     The test process can inherit <c>LURP_OUTPUT_DIR</c> from the runner (the
+    ///     suite is also run with it set), but these tests are about the default
+    ///     cache. Do not mutate the process environment: xUnit runs classes in
+    ///     parallel. Other variables keep their normal values.
+    /// </summary>
+    private static string? EnvironmentWithoutOutputDir(string name) =>
+        name == "LURP_OUTPUT_DIR" ? null : Environment.GetEnvironmentVariable(name);
+
     [Fact]
     public void ResolveOutputDir_NoSource_Throws()
     {
-        Assert.Throws<CliExitException>(() => HandlerBootstrap.ResolveOutputDir([], new CapturingOutputSink()));
+        Assert.Throws<CliExitException>(() =>
+            HandlerBootstrap.ResolveOutputDir([], new CapturingOutputSink(), EnvironmentWithoutOutputDir));
     }
 
     [Fact]
@@ -247,7 +257,7 @@ public sealed class CliExitSmokeTests : IDisposable
     {
         var solution = Path.Combine(Path.GetTempPath(), $"lurp-outdir-{Guid.NewGuid():N}", "Test.slnx");
 
-        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}"], new CapturingOutputSink());
+        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}"], new CapturingOutputSink(), EnvironmentWithoutOutputDir);
 
         Assert.Equal(LurpCache.ResolveSolutionCacheDir(solution), resolved);
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -261,7 +271,7 @@ public sealed class CliExitSmokeTests : IDisposable
         var solution = Path.Combine(solutionDir, "Test.slnx");
 
         var sink = new CapturingOutputSink();
-        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={solutionDir}"], sink);
+        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={solutionDir}"], sink, EnvironmentWithoutOutputDir);
 
         Assert.Equal(solutionDir, resolved);
         Assert.Contains("is inside the solution directory", sink.Stderr);
@@ -275,7 +285,7 @@ public sealed class CliExitSmokeTests : IDisposable
         var outputDir = solutionDir + "-out";
 
         var sink = new CapturingOutputSink();
-        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={outputDir}"], sink);
+        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={outputDir}"], sink, EnvironmentWithoutOutputDir);
 
         Assert.Equal(outputDir, resolved);
         Assert.DoesNotContain("is inside the solution directory", sink.Stderr);

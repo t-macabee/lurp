@@ -4,7 +4,18 @@ namespace Lurp.Tests;
 
 internal static class TestProcess
 {
-    internal static (int ExitCode, string Stdout, string Stderr) Run(string fileName, string[] args, TimeSpan timeout, IReadOnlyDictionary<string, string>? environment = null)
+    /// <summary>
+    ///     Runs a child process. <paramref name="removeEnvironment" /> names
+    ///     inherited variables to delete from the child's environment, so a test
+    ///     that asserts on the default cache is not redirected by a variable the
+    ///     runner set for the test process itself.
+    /// </summary>
+    internal static (int ExitCode, string Stdout, string Stderr) Run(
+        string fileName,
+        string[] args,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment = null,
+        IReadOnlyCollection<string>? removeEnvironment = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -19,6 +30,11 @@ internal static class TestProcess
         // ReadToEnd below until the node idles out (~15 minutes). Disable node
         // reuse for every child process so the streams close with the process.
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        if (removeEnvironment != null)
+        {
+            foreach (var name in removeEnvironment)
+                psi.Environment.Remove(name);
+        }
         if (environment != null)
         {
             foreach (var pair in environment)

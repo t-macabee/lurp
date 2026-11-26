@@ -7,7 +7,7 @@ internal static class DiffHandler
 {
     public static void Run(string[] args, IOutputSink output)
     {
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output, Environment.GetEnvironmentVariable);
 
         var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
 

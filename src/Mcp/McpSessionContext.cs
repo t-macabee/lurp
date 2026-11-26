@@ -27,7 +27,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
     public static McpSessionContext Create(string[] args, IOutputSink? output = null)
     {
         output ??= StderrOutputSink.Instance;
-        var outputDir = HandlerBootstrap.ResolveOutputDir(args, output);
+        var outputDir = HandlerBootstrap.ResolveOutputDir(args, output, Environment.GetEnvironmentVariable);
         var dbPath = HandlerBootstrap.ResolveDbPath(outputDir);
         var solutionPath = HandlerBootstrap.GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
         // Normalize solution path if present

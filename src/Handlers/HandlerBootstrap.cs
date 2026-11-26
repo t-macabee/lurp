@@ -200,13 +200,21 @@ internal static class HandlerBootstrap
         return value;
     }
 
-    public static string ResolveOutputDir(string[] args, IOutputSink output)
+    /// <summary>
+    ///     Resolves the index directory from <c>--output-dir=</c>, the
+    ///     <c>LURP_OUTPUT_DIR</c> variable, or the default cache of
+    ///     <c>--solution=</c>. <paramref name="getEnvironmentVariable" /> is a seam
+    ///     for tests that must resolve the default cache while the test process
+    ///     inherits <c>LURP_OUTPUT_DIR</c>; production passes
+    ///     <see cref="Environment.GetEnvironmentVariable(string)" />.
+    /// </summary>
+    public static string ResolveOutputDir(string[] args, IOutputSink output, Func<string, string?> getEnvironmentVariable)
     {
         var solutionArg = GetArgValue(args, "--solution=")
-                          ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
+                          ?? getEnvironmentVariable("LURP_SOLUTION_PATH");
 
         var outputDirArg = GetArgValue(args, "--output-dir=")
-                           ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR");
+                           ?? getEnvironmentVariable("LURP_OUTPUT_DIR");
         if (!string.IsNullOrEmpty(outputDirArg))
         {
             WarnIfOutputInsideSolution(outputDirArg, solutionArg, output);
@@ -370,7 +378,7 @@ internal static class HandlerBootstrap
     /// </summary>
     public static void WithStore(string[] args, string? snapshotArg, Action<SqliteIndexStore, string> body, IOutputSink output)
     {
-        var outputDir = ResolveOutputDir(args, output);
+        var outputDir = ResolveOutputDir(args, output, Environment.GetEnvironmentVariable);
         var dbPath = ResolveDbPath(outputDir);
         var store = OpenStore(dbPath);
         try
@@ -395,7 +403,7 @@ internal static class HandlerBootstrap
     /// </summary>
     public static void WithWritableStore(string[] args, string? snapshotArg, Action<SqliteIndexStore, string> body, IOutputSink output)
     {
-        var outputDir = ResolveOutputDir(args, output);
+        var outputDir = ResolveOutputDir(args, output, Environment.GetEnvironmentVariable);
         var dbPath = ResolveDbPath(outputDir);
         var store = OpenWritableStore(dbPath);
         try

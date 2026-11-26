@@ -11,7 +11,7 @@ internal static class IndexHandler
                               ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
         if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg)) HandlerBootstrap.Fail("ERROR: --solution=path or LURP_SOLUTION_PATH is required and must point to an existing .sln or .slnx file.");
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output, Environment.GetEnvironmentVariable);
 
         var outputDir = Path.GetFullPath(outputDirArg);
         var dbPath = Path.Combine(outputDir, "index.db");

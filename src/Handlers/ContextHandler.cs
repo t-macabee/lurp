@@ -35,7 +35,7 @@ internal static class ContextHandler
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var outputMode = HandlerBootstrap.ParseOutputMode(args, request!.Tier is not null);
         var quiet = HandlerBootstrap.IsQuiet(args);
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output, Environment.GetEnvironmentVariable);
 
         HandlerBootstrap.WithStore(args, snapshotArg, (store, snapshotId) =>
         {

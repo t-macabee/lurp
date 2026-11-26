@@ -10,7 +10,7 @@ internal static class PinSnapshotHandler
         // Parsed before the database check, so a bad --output= fails the same way whatever the database state (B70).
         var asJson = args.Contains("--json") || HandlerBootstrap.ParseOutputMode(args, allowJsonl: false, defaultMode: OutputMode.Summary) == OutputMode.Json;
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output, Environment.GetEnvironmentVariable);
         var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
         if (!File.Exists(dbPath))
             HandlerBootstrap.Fail("ERROR: Index database not found at " + dbPath);
