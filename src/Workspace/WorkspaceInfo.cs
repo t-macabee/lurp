@@ -513,9 +513,8 @@ public sealed class WorkspaceInfo
     /// <summary>
     ///     Per-project fingerprint of the compilation inputs that shape which code
     ///     is compiled: optimization level, unsafe allowance, nullable context,
-    ///     platform, language version, and the sorted preprocessor symbols (which
-    ///     drive <c>#if</c>-guarded dead code). Serialized as a deterministic
-    ///     string so any change yields a different fingerprint.
+    ///     platform, diagnostic settings, language version, and sorted preprocessor
+    ///     symbols. Serialized as a deterministic string.
     /// </summary>
     private static Dictionary<string, string> BuildCompilationOptionsFingerprints(Solution solution)
     {
@@ -532,6 +531,10 @@ public sealed class WorkspaceInfo
                 parts.Add($"allowUnsafe={compilationOptions.AllowUnsafe}");
                 parts.Add($"nullable={compilationOptions.NullableContextOptions}");
                 parts.Add($"platform={compilationOptions.Platform}");
+                parts.Add($"generalDiagnostic={compilationOptions.GeneralDiagnosticOption}");
+                parts.Add($"warningLevel={compilationOptions.WarningLevel}");
+                parts.Add($"reportSuppressed={compilationOptions.ReportSuppressedDiagnostics}");
+                parts.Add($"specificDiagnostics={string.Join(",", compilationOptions.SpecificDiagnosticOptions.OrderBy(kvp => kvp.Key, StringComparer.Ordinal).Select(kvp => $"{kvp.Key}:{kvp.Value}"))}");
             }
 
             var parseOptions = project.ParseOptions as CSharpParseOptions;

@@ -1,6 +1,10 @@
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Lurp.Handlers;
+using System.Text.Json;
 
 namespace Lurp.Tests;
 
@@ -15,6 +19,77 @@ namespace Lurp.Tests;
 /// </summary>
 public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
 {
+    [Fact]
+    public void SpecificDiagnosticOptions_OrderDoesNotChangeIdentity()
+    {
+        using var workspace = new AdhocWorkspace();
+        workspace.AddSolution(SolutionInfo.Create(SolutionId.CreateNewId(), VersionStamp.Create(), filePath: SolutionPath));
+        var project = workspace.AddProject("P", LanguageNames.CSharp);
+        var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary);
+        WorkspaceInfo Info(IEnumerable<KeyValuePair<string, ReportDiagnostic>> values) =>
+            new(project.WithCompilationOptions(options.WithSpecificDiagnosticOptions(values)).Solution, TestDir);
+
+        var first = Info([new("CS0168", ReportDiagnostic.Suppress), new("CS0219", ReportDiagnostic.Error)]);
+        var reversed = Info([new("CS0219", ReportDiagnostic.Error), new("CS0168", ReportDiagnostic.Suppress)]);
+        var changed = Info([new("CS0168", ReportDiagnostic.Warn), new("CS0219", ReportDiagnostic.Error)]);
+        Assert.Equal(first.CompilationOptionsFingerprints["P"], reversed.CompilationOptionsFingerprints["P"]);
+        Assert.Equal(SnapshotIdentity.Create(first, new HashSet<string>()), SnapshotIdentity.Create(reversed, new HashSet<string>()));
+        Assert.NotEqual(SnapshotIdentity.Create(first, new HashSet<string>()), SnapshotIdentity.Create(changed, new HashSet<string>()));
+    }
+
+    [Theory]
+    [InlineData("<NoWarn>CS0168</NoWarn>", null)]
+    [InlineData("<TreatWarningsAsErrors>true</TreatWarningsAsErrors>", "Error")]
+    public async Task DiagnosticSettingsChange_ForcesRebuild(string property, string? expectedSeverity)
+    {
+        CreateProject("P", new Dictionary<string, string>
+        {
+            ["X.cs"] = "public class X { public void M() { int unused; } }"
+        });
+        var propsPath = Path.Combine(TestDir, "Directory.Build.props");
+        File.WriteAllText(propsPath, "<Project />");
+        var originalId = await RunFullIndexAsync(DbPath);
+        using (var store = OpenStore(DbPath))
+            Assert.Contains(store.GetDiagnostics(originalId), d => d.Id == "CS0168" && d.Severity == "Warning");
+
+        File.WriteAllText(propsPath, $"<Project><PropertyGroup>{property}</PropertyGroup></Project>");
+        var status = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([
+            $"--output-dir={TestDir}", $"--solution={SolutionPath}", "--json"
+        ], sink));
+        Assert.Null(status.Failure);
+        using (var json = JsonDocument.Parse(status.Stdout))
+        {
+            Assert.False(json.RootElement.GetProperty("is_fresh").GetBoolean());
+            Assert.Contains("CompilationOptionsChanged", json.RootElement.GetProperty("mismatches").GetRawText());
+        }
+        var info = await LoadWorkspaceInfoAsync();
+        using (var store = OpenStore(DbPath))
+        {
+            var original = store.LoadLatestSnapshot(info.Id.Value)!;
+            var mismatches = WorkspaceFreshness.GetFullRebuildMismatches(info, SnapshotManifest.FromStorageManifest(original));
+            Assert.Contains(mismatches, m => m.Kind == MismatchKind.CompilationOptionsChanged);
+        }
+        var freshDb = Path.Combine(TestDir, "fresh.db");
+        var freshId = await RunFullIndexAsync(freshDb);
+        Assert.NotEqual(originalId, freshId);
+
+        var (newId, output) = await RunIndexAsync("incremental");
+        Assert.Contains("Full rebuild required", output);
+        Assert.NotEqual(originalId, newId);
+        Assert.Equal(freshId, newId);
+        using (var store = OpenStore(DbPath))
+        {
+            var diagnostics = store.GetDiagnostics(newId).Where(d => d.Id == "CS0168").ToList();
+            if (expectedSeverity == null) Assert.Empty(diagnostics);
+            else Assert.Contains(diagnostics, d => d.Severity == expectedSeverity);
+        }
+        using (var fresh = OpenStore(freshDb))
+        using (var incremental = OpenStore(DbPath))
+            Assert.Equal(fresh.GetDiagnostics(freshId).Where(d => d.Id == "CS0168").Select(d => d.Severity),
+                incremental.GetDiagnostics(newId).Where(d => d.Id == "CS0168").Select(d => d.Severity));
+        Assert.Equal(newId, await RunFullIndexNoDeleteAsync(DbPath));
+    }
+
     [Fact]
     public async Task PackageReferenceChange_ForcesRebuild()
     {
