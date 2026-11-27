@@ -206,7 +206,8 @@ public class MigrationRunner
             new Migration_051_MultiTfmDeclarationSpans(),
             new Migration_052_WeightedSymbolFts(),
             new Migration_053_SnapshotBuildInputs(),
-            new Migration_054_AnalyzersSkipped()
+            new Migration_054_AnalyzersSkipped(),
+            new Migration_055_SnapshotExcludedSymbols()
         ];
     }
 }

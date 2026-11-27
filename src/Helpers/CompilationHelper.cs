@@ -10,6 +10,14 @@ namespace Lurp.Helpers;
 
 internal static class CompilationHelper
 {
+    internal static readonly AsyncLocal<Action<string>?> CompilationRequestObserver = new();
+
+    internal static Task<Compilation?> GetCompilationAsync(Project project, CancellationToken cancellationToken)
+    {
+        CompilationRequestObserver.Value?.Invoke(project.Name);
+        return project.GetCompilationAsync(cancellationToken);
+    }
+
     public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(
         Solution solution,
         Action<string>? logWarning = null,
@@ -21,7 +29,7 @@ internal static class CompilationHelper
             if (include != null && !include(project))
                 continue;
             cancellationToken.ThrowIfCancellationRequested();
-            var compilation = await project.GetCompilationAsync(cancellationToken)
+            var compilation = await GetCompilationAsync(project, cancellationToken)
                 .ConfigureAwait(false);
             if (compilation == null)
             {

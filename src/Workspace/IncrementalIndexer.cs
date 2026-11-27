@@ -251,7 +251,28 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
             // Step 7: Orphan cleanup + FTS Rebuild + Diff + Complete
             cancellationToken.ThrowIfCancellationRequested();
-            var excludedSymbolIds = await ExcludedDocumentSymbols.CollectAsync(solution, workspaceInfo, cancellationToken);
+            var previousExcluded = _store.LoadExcludedSymbolsByProject(previousSnapshotId);
+            var previousFingerprints = previousManifest.Projects.ToDictionary(p => p.Name, p => p.ExcludedDocumentsFingerprint, StringComparer.Ordinal);
+            var excludedByProject = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (var project in solution.Projects)
+            {
+                if (!workspaceInfo.ExcludedDocuments.ContainsKey(project.Id)) continue;
+                previousFingerprints.TryGetValue(project.Name, out var previousFingerprint);
+                workspaceInfo.ExcludedDocumentsFingerprints.TryGetValue(project.Name, out var currentFingerprint);
+                if (!affectedProjects.Contains(project.Name) && previousFingerprint != null && currentFingerprint != null &&
+                    string.Equals(previousFingerprint, currentFingerprint, StringComparison.Ordinal))
+                {
+                    excludedByProject[project.Name] = previousExcluded.GetValueOrDefault(project.Name) ?? new HashSet<string>(StringComparer.Ordinal);
+                    continue;
+                }
+                var compilation = affectedCompilations.TryGetValue(project.Name, out var affected)
+                    ? affected.Compilation
+                    : await CompilationHelper.GetCompilationAsync(project, cancellationToken);
+                if (compilation != null)
+                    excludedByProject[project.Name] = await ExcludedDocumentSymbols.CollectForProjectAsync(project, compilation, workspaceInfo, cancellationToken);
+            }
+            _store.SaveExcludedSymbols(buildSnapshotId, excludedByProject);
+            var excludedSymbolIds = excludedByProject.Values.SelectMany(static symbols => symbols).ToHashSet(StringComparer.Ordinal);
             orphanEdgesDropped = FinalizeSnapshot(finalizationContext, excludedSymbolIds, timings, isRebuild ? newSnapshotIdStr : null, cancellationToken);
         }
         catch (Exception ex)

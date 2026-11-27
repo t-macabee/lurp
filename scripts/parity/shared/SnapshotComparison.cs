@@ -46,9 +46,10 @@ public static class SnapshotComparison
             ["symbol_id", "fqn", "doc_comment_id", "kind", "simple_name", "name_tokens", "container_tokens", "kind_rank", "is_test"],
             ["snapshot_id"]),
         ["snapshot_graph_nodes"] = (["node_id"], ["snapshot_id"]),
+        ["snapshot_excluded_symbols"] = (["project_name", "symbol_id"], ["snapshot_id"]),
         ["projects"] = (
             ["name", "assembly_name", "target_framework", "metadata_reference_identities", "compilation_options_fingerprint",
-             "document_paths_json", "internals_visible_to", "project_path"], ["project_id", "snapshot_id"]),
+             "document_paths_json", "internals_visible_to", "project_path", "excluded_documents_fingerprint"], ["project_id", "snapshot_id"]),
         ["project_references"] = (["referenced_project_name"], ["project_id"]),
         ["symbol_target_frameworks"] = (["symbol_id", "tfm"], ["snapshot_id"])
     };
@@ -95,6 +96,7 @@ public static class SnapshotComparison
         CompareRows("symbol_fts", ReadSymbolFts(dbPathA, snapshotA), ReadSymbolFts(dbPathB, snapshotB));
         CompareRows("snapshot_graph_nodes", ReadSnapshotGraphNodes(dbPathA, snapshotA),
             ReadSnapshotGraphNodes(dbPathB, snapshotB));
+        CompareRows("snapshot_excluded_symbols", ReadExcludedSymbols(storeA, snapshotA), ReadExcludedSymbols(storeB, snapshotB));
         CompareRows("projects", ReadProjects(dbPathA, snapshotA), ReadProjects(dbPathB, snapshotB));
         CompareRows("project_references", ReadProjectReferences(dbPathA, snapshotA), ReadProjectReferences(dbPathB, snapshotB));
 
@@ -407,6 +409,12 @@ public static class SnapshotComparison
         return result;
     }
 
+    private static List<(string Project, string Symbol)> ReadExcludedSymbols(SqliteIndexStore store, string snapshotId) =>
+        store.LoadExcludedSymbolsByProject(snapshotId)
+            .SelectMany(pair => pair.Value.Select(symbol => (Project: pair.Key, Symbol: symbol)))
+            .OrderBy(pair => pair.Project, StringComparer.Ordinal)
+            .ThenBy(pair => pair.Symbol, StringComparer.Ordinal).ToList();
+
     public static List<ProjectSnapshot> ReadProjects(string dbPath, string snapshotId)
     {
         using var connection = OpenConnection(dbPath);
@@ -414,7 +422,7 @@ public static class SnapshotComparison
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT name, assembly_name, target_framework, metadata_reference_identities,
-                   compilation_options_fingerprint, document_paths_json, internals_visible_to, project_path
+                   compilation_options_fingerprint, document_paths_json, internals_visible_to, project_path, excluded_documents_fingerprint
             FROM projects
             WHERE snapshot_id = @snapshotId
             ORDER BY name, assembly_name, target_framework, metadata_reference_identities,
@@ -433,7 +441,8 @@ public static class SnapshotComparison
                 reader.IsDBNull(4) ? null : reader.GetString(4),
                 reader.IsDBNull(5) ? null : reader.GetString(5),
                 reader.IsDBNull(6) ? null : reader.GetString(6),
-                reader.IsDBNull(7) ? null : reader.GetString(7)));
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetString(8)));
         result.Sort((a, b) =>
         {
             var cmp = StringComparer.Ordinal.Compare(a.Name, b.Name);
@@ -450,7 +459,8 @@ public static class SnapshotComparison
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.InternalsVisibleToJson, b.InternalsVisibleToJson);
             if (cmp != 0) return cmp;
-            return StringComparer.Ordinal.Compare(a.ProjectPath, b.ProjectPath);
+            cmp = StringComparer.Ordinal.Compare(a.ProjectPath, b.ProjectPath);
+            return cmp != 0 ? cmp : StringComparer.Ordinal.Compare(a.ExcludedDocumentsFingerprint, b.ExcludedDocumentsFingerprint);
         });
         return result;
     }
@@ -717,7 +727,8 @@ public static class SnapshotComparison
         string? CompilationOptionsFingerprint,
         string? DocumentPathsJson,
         string? InternalsVisibleToJson,
-        string? ProjectPath);
+        string? ProjectPath,
+        string? ExcludedDocumentsFingerprint);
 
     public sealed record ProjectReferenceSnapshot(string ProjectName, string ReferencedProjectName);
 }

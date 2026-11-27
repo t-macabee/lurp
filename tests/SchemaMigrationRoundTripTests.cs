@@ -8,6 +8,18 @@ namespace Lurp.Tests;
 
 public sealed class SchemaMigrationRoundTripTests : IDisposable
 {
+    [Fact]
+    public void RoundTrip_Migration055_AddsExcludedSymbolStorage()
+    {
+        new MigrationRunner(_dbPath).RunMigrations();
+        using var connection = TestDatabase.Open(_dbPath);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'excluded_documents_fingerprint' AND [notnull] = 0;";
+        Assert.Equal(1L, (long)command.ExecuteScalar()!);
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('snapshot_excluded_symbols') WHERE name IN ('snapshot_id', 'project_name', 'symbol_id');";
+        Assert.Equal(3L, (long)command.ExecuteScalar()!);
+    }
+
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"lurp-schema-{Guid.NewGuid():N}.db");
 
     public void Dispose()
@@ -1398,7 +1410,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(54, runner.GetCurrentSchemaVersion());
+        Assert.Equal(55, runner.GetCurrentSchemaVersion());
 
         using var store = new SqliteIndexStore(_dbPath);
         store.Open();

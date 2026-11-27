@@ -8,7 +8,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     [
         "edges", "diagnostics", "snapshot_declarations", "snapshot_symbols", "symbol_target_frameworks",
         "projects", "snapshot_documents", "snapshot_build_inputs", "source_fts", "symbol_fts",
-        "annotations", "snapshot_timings", "snapshot_metrics", "snapshot_graph_nodes", "binding_incompleteness"
+        "snapshot_excluded_symbols", "annotations", "snapshot_timings", "snapshot_metrics", "snapshot_graph_nodes", "binding_incompleteness"
     ];
 
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));

@@ -1,6 +1,6 @@
 # Lurp 4.2.0
 
-Run a full index after the upgrade to schema v54. Extractor 1.14.0 and the adapter versions below change the snapshot id. Use `--strategy=full --force` if you already built a development snapshot with extractor 1.14.0.
+Run a full index after the upgrade to schema v55. Extractor 1.14.0 and the adapter versions below change the snapshot id. Use `--strategy=full --force` if you already built a development snapshot with extractor 1.14.0.
 
 ## Breaking changes (CLI/MCP contract version 9)
 
@@ -125,7 +125,7 @@ A linked declaration takes the incoming edges of its copies in other projects, i
 | Component | 4.1.0 | 4.2.0 |
 | --- | --- | --- |
 | Tool | 4.1.0 | 4.2.0 |
-| Database schema | v50 | v54 |
+| Database schema | v50 | v55 |
 | Extractor | 1.13.0 | 1.14.0 |
 | CLI/MCP contract | v8 | v9 |
 | Output schema | v7 | v8 |

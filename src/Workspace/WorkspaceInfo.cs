@@ -71,6 +71,11 @@ public sealed class WorkspaceInfo
             kvp => (IReadOnlyList<string>)[.. kvp.Value.Distinct(StringComparer.Ordinal).OrderBy(static path => path, StringComparer.Ordinal)],
             StringComparer.Ordinal);
 
+        ExcludedDocumentsFingerprints = solution.Projects.Select(project => project.Name).Distinct(StringComparer.Ordinal).ToDictionary(
+            name => name,
+            name => FingerprintExcludedDocuments(GetExcludedDocuments(null, name), gitRoot),
+            StringComparer.Ordinal);
+
         ProjectGraph = BuildProjectGraph(solution);
 
         MetadataReferenceIdentities = BuildMetadataReferenceIdentities(solution);
@@ -126,6 +131,27 @@ public sealed class WorkspaceInfo
     private readonly Dictionary<string, IReadOnlyList<string>> _excludedDocumentsByName;
 
     public IReadOnlyDictionary<ProjectId, IReadOnlyList<string>> ExcludedDocuments { get; }
+
+    public IReadOnlyDictionary<string, string?> ExcludedDocumentsFingerprints { get; }
+
+    private static string? FingerprintExcludedDocuments(IReadOnlyList<string> paths, string root)
+    {
+        if (paths.Count == 0) return "";
+        try
+        {
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            foreach (var path in paths.OrderBy(static p => p, StringComparer.Ordinal))
+            {
+                var pathBytes = Encoding.UTF8.GetBytes(path);
+                hash.AppendData(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder(pathBytes.Length)));
+                hash.AppendData(pathBytes);
+                hash.AppendData(SHA256.HashData(File.ReadAllBytes(Path.Combine(root, path))));
+            }
+            return Convert.ToHexString(hash.GetHashAndReset());
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
 
     internal IReadOnlyList<string> GetExcludedDocuments(Project? project, string projectName)
     {

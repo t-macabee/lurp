@@ -41,6 +41,7 @@ public sealed class ProjectRow
     public List<string> References { get; init; } = [];
     public string? MetadataReferenceIdentitiesJson { get; init; }
     public string? CompilationOptionsFingerprint { get; init; }
+    public string? ExcludedDocumentsFingerprint { get; init; }
     public IReadOnlyList<string>? DocumentPaths { get; init; }
     public string? InternalsVisibleToJson { get; init; }
     public string? ProjectPath { get; init; }

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Lurp.Adapters;
 using Lurp.Handlers;
+using Lurp.Helpers;
 using Lurp.Parity.Shared;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -153,8 +154,11 @@ public sealed class IncrementalPerformanceTests : IntegrationTestBase
         }
     }
 
-    [Fact]
-    public async Task BodyOnlyEdit_InMiddleProjectOfChain_DoesNotExtractLastProject_AndMatchesFull()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task BodyOnlyEdit_InMiddleProjectOfChain_DoesNotExtractLastProject_AndMatchesFull(int scenario)
     {
         CreateProject("ProjA", new Dictionary<string, string>
         {
@@ -197,13 +201,31 @@ public sealed class IncrementalPerformanceTests : IntegrationTestBase
                     public int Execute()
                     {
                         int unused = 42;
-                        return new ProjB.UsedByC().GetValue();
+                        return new ProjB.UsedByC().GetValue() + GeneratedHelper.Value();
                     }
                 }
                 """
         }, projectReferences: ["ProjB"]);
 
-        await RunFullIndexAsync(DbPath);
+        var projectDir = Path.Combine(TestDir, "src", "ProjC");
+        Directory.CreateDirectory(Path.Combine(projectDir, "obj"));
+        File.WriteAllText(Path.Combine(projectDir, "obj", "Generated.cs"),
+            "namespace ProjC; public static class GeneratedHelper { public static int Value() => 1; }");
+        var projectPath = Path.Combine(projectDir, "ProjC.csproj");
+        File.WriteAllText(projectPath, File.ReadAllText(projectPath).Replace("</Project>",
+            "<ItemGroup><Compile Include=\"obj/Generated.cs\" /></ItemGroup></Project>", StringComparison.Ordinal));
+
+        var previousSnapshot = await RunFullIndexAsync(DbPath);
+        if (scenario == 1)
+            File.AppendAllText(Path.Combine(projectDir, "obj", "Generated.cs"), "\npublic class ExtraGenerated {}");
+        if (scenario == 2)
+        {
+            using var connection = TestDatabase.Open(DbPath);
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE projects SET excluded_documents_fingerprint = NULL WHERE snapshot_id = @id; DELETE FROM snapshot_excluded_symbols WHERE snapshot_id = @id;";
+            command.Parameters.AddWithValue("@id", previousSnapshot);
+            command.ExecuteNonQuery();
+        }
 
         // Body-only edit in ProjB/MiddleService.cs (not referenced by ProjC).
         WriteFile("ProjB", "MiddleService.cs", """
@@ -218,10 +240,33 @@ public sealed class IncrementalPerformanceTests : IntegrationTestBase
             }
             """);
 
-        var (incrementalSnapshot, output) = await RunIndexAsync();
+        var requested = new ConcurrentBag<string>();
+        string incrementalSnapshot;
+        string output;
+        CompilationHelper.CompilationRequestObserver.Value = requested.Add;
+        try
+        {
+            (incrementalSnapshot, output) = await RunIndexAsync();
+        }
+        finally
+        {
+            CompilationHelper.CompilationRequestObserver.Value = null;
+        }
 
         // ProjC must not be loaded or re-extracted.
         Assert.DoesNotContain("[ProjC]", output, StringComparison.Ordinal);
+        if (scenario == 0)
+            Assert.DoesNotContain("ProjC", requested);
+        else
+            Assert.Contains("ProjC", requested);
+
+        using (var store = OpenStore(DbPath))
+        {
+            var excluded = store.LoadExcludedSymbolsByProject(incrementalSnapshot);
+            Assert.Contains(excluded["ProjC"], id => id.StartsWith("M:ProjC.GeneratedHelper.Value", StringComparison.Ordinal));
+            if (scenario == 1)
+                Assert.Contains(excluded["ProjC"], id => id.StartsWith("T:ProjC.ExtraGenerated", StringComparison.Ordinal));
+        }
 
         var fullDbPath = Path.Combine(TestDir, "full-parity.db");
         var fullSnapshot = await RunFullIndexAsync(fullDbPath);

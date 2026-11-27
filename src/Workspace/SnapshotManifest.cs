@@ -51,6 +51,10 @@ public sealed partial class SnapshotManifest
     public IReadOnlyDictionary<string, string> CompilationOptionsFingerprints { get; init; }
         = new Dictionary<string, string>(StringComparer.Ordinal);
 
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, string?> ExcludedDocumentsFingerprints { get; init; }
+        = new Dictionary<string, string?>(StringComparer.Ordinal);
+
     [JsonPropertyName("internals_visible_to")]
     public IReadOnlyDictionary<string, IReadOnlyList<string>> InternalsVisibleTo { get; init; }
         = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
@@ -102,6 +106,7 @@ public sealed partial class SnapshotManifest
             AssemblyNames = new Dictionary<string, string>(workspace.AssemblyNames, StringComparer.Ordinal),
             MetadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
             CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
+            ExcludedDocumentsFingerprints = new Dictionary<string, string?>(workspace.ExcludedDocumentsFingerprints, StringComparer.Ordinal),
             InternalsVisibleTo = new Dictionary<string, IReadOnlyList<string>>(workspace.InternalsVisibleTo, StringComparer.Ordinal),
             ProjectPaths = new Dictionary<string, string>(workspace.ProjectPaths, StringComparer.Ordinal),
             UnloadedProjects = workspace.UnloadedProjects,
@@ -185,6 +190,7 @@ public sealed partial class SnapshotManifest
             CompilationOptionsFingerprint = CompilationOptionsFingerprints.TryGetValue(kvp.Key, out var fp)
                 ? fp
                 : null,
+            ExcludedDocumentsFingerprint = ExcludedDocumentsFingerprints.TryGetValue(kvp.Key, out var excludedFp) ? excludedFp : null,
             DocumentPaths = ProjectDocuments.TryGetValue(kvp.Key, out var documentPaths)
                 ? [.. documentPaths]
                 : null,
@@ -306,6 +312,7 @@ public sealed partial class SnapshotManifest
             AssemblyNames = assemblyNames,
             MetadataReferenceIdentities = metadataReferenceIdentities,
             CompilationOptionsFingerprints = compilationOptionsFingerprints,
+            ExcludedDocumentsFingerprints = selectedProjects.ToDictionary(p => p.Name, p => p.ExcludedDocumentsFingerprint, StringComparer.Ordinal),
             InternalsVisibleTo = internalsVisibleTo,
             ProjectPaths = projectPaths,
             UnloadedProjects = storage.UnloadedProjects,

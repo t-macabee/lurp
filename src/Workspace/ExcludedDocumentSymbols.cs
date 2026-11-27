@@ -1,3 +1,4 @@
+using Lurp.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -12,74 +13,66 @@ namespace Lurp.Workspace;
 /// </summary>
 internal static class ExcludedDocumentSymbols
 {
-    public static async Task<HashSet<string>> CollectAsync(
-        Solution solution,
-        WorkspaceInfo workspaceInfo,
-        CancellationToken cancellationToken)
+    public static async Task<HashSet<string>> CollectAsync(Solution solution, WorkspaceInfo workspaceInfo, CancellationToken cancellationToken)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            if (!workspaceInfo.ExcludedDocuments.ContainsKey(project.Id)) continue;
+            var compilation = await CompilationHelper.GetCompilationAsync(project, cancellationToken);
+            if (compilation != null)
+                result.UnionWith(await CollectForProjectAsync(project, compilation, workspaceInfo, cancellationToken));
+        }
+        return result;
+    }
+
+    public static async Task<HashSet<string>> CollectForProjectAsync(
+        Project project, Compilation compilation, WorkspaceInfo workspaceInfo, CancellationToken cancellationToken)
     {
         var excludedIds = new HashSet<string>(StringComparer.Ordinal);
-        if (workspaceInfo.ExcludedDocuments.Count == 0)
-            return excludedIds;
-
+        var excludedPaths = workspaceInfo.GetExcludedDocuments(project, project.Name);
         var normalizedRoot = PathNormalizer.NormalizeRoot(workspaceInfo.Id.GitRoot);
+        var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
+        var excludedSet = new HashSet<string>(excludedPaths, PathNormalizer.PathComparer);
+        var visitedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
 
-        foreach (var (projectId, excludedPaths) in workspaceInfo.ExcludedDocuments)
+        foreach (var tree in compilation.SyntaxTrees)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (excludedPaths.Count == 0)
+            if (string.IsNullOrEmpty(tree.FilePath))
                 continue;
 
-            var project = solution.GetProject(projectId);
-            if (project == null)
+            var relPath = PathNormalizer.ToGitRelativeFromNormalizedRoot(tree.FilePath, normalizedRoot);
+            if (!excludedSet.Contains(relPath))
                 continue;
 
-            var compilation = await project.GetCompilationAsync(cancellationToken);
-            if (compilation == null)
-                continue;
-
-            var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-            var excludedSet = new HashSet<string>(excludedPaths, PathNormalizer.PathComparer);
-            var visitedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-
-            foreach (var tree in compilation.SyntaxTrees)
+            var semanticModel = compilation.GetSemanticModel(tree);
+            var root = await tree.GetRootAsync(cancellationToken);
+            foreach (var node in root.DescendantNodes())
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (string.IsNullOrEmpty(tree.FilePath))
-                    continue;
-
-                var relPath = PathNormalizer.ToGitRelativeFromNormalizedRoot(tree.FilePath, normalizedRoot);
-                if (!excludedSet.Contains(relPath))
-                    continue;
-
-                var semanticModel = compilation.GetSemanticModel(tree);
-                var root = await tree.GetRootAsync(cancellationToken);
-                foreach (var node in root.DescendantNodes())
+                switch (node)
                 {
-                    switch (node)
-                    {
-                        case BaseTypeDeclarationSyntax or DelegateDeclarationSyntax:
-                            if (semanticModel.GetDeclaredSymbol(node, cancellationToken) is INamedTypeSymbol typeSymbol)
-                                CollectTypeAndMembers(typeSymbol, assemblyIdentity, workspaceInfo, normalizedRoot, visitedTypes, excludedIds);
-                            break;
-                        case BaseFieldDeclarationSyntax fieldDecl:
-                            foreach (var variable in fieldDecl.Declaration.Variables)
-                            {
-                                var fieldSymbol = semanticModel.GetDeclaredSymbol(variable, cancellationToken);
-                                TryAddSymbol(fieldSymbol, assemblyIdentity, workspaceInfo, normalizedRoot, excludedIds);
-                            }
-                            break;
-                        case AccessorDeclarationSyntax accessorDecl:
-                            TryAddSymbol(semanticModel.GetDeclaredSymbol(accessorDecl, cancellationToken), assemblyIdentity, workspaceInfo, normalizedRoot, excludedIds);
-                            break;
-                        case MemberDeclarationSyntax memberDecl when memberDecl is not BaseNamespaceDeclarationSyntax:
-                            var memberSymbol = semanticModel.GetDeclaredSymbol(memberDecl, cancellationToken);
-                            TryAddSymbol(memberSymbol, assemblyIdentity, workspaceInfo, normalizedRoot, excludedIds);
-                            break;
-                    }
+                    case BaseTypeDeclarationSyntax or DelegateDeclarationSyntax:
+                        if (semanticModel.GetDeclaredSymbol(node, cancellationToken) is INamedTypeSymbol typeSymbol)
+                            CollectTypeAndMembers(typeSymbol, assemblyIdentity, workspaceInfo, normalizedRoot, visitedTypes, excludedIds);
+                        break;
+                    case BaseFieldDeclarationSyntax fieldDecl:
+                        foreach (var variable in fieldDecl.Declaration.Variables)
+                        {
+                            var fieldSymbol = semanticModel.GetDeclaredSymbol(variable, cancellationToken);
+                            TryAddSymbol(fieldSymbol, assemblyIdentity, workspaceInfo, normalizedRoot, excludedIds);
+                        }
+                        break;
+                    case AccessorDeclarationSyntax accessorDecl:
+                        TryAddSymbol(semanticModel.GetDeclaredSymbol(accessorDecl, cancellationToken), assemblyIdentity, workspaceInfo, normalizedRoot, excludedIds);
+                        break;
+                    case MemberDeclarationSyntax memberDecl when memberDecl is not BaseNamespaceDeclarationSyntax:
+                        var memberSymbol = semanticModel.GetDeclaredSymbol(memberDecl, cancellationToken);
+                        TryAddSymbol(memberSymbol, assemblyIdentity, workspaceInfo, normalizedRoot, excludedIds);
+                        break;
                 }
             }
         }
-
         return excludedIds;
     }
 

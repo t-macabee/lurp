@@ -191,6 +191,7 @@ public static class IndexRunner
             // Step: Full Extraction Loop (compilation load + fact extraction + db writes)
             var swExtract = Stopwatch.StartNew();
             var allEdges = new List<EdgeRecord>();
+            var compilations = new Dictionary<string, (Project Project, Compilation Compilation)>(StringComparer.Ordinal);
             var blindProjects = new List<string>(workspaceInfo.UnloadedProjects);
             var extractedProjects = 0;
 
@@ -207,6 +208,7 @@ public static class IndexRunner
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var projectName = project.Name;
+                compilations[projectName] = (project, compilation);
 
                 sink.Write($"  [{projectName}] ");
 
@@ -297,7 +299,12 @@ public static class IndexRunner
             // matching the incremental path's phase order.
             var swOrphans = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
-            var excludedSymbolIds = await ExcludedDocumentSymbols.CollectAsync(solution, workspaceInfo, cancellationToken);
+            var excludedByProject = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (var (project, compilation) in compilations.Values)
+                if (workspaceInfo.ExcludedDocuments.ContainsKey(project.Id))
+                    excludedByProject[project.Name] = await ExcludedDocumentSymbols.CollectForProjectAsync(project, compilation, workspaceInfo, cancellationToken);
+            store.SaveExcludedSymbols(buildSnapshotId, excludedByProject);
+            var excludedSymbolIds = excludedByProject.Values.SelectMany(static symbols => symbols).ToHashSet(StringComparer.Ordinal);
             var orphanEdgesDropped = store.DeleteOrphanEdges(buildSnapshotId, excludedSymbolIds);
             store.PruneSnapshotGraphNodes(buildSnapshotId);
             swOrphans.Stop();
