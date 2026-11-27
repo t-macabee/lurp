@@ -6,6 +6,46 @@ namespace Lurp.Tests;
 public sealed partial class GoldenAdapterTests
 {
     [Fact]
+    public async Task EfModel_RespectsBaseAndVirtualBuilderDispatch()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Context.cs"] = """
+                using Microsoft.EntityFrameworkCore;
+                using Microsoft.EntityFrameworkCore.Metadata.Builders;
+                namespace App;
+                public class Root;
+                public class BaseOwned;
+                public class DerivedOwned;
+                public abstract class BaseContext : DbContext
+                {
+                    protected virtual void Configure(EntityTypeBuilder<Root> b) { b.OwnsOne<BaseOwned>("B"); }
+                    protected override void OnModelCreating(ModelBuilder model) { model.Entity<Root>(Configure); }
+                }
+                public class BaseGroupContext : BaseContext
+                {
+                    protected override void Configure(EntityTypeBuilder<Root> b) { b.OwnsOne<DerivedOwned>("D"); }
+                    protected override void OnModelCreating(ModelBuilder model) { model.Entity<Root>(base.Configure); }
+                }
+                public class VirtualGroupContext : BaseContext
+                {
+                    protected override void Configure(EntityTypeBuilder<Root> b) { b.OwnsOne<DerivedOwned>("D"); }
+                }
+                public class BaseCallContext : BaseContext
+                {
+                    protected override void Configure(EntityTypeBuilder<Root> b) { b.OwnsOne<DerivedOwned>("D"); }
+                    protected override void OnModelCreating(ModelBuilder model) { base.Configure(model.Entity<Root>()); }
+                }
+                """
+        }, ["Microsoft.EntityFrameworkCore@10.0.13"]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        AssertEfMappings(snapshot, "BaseGroupContext", "BaseOwned", "Root");
+        AssertEfMappings(snapshot, "VirtualGroupContext", "DerivedOwned", "Root");
+        AssertEfMappings(snapshot, "BaseCallContext", "BaseOwned", "Root");
+    }
+
+    [Fact]
     public async Task EfModel_FollowsBuilderMethodGroupsAndConverges()
     {
         const string helpers = """

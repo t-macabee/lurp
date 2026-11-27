@@ -437,7 +437,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     continue;
                 var onContextInstance = body.OnContextInstance &&
                     (IsThisReference(reference.Instance) || target is { MethodKind: MethodKind.LocalFunction, IsStatic: false });
-                if (IsThisReference(reference.Instance) && (target.IsVirtual || target.IsAbstract || target.IsOverride))
+                if (reference.IsVirtual && IsThisReference(reference.Instance) &&
+                    reference.Syntax is not MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax })
                     target = MostDerivedOverride(body.DispatchType, target);
                 VisitMethod(body.BindMethod(target), configEntity: null, builderArguments, mappingsOnly,
                     onContextInstance, body.DispatchType);
@@ -475,9 +476,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
             var onContextInstance = body.OnContextInstance &&
                 (IsThisReference(invocation.Instance) || target is { MethodKind: MethodKind.LocalFunction, IsStatic: false });
-            var baseCall = invocation.Syntax is InvocationExpressionSyntax
-                { Expression: MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax } };
-            if (!baseCall && IsThisReference(invocation.Instance) && (target.IsVirtual || target.IsAbstract || target.IsOverride))
+            if (invocation.IsVirtual && IsThisReference(invocation.Instance))
                 target = MostDerivedOverride(body.DispatchType, target);
             VisitMethod(body.BindMethod(target), configEntity: null, builderArguments, mappingsOnly, onContextInstance, body.DispatchType);
             return true;
