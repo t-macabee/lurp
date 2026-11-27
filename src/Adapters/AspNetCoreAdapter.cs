@@ -424,13 +424,19 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 return true;
             }
 
-            var initializer = constructor.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() switch
+            var syntax = constructor.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+            var initializer = syntax switch
             {
                 ConstructorDeclarationSyntax declaration => (SyntaxNode?)declaration.Initializer,
                 TypeDeclarationSyntax declaration => declaration.BaseList?.Types.OfType<PrimaryConstructorBaseTypeSyntax>().FirstOrDefault(),
                 _ => null
             };
-            if (initializer == null)
+            var call = initializer != null
+                ? context.GetDeclaringSemanticModel(initializer.SyntaxTree)?.GetOperation(initializer) as IInvocationOperation
+                : syntax is ConstructorDeclarationSyntax constructorDeclaration
+                    ? (context.GetDeclaringSemanticModel(constructorDeclaration.SyntaxTree)?.GetOperation(constructorDeclaration) as IConstructorBodyOperation)?.Initializer as IInvocationOperation
+                    : null;
+            if (call == null && initializer == null)
             {
                 if (!context.IsSolutionSymbol(constructor.ContainingType) ||
                     SelectImplicitBaseConstructor(constructor) is not { } baseConstructor)
@@ -441,7 +447,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 continue;
             }
 
-            if (context.GetDeclaringSemanticModel(initializer.SyntaxTree)?.GetOperation(initializer) is not IInvocationOperation call)
+            if (call == null)
                 return false;
 
             var nextArguments = new object?[call.TargetMethod.Parameters.Length];
@@ -501,7 +507,8 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     /// <summary>
     ///     Whether <paramref name="containingType" /> can invoke this base constructor. The type is
     ///     derived from the constructor's type, so protected access is enough. Internal access also
-    ///     needs the same assembly identity or an <c>InternalsVisibleTo</c> grant. The decision uses
+    ///     needs the same assembly identity or an <c>InternalsVisibleTo</c> grant. Private access
+    ///     also permits the declaring type and types nested inside it. The decision uses
     ///     the declared accessibility only: the two symbols can come from different compilations,
     ///     where <c>Compilation.IsSymbolAccessibleWithin</c> rejects the other compilation's symbols.
     /// </summary>
@@ -510,6 +517,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return constructor.DeclaredAccessibility switch
         {
             Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal => true,
+            Accessibility.Private => IsNestedWithin(containingType, constructor.ContainingType),
             Accessibility.Internal or Accessibility.ProtectedAndInternal =>
                 constructor.ContainingAssembly is { } assembly &&
                 containingType.ContainingAssembly is { } containingAssembly &&
@@ -517,6 +525,16 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                  assembly.GivesAccessTo(containingAssembly)),
             _ => false
         };
+    }
+
+    private static bool IsNestedWithin(INamedTypeSymbol type, INamedTypeSymbol enclosingType)
+    {
+        for (INamedTypeSymbol? current = type; current != null; current = current.ContainingType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, enclosingType.OriginalDefinition))
+                return true;
+        }
+        return false;
     }
 
     private static object?[] ReadImplicitConstructorArguments(IMethodSymbol constructor)

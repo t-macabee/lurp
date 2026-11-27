@@ -240,6 +240,51 @@ public sealed partial class GoldenAdapterTests
     }
 
     [Fact]
+    public async Task Phase3_AspNetCore_NestedPrivateBaseConstructorsResolveRoutes()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Web.cs"] = """
+                using Microsoft.AspNetCore.Mvc;
+                using Microsoft.AspNetCore.Mvc.Routing;
+                namespace App;
+                public abstract class OuterAttribute : HttpMethodAttribute
+                {
+                    private OuterAttribute() : base(new[] { "GET" }, "nested") { }
+                    public sealed class NestedNoCtorAttribute : OuterAttribute;
+                    public sealed class NestedExplicitEmptyAttribute : OuterAttribute { public NestedExplicitEmptyAttribute() { } }
+                    public sealed class NestedPrimaryAttribute() : OuterAttribute;
+                    public static class Holder { public sealed class DeepNestedAttribute : OuterAttribute; }
+                }
+                public abstract class OuterWithPrivateAndProtected : HttpMethodAttribute
+                {
+                    private OuterWithPrivateAndProtected() : base(new[] { "GET" }, "private") { }
+                    protected OuterWithPrivateAndProtected(string t = "protected") : base(new[] { "GET" }, t) { }
+                }
+                public sealed class TopLevelDerivedAttribute : OuterWithPrivateAndProtected;
+                [Route("api")] public class DemoController : ControllerBase
+                {
+                    [OuterAttribute.NestedNoCtor] public void NoCtor() { }
+                    [OuterAttribute.NestedExplicitEmpty] public void Explicit() { }
+                    [OuterAttribute.NestedPrimary] public void Primary() { }
+                    [OuterAttribute.Holder.DeepNested] public void Deep() { }
+                    [TopLevelDerived] public void TopLevel() { }
+                }
+                """
+        }, frameworkReferences: [AspNetCoreFramework]);
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var routes = QueryEdges(snapshot, "RoutesTo", Provenance.FrameworkDerived);
+        foreach (var method in new[] { "NoCtor", "Explicit", "Primary", "Deep", "TopLevel" })
+        {
+            var target = ResolveSymbolId(snapshot, "global::App.DemoController." + method);
+            var route = Assert.Single(routes, e => e.TargetSymbolId == target);
+            Assert.Equal(method == "TopLevel" ? "route://GET /api/protected" : "route://GET /api/nested",
+                route.SourceSymbolId);
+        }
+    }
+
+    [Fact]
     public async Task Phase3_AspNetCore_MapsMiddlewareAndCustomHttpVerbs()
     {
         CreateProject("App", new Dictionary<string, string>
