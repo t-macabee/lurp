@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
 
@@ -189,11 +190,19 @@ public static class SnapshotComparison
 
     private static DiagnosticSnapshot[] ReadDiagnostics(SqliteIndexStore store, string snapshotId)
     {
-        var diagnostics = store.GetDiagnostics(snapshotId);
-        SortDiagnostics(diagnostics);
-        return diagnostics.Select(diagnostic => new DiagnosticSnapshot(
-            diagnostic.ProjectName, diagnostic.DocumentPath, diagnostic.Severity, diagnostic.Id, diagnostic.Message,
-            diagnostic.StartLine, diagnostic.StartColumn, diagnostic.EndLine, diagnostic.EndColumn)).ToArray();
+        return store.GetDiagnostics(snapshotId)
+            .Select(diagnostic => new DiagnosticSnapshot(
+                diagnostic.ProjectName, NormalizeRedirectedDiagnosticPath(diagnostic.DocumentPath),
+                diagnostic.Severity, diagnostic.Id, diagnostic.Message,
+                diagnostic.StartLine, diagnostic.StartColumn, diagnostic.EndLine, diagnostic.EndColumn))
+            .OrderBy(d => d.ProjectName, StringComparer.Ordinal)
+            .ThenBy(d => d.DocumentPath ?? "", StringComparer.Ordinal)
+            .ThenBy(d => d.Id, StringComparer.Ordinal)
+            .ThenBy(d => d.StartLine).ThenBy(d => d.StartColumn)
+            .ThenBy(d => d.EndLine).ThenBy(d => d.EndColumn)
+            .ThenBy(d => d.Severity, StringComparer.Ordinal)
+            .ThenBy(d => d.Message, StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static (string SymbolId, string Kind, string Value, string? DocumentPath)[] ReadAnnotations(
@@ -616,28 +625,16 @@ public static class SnapshotComparison
         });
     }
 
-    private static void SortDiagnostics(List<DiagnosticRecord> diags)
+    // Cache roots can differ between index runs. Keep the solution key and the
+    // complete intermediate path, so distinct generated files still differ.
+    private static string? NormalizeRedirectedDiagnosticPath(string? path)
     {
-        diags.Sort((a, b) =>
-        {
-            var cmp = StringComparer.Ordinal.Compare(a.ProjectName, b.ProjectName);
-            if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
-            if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.Id, b.Id);
-            if (cmp != 0) return cmp;
-            cmp = Nullable.Compare(a.StartLine, b.StartLine);
-            if (cmp != 0) return cmp;
-            cmp = Nullable.Compare(a.StartColumn, b.StartColumn);
-            if (cmp != 0) return cmp;
-            cmp = Nullable.Compare(a.EndLine, b.EndLine);
-            if (cmp != 0) return cmp;
-            cmp = Nullable.Compare(a.EndColumn, b.EndColumn);
-            if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.Severity, b.Severity);
-            if (cmp != 0) return cmp;
-            return StringComparer.Ordinal.Compare(a.Message, b.Message);
-        });
+        if (path == null)
+            return null;
+
+        var normalized = path.Replace('\\', '/');
+        var match = Regex.Match(normalized, @"(?:^|/)lurp/([0-9a-f]{12})/obj/", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return match.Success ? "@lurp-cache/" + normalized[(match.Index + (match.Value.StartsWith('/') ? 1 : 0))..] : path;
     }
 
     private static void SortAnnotations(List<AnnotationRecord> annotations)

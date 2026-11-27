@@ -93,6 +93,44 @@ public sealed class SnapshotComparisonTests : IntegrationTestBase
         Assert.StartsWith("symbols:", difference, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Compare_RedirectedDiagnostics_IgnoreCacheRootOnly()
+    {
+        var (snapshot, copy) = await IndexAndCopyAsync();
+        AddDiagnostic(DbPath, snapshot, "/tmp/cache-a/lurp/0123456789ab/obj/App/net10.0/App.AssemblyInfo.cs");
+        AddDiagnostic(copy, snapshot, "/tmp/cache-b/lurp/0123456789ab/obj/App/net10.0/App.AssemblyInfo.cs");
+
+        Assert.Empty(SnapshotComparison.Compare(DbPath, snapshot, copy, snapshot));
+    }
+
+    [Theory]
+    [InlineData("/tmp/cache-b/lurp/0123456789ab/obj/App/net9.0/App.AssemblyInfo.cs")]
+    [InlineData("/tmp/cache-b/lurp/0123456789ab/obj/Other/net10.0/App.AssemblyInfo.cs")]
+    [InlineData("/tmp/cache-b/lurp/0123456789ac/obj/App/net10.0/App.AssemblyInfo.cs")]
+    [InlineData("/tmp/cache-b/not-lurp/0123456789ab/obj/App/net10.0/App.AssemblyInfo.cs")]
+    public async Task Compare_RedirectedDiagnostics_ReportDifferentIdentity(string otherPath)
+    {
+        var (snapshot, copy) = await IndexAndCopyAsync();
+        AddDiagnostic(DbPath, snapshot, "/tmp/cache-a/lurp/0123456789ab/obj/App/net10.0/App.AssemblyInfo.cs");
+        AddDiagnostic(copy, snapshot, otherPath);
+
+        Assert.Contains(SnapshotComparison.Compare(DbPath, snapshot, copy, snapshot),
+            difference => difference.StartsWith("diagnostics:", StringComparison.Ordinal));
+    }
+
+    private static void AddDiagnostic(string dbPath, string snapshot, string path)
+    {
+        using var connection = TestDatabase.Open(dbPath);
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO diagnostics (snapshot_id, project_name, document_path, severity, id, message)
+            VALUES (@snapshot, 'App', @path, 'Hidden', 'CS8019', 'Unnecessary using directive.');
+            """;
+        command.Parameters.AddWithValue("@snapshot", snapshot);
+        command.Parameters.AddWithValue("@path", path);
+        command.ExecuteNonQuery();
+    }
+
     private async Task<(string Snapshot, string Copy)> IndexAndCopyAsync()
     {
         CreateProject("App", new Dictionary<string, string>
