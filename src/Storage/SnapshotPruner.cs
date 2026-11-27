@@ -229,8 +229,6 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             cmd.ExecuteNonQuery();
         }
 
-        cmd.CommandText = "UPDATE semantic_changes SET to_snapshot_id = @targetId WHERE to_snapshot_id = @stagingId;";
-        cmd.ExecuteNonQuery();
     }
 
     private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId, bool preserveUserAnnotations = false, bool preservePreviousPin = false)

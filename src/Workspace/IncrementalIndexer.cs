@@ -461,8 +461,13 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // semantic-causes annotation (which degrades to an empty list when absent)
         // consume this; a run that needs neither shouldn't pay for it.
         cancellationToken.ThrowIfCancellationRequested();
+        (string FromSnapshotId, IReadOnlyList<SemanticChange> Changes)? pendingChanges = null;
         if (!skipDiff)
-            ComputeAndPersistSemanticChanges(context, timings);
+        {
+            var changes = SemanticDiffStep.ComputeAndPersist(_store, _output, context.Snapshots.FromSnapshotId,
+                context.Snapshots.ToSnapshotId, (HashSet<string>)context.Changes.DiffAndSearchSymbolIds, timings, rebuildTargetId);
+            if (rebuildTargetId != null) pendingChanges = (context.Snapshots.FromSnapshotId, changes);
+        }
 
         // Completion must be last : all preceding phases must succeed.
         cancellationToken.ThrowIfCancellationRequested();
@@ -475,7 +480,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             var swFts = Stopwatch.StartNew();
             _output.Write("Building search index for the replacement snapshot... ");
             _store.PromoteAndCompleteIndex(context.Snapshots.ToSnapshotId, rebuildTargetId,
-                context.Snapshots.FromSnapshotId, cancellationToken);
+                context.Snapshots.FromSnapshotId, cancellationToken, pendingChanges);
             _output.WriteLine("done.");
             swFts.Stop();
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds));
@@ -497,14 +502,6 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         _output.WriteLine("done.");
         sw.Stop();
         timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, sw.ElapsedMilliseconds));
-    }
-
-    private void ComputeAndPersistSemanticChanges(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
-    {
-        SemanticDiffStep.ComputeAndPersist(
-            _store, _output, context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId,
-            (HashSet<string>)context.Changes.DiffAndSearchSymbolIds,
-            timings);
     }
 
     private HashSet<string> ComputeChangedSymbolIds(string snapshotId, HashSet<string> changedPaths)

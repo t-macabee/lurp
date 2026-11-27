@@ -100,6 +100,73 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
         }
         """;
 
+    [Theory]
+    [InlineData("full")]
+    [InlineData("incremental")]
+    public async Task ForcedRebuild_StoresIdsForTheTargetSnapshot(string strategy)
+    {
+        CreateProject("P", new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateA });
+        var (idA, _) = await RunIndexAsync("full");
+        WriteFile("P", "Svc.cs", RecoveryStateB);
+        var (idB, _) = await RunIndexAsync("incremental");
+        WriteFile("P", "Svc.cs", RecoveryStateA);
+        await RunIndexAsync("full");
+        WriteFile("P", "Svc.cs", RecoveryStateB);
+        var (rebuilt, _) = await RunIndexAsync(strategy, force: true);
+        Assert.Equal(idB, rebuilt);
+        using var store = OpenStore(DbPath);
+        var stored = store.GetSemanticChanges(idA, idB);
+        var (live, _) = new SemanticDiffer(store, store, store).ComputeDiff(idA, idB);
+        Assert.NotEmpty(live);
+        Assert.Equal(live.Select(c => c.ChangeId).Order(), stored.Select(c => c.ChangeId).Order());
+        Assert.All(stored, c => Assert.Equal(idB, c.ToSnapshotId));
+    }
+
+    [Theory]
+    [InlineData("full")]
+    [InlineData("incremental")]
+    public async Task ForcedRebuild_FailureAfterDiff_PreservesLiveChanges(string strategy)
+    {
+        CreateProject("P", new Dictionary<string, string> { ["Svc.cs"] = RecoveryStateA });
+        var (idA, _) = await RunIndexAsync("full");
+        WriteFile("P", "Svc.cs", RecoveryStateB);
+        var (idB, _) = await RunIndexAsync("incremental");
+        using var store = OpenStore(DbPath);
+        var before = store.GetSemanticChanges(idA, idB)
+            .Select(c => (c.ChangeId, c.ToSnapshotId)).OrderBy(c => c.ChangeId).ToArray();
+        Assert.NotEmpty(before);
+        WriteFile("P", "Svc.cs", RecoveryStateA);
+        await RunIndexAsync("full");
+        WriteFile("P", "Svc.cs", RecoveryStateB);
+
+        (string ChangeId, string ToSnapshotId)[]? during = null;
+        long? stagingRows = null;
+        var sink = new AfterSemanticDiffSink(() =>
+        {
+            using var reader = OpenStore(DbPath);
+            during = reader.GetSemanticChanges(idA, idB)
+                .Select(c => (c.ChangeId, c.ToSnapshotId)).OrderBy(c => c.ChangeId).ToArray();
+            using var connection = OpenDbConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM semantic_changes WHERE from_snapshot_id = @from AND to_snapshot_id NOT IN (@a, @b)";
+            command.Parameters.AddWithValue("@from", idA);
+            command.Parameters.AddWithValue("@a", idA);
+            command.Parameters.AddWithValue("@b", idB);
+            stagingRows = (long)command.ExecuteScalar()!;
+            throw new InvalidOperationException("injected failure after semantic diff");
+        });
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            IndexRunner.RunAsync(store, SolutionPath, [], strategy, output: sink, force: true));
+
+        Assert.Equal("injected failure after semantic diff", error.Message);
+        Assert.Equal(before, during);
+        Assert.Equal(0, stagingRows);
+        Assert.Equal(before, store.GetSemanticChanges(idA, idB)
+            .Select(c => (c.ChangeId, c.ToSnapshotId)).OrderBy(c => c.ChangeId).ToArray());
+        Assert.All(before, c => Assert.Equal(idB, c.ToSnapshotId));
+    }
+
     [Fact]
     public async Task FullStrategy_RebuildsAWrongIncrementalSnapshot()
     {
@@ -375,6 +442,25 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
     {
         var argv = LurpTool.Argv([.. args, $"--output-dir={Path.GetDirectoryName(DbPath)}"]);
         return TestProcess.Run(argv[0], argv[1..], TimeSpan.FromMinutes(2));
+    }
+
+    private sealed class AfterSemanticDiffSink(Action onDiff) : IOutputSink
+    {
+        private bool _waitingForDiff;
+
+        public void Write(string message)
+        {
+            if (message == "Computing semantic diff from previous snapshot... ")
+                _waitingForDiff = true;
+        }
+
+        public void WriteLine(string message = "")
+        {
+            if (_waitingForDiff && message.StartsWith("done (", StringComparison.Ordinal))
+                onDiff();
+        }
+
+        public void WriteErrorLine(string message = "") { }
     }
 
     private sealed class DuringExtractionSink(Action onExtraction) : IOutputSink

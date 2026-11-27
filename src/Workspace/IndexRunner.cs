@@ -303,14 +303,16 @@ public static class IndexRunner
             swOrphans.Stop();
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.OrphanEdgeCleanup, swOrphans.ElapsedMilliseconds));
 
+            (string FromSnapshotId, IReadOnlyList<SemanticChange> Changes)? pendingChanges = null;
             if (!skipDiff && previousManifest != null)
             {
                 // Step: Semantic Diff — skipped when the caller passed --skip-diff.
                 cancellationToken.ThrowIfCancellationRequested();
                 sink.WriteLine();
-                SemanticDiffStep.ComputeAndPersist(
+                var changes = SemanticDiffStep.ComputeAndPersist(
                     store, sink, previousManifest.SnapshotId, buildSnapshotId,
-                    null, timings);
+                    null, timings, isRebuild ? snapshotIdStr : null);
+                if (isRebuild) pendingChanges = (previousManifest.SnapshotId, changes);
             }
 
             var totalProjects = extractedProjects + blindProjects.Count;
@@ -334,7 +336,7 @@ public static class IndexRunner
             cancellationToken.ThrowIfCancellationRequested();
             if (isRebuild)
             {
-                store.PromoteAndCompleteIndex(buildSnapshotId, snapshotIdStr, annotationSourceId, cancellationToken);
+                store.PromoteAndCompleteIndex(buildSnapshotId, snapshotIdStr, annotationSourceId, cancellationToken, pendingChanges);
             }
             else
             {

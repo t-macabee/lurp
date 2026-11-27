@@ -10,26 +10,29 @@ namespace Lurp.Workspace;
 /// </summary>
 internal static class SemanticDiffStep
 {
-    public static void ComputeAndPersist(
+    public static IReadOnlyList<SemanticChange> ComputeAndPersist(
         SqliteIndexStore store,
         IOutputSink output,
         string fromSnapshotId,
         string toSnapshotId,
         HashSet<string>? changedSymbolIds,
-        List<SnapshotTimingRow> timings)
+        List<SnapshotTimingRow> timings,
+        string? targetToSnapshotId = null)
     {
         var sw = Stopwatch.StartNew();
         output.Write("Computing semantic diff from previous snapshot... ");
 
         var differ = new SemanticDiffer(store, store, store);
         var (diffChanges, skippedComparisons) = changedSymbolIds != null
-            ? differ.ComputeDiff(fromSnapshotId, toSnapshotId, changedSymbolIds)
-            : differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+            ? differ.ComputeDiff(fromSnapshotId, toSnapshotId, changedSymbolIds, targetToSnapshotId)
+            : differ.ComputeDiff(fromSnapshotId, toSnapshotId, targetToSnapshotId);
 
-        store.SaveSemanticChanges(fromSnapshotId, toSnapshotId, diffChanges);
+        if (targetToSnapshotId == null)
+            store.SaveSemanticChanges(fromSnapshotId, toSnapshotId, diffChanges);
 
         output.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
         sw.Stop();
         timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.SemanticDiff, sw.ElapsedMilliseconds));
+        return diffChanges;
     }
 }

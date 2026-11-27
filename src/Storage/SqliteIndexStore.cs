@@ -215,11 +215,13 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     }
 
     internal void PromoteAndCompleteIndex(string stagingId, string targetId, string? annotationSourceId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, (string FromSnapshotId, IReadOnlyList<SemanticChange> Changes)? pendingChanges = null)
     {
         EnsureOpen();
         using var transaction = _connection!.BeginTransaction();
         _pruner!.PromoteSnapshot(stagingId, targetId, transaction);
+        if (pendingChanges is { } pending)
+            _semanticDiffStore!.SaveSemanticChanges(pending.FromSnapshotId, targetId, pending.Changes, transaction);
         _searchMaintenance!.InsertSearchIndex(targetId, transaction);
         cancellationToken.ThrowIfCancellationRequested();
         CompleteIndex(targetId, annotationSourceId, transaction);

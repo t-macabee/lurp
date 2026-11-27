@@ -53,20 +53,20 @@ public class SemanticDiffer
         _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
     }
 
-    public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId)
+    public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId, string? targetToSnapshotId = null)
     {
-        return ComputeDiffInternal(fromSnapshotId, toSnapshotId, null);
+        return ComputeDiffInternal(fromSnapshotId, toSnapshotId, null, targetToSnapshotId);
     }
 
-    public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId, HashSet<string> changedSymbolIds)
+    public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId, HashSet<string> changedSymbolIds, string? targetToSnapshotId = null)
     {
         if (changedSymbolIds.Count == 0)
             return ([], 0);
 
-        return ComputeDiffInternal(fromSnapshotId, toSnapshotId, changedSymbolIds);
+        return ComputeDiffInternal(fromSnapshotId, toSnapshotId, changedSymbolIds, targetToSnapshotId);
     }
 
-    private (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiffInternal(string fromSnapshotId, string toSnapshotId, HashSet<string>? changedSymbolIds)
+    private (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiffInternal(string fromSnapshotId, string toSnapshotId, HashSet<string>? changedSymbolIds, string? targetToSnapshotId)
     {
         var changes = new List<SemanticChange>();
         var skippedComparisons = 0;
@@ -161,12 +161,12 @@ public class SemanticDiffer
             ordinal = previous != null && previous.SymbolId == c.SymbolId &&
                 previous.ChangeType == c.ChangeType && previous.DetailJson == c.DetailJson
                 ? ordinal + 1 : 0;
-            var payload = JsonSerializer.Serialize(new object?[] { fromSnapshotId, toSnapshotId, c.ChangeType, c.SymbolId, c.DetailJson, ordinal });
+            var payload = JsonSerializer.Serialize(new object?[] { fromSnapshotId, targetToSnapshotId ?? toSnapshotId, c.ChangeType, c.SymbolId, c.DetailJson, ordinal });
             ordered[i] = new SemanticChange
             {
                 ChangeId = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
                 FromSnapshotId = c.FromSnapshotId,
-                ToSnapshotId = c.ToSnapshotId,
+                ToSnapshotId = targetToSnapshotId ?? toSnapshotId,
                 ChangeType = c.ChangeType,
                 SymbolId = c.SymbolId,
                 DetailJson = c.DetailJson,
@@ -502,7 +502,7 @@ public class SemanticDiffer
     {
         return new SemanticChange
         {
-            ChangeId = Guid.NewGuid().ToString("N"),
+            ChangeId = string.Empty,
             FromSnapshotId = fromSnapshotId ?? string.Empty,
             ToSnapshotId = toSnapshotId ?? string.Empty,
             ChangeType = changeType,

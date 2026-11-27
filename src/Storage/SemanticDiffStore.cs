@@ -21,41 +21,37 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
     public void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes)
     {
         using var transaction = _connection.BeginTransaction();
-        try
-        {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
+        SaveSemanticChanges(fromSnapshotId, toSnapshotId, changes, transaction);
+        transaction.Commit();
+    }
 
-            foreach (var change in changes)
-            {
-                command.CommandText = """
-                    INSERT INTO semantic_changes (change_id, from_snapshot_id, to_snapshot_id, change_type, symbol_id, detail_json, created_at_utc)
-                    VALUES (@changeId, @fromSnapshotId, @toSnapshotId, @changeType, @symbolId, @detailJson, @createdAtUtc)
-                    ON CONFLICT(change_id) DO UPDATE SET
-                        from_snapshot_id = excluded.from_snapshot_id,
-                        to_snapshot_id = excluded.to_snapshot_id,
-                        change_type = excluded.change_type,
-                        symbol_id = excluded.symbol_id,
-                        detail_json = excluded.detail_json,
-                        created_at_utc = excluded.created_at_utc;
-                    """;
-                command.Parameters.Clear();
-                command.Parameters.AddWithValue("@changeId", change.ChangeId);
-                command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
-                command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
-                command.Parameters.AddWithValue("@changeType", change.ChangeType);
-                command.Parameters.AddWithValue("@symbolId", change.SymbolId);
-                command.Parameters.AddWithValue("@detailJson", (object?)change.DetailJson ?? DBNull.Value);
-                command.Parameters.AddWithValue("@createdAtUtc", change.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
-                command.ExecuteNonQuery();
-            }
+    internal void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes, SqliteTransaction transaction)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
 
-            transaction.Commit();
-        }
-        catch
+        foreach (var change in changes)
         {
-            transaction.Rollback();
-            throw;
+            command.CommandText = """
+                INSERT INTO semantic_changes (change_id, from_snapshot_id, to_snapshot_id, change_type, symbol_id, detail_json, created_at_utc)
+                VALUES (@changeId, @fromSnapshotId, @toSnapshotId, @changeType, @symbolId, @detailJson, @createdAtUtc)
+                ON CONFLICT(change_id) DO UPDATE SET
+                    from_snapshot_id = excluded.from_snapshot_id,
+                    to_snapshot_id = excluded.to_snapshot_id,
+                    change_type = excluded.change_type,
+                    symbol_id = excluded.symbol_id,
+                    detail_json = excluded.detail_json,
+                    created_at_utc = excluded.created_at_utc;
+                """;
+            command.Parameters.Clear();
+            command.Parameters.AddWithValue("@changeId", change.ChangeId);
+            command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
+            command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+            command.Parameters.AddWithValue("@changeType", change.ChangeType);
+            command.Parameters.AddWithValue("@symbolId", change.SymbolId);
+            command.Parameters.AddWithValue("@detailJson", (object?)change.DetailJson ?? DBNull.Value);
+            command.Parameters.AddWithValue("@createdAtUtc", change.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+            command.ExecuteNonQuery();
         }
     }
 
