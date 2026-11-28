@@ -26,6 +26,18 @@ internal static class ExcludedDocumentSymbols
         return result;
     }
 
+    /// <summary>Unions one project's excluded symbols into its name bucket; projects can share a name.</summary>
+    public static async Task CollectIntoAsync(
+        Dictionary<string, HashSet<string>> excludedByProject, Project project, Compilation compilation,
+        WorkspaceInfo workspaceInfo, CancellationToken cancellationToken)
+    {
+        var collected = await CollectForProjectAsync(project, compilation, workspaceInfo, cancellationToken);
+        if (excludedByProject.TryGetValue(project.Name, out var bucket))
+            bucket.UnionWith(collected);
+        else
+            excludedByProject[project.Name] = collected;
+    }
+
     public static async Task<HashSet<string>> CollectForProjectAsync(
         Project project, Compilation compilation, WorkspaceInfo workspaceInfo, CancellationToken cancellationToken)
     {

@@ -191,7 +191,7 @@ public static class IndexRunner
             // Step: Full Extraction Loop (compilation load + fact extraction + db writes)
             var swExtract = Stopwatch.StartNew();
             var allEdges = new List<EdgeRecord>();
-            var compilations = new Dictionary<string, (Project Project, Compilation Compilation)>(StringComparer.Ordinal);
+            var compilations = new List<(Project Project, Compilation Compilation)>();
             var blindProjects = new List<string>(workspaceInfo.UnloadedProjects);
             var extractedProjects = 0;
 
@@ -208,7 +208,7 @@ public static class IndexRunner
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var projectName = project.Name;
-                compilations[projectName] = (project, compilation);
+                compilations.Add((project, compilation));
 
                 sink.Write($"  [{projectName}] ");
 
@@ -300,9 +300,9 @@ public static class IndexRunner
             var swOrphans = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
             var excludedByProject = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-            foreach (var (project, compilation) in compilations.Values)
+            foreach (var (project, compilation) in compilations)
                 if (workspaceInfo.ExcludedDocuments.ContainsKey(project.Id))
-                    excludedByProject[project.Name] = await ExcludedDocumentSymbols.CollectForProjectAsync(project, compilation, workspaceInfo, cancellationToken);
+                    await ExcludedDocumentSymbols.CollectIntoAsync(excludedByProject, project, compilation, workspaceInfo, cancellationToken);
             store.SaveExcludedSymbols(buildSnapshotId, excludedByProject);
             var excludedSymbolIds = excludedByProject.Values.SelectMany(static symbols => symbols).ToHashSet(StringComparer.Ordinal);
             var orphanEdgesDropped = store.DeleteOrphanEdges(buildSnapshotId, excludedSymbolIds);
@@ -316,10 +316,12 @@ public static class IndexRunner
                 // Step: Semantic Diff — skipped when the caller passed --skip-diff.
                 cancellationToken.ThrowIfCancellationRequested();
                 sink.WriteLine();
-                var changes = SemanticDiffStep.ComputeAndPersist(
-                    store, sink, previousManifest.SnapshotId, buildSnapshotId,
-                    null, timings, isRebuild ? snapshotIdStr : null);
-                if (isRebuild) pendingChanges = (previousManifest.SnapshotId, changes);
+                if (isRebuild)
+                    pendingChanges = (previousManifest.SnapshotId, SemanticDiffStep.ComputeForRebuild(
+                        store, sink, previousManifest.SnapshotId, buildSnapshotId, snapshotIdStr, null, timings));
+                else
+                    SemanticDiffStep.ComputeAndPersist(
+                        store, sink, previousManifest.SnapshotId, buildSnapshotId, null, timings);
             }
 
             var totalProjects = extractedProjects + blindProjects.Count;

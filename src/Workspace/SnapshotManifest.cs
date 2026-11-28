@@ -276,8 +276,13 @@ public sealed partial class SnapshotManifest
         var internalsVisibleTo = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         var projectPaths = new Dictionary<string, string>(StringComparer.Ordinal);
         var projectDocuments = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var excludedDocumentsFingerprints = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var project in selectedProjects)
         {
+            // Conflicting rows for one name leave the fingerprint unknown, which forces a recompute.
+            if (!excludedDocumentsFingerprints.TryAdd(project.Name, project.ExcludedDocumentsFingerprint) &&
+                !string.Equals(excludedDocumentsFingerprints[project.Name], project.ExcludedDocumentsFingerprint, StringComparison.Ordinal))
+                excludedDocumentsFingerprints[project.Name] = null;
             projectGraph[project.Name] = [.. project.References];
             if (project.AssemblyName != null)
                 assemblyNames[project.Name] = project.AssemblyName;
@@ -312,7 +317,7 @@ public sealed partial class SnapshotManifest
             AssemblyNames = assemblyNames,
             MetadataReferenceIdentities = metadataReferenceIdentities,
             CompilationOptionsFingerprints = compilationOptionsFingerprints,
-            ExcludedDocumentsFingerprints = selectedProjects.ToDictionary(p => p.Name, p => p.ExcludedDocumentsFingerprint, StringComparer.Ordinal),
+            ExcludedDocumentsFingerprints = excludedDocumentsFingerprints,
             InternalsVisibleTo = internalsVisibleTo,
             ProjectPaths = projectPaths,
             UnloadedProjects = storage.UnloadedProjects,

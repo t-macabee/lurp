@@ -125,6 +125,147 @@ public sealed class BindingIncompletenessScopingTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task SameNameProjects_KeepBothProjectsExcludedSymbolsAndDeclarations_OnFullAndIncrementalRuns()
+    {
+        WriteSharedNameProject("one", "One");
+        WriteSharedNameProject("two", "Two");
+        CreateProject("Bystander", new Dictionary<string, string>
+        {
+            ["Bystander.cs"] = "namespace Bystander; public static class Entry { public static int Run() => 1; }"
+        });
+        RestoreSolution();
+
+        var (fullSnapshot, fullOutput) = await RunIndexAsync("full");
+
+        Assert.Contains("other=0)", fullOutput, StringComparison.Ordinal);
+        AssertBothSharedNameProjects(fullSnapshot);
+
+        foreach (var (folder, ns) in new[] { ("one", "One"), ("two", "Two") })
+        {
+            var caller = Path.Combine(TestDir, "src", folder, "Caller.cs");
+            File.WriteAllText(caller, $$"""
+                                        namespace {{ns}};
+
+                                        public static class Caller
+                                        {
+                                            public static int Run() => Generated.Value();
+                                            public static int RunAgain() => Generated.Value() + 1;
+                                        }
+                                        """);
+            Touch(caller);
+        }
+
+        var result = await RunIncrementalIndexWithResultAsync();
+
+        Assert.Equal(0, result.OrphanEdgesDropped.Other);
+        Assert.True(result.OrphanEdgesDropped.ExcludedDocument >= 2,
+            $"Expected excluded_document >= 2, got {result.OrphanEdgesDropped.FormatDropSummary()}");
+        AssertBothSharedNameProjects(result.NewSnapshotId, "RunAgain");
+
+        // A v55 snapshot written before the union holds only one project's rows.
+        using (var connection = TestDatabase.Open(DbPath))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM snapshot_excluded_symbols WHERE snapshot_id = @id AND symbol_id LIKE '%:One.%';";
+            command.Parameters.AddWithValue("@id", result.NewSnapshotId);
+            Assert.True(command.ExecuteNonQuery() > 0);
+        }
+
+        WriteFile("Bystander", "Bystander.cs", "namespace Bystander; public static class Entry { public static int Run() => 2; }");
+        Touch(Path.Combine(TestDir, "src", "Bystander", "Bystander.cs"));
+
+        var recovered = await RunIncrementalIndexWithResultAsync();
+
+        AssertBothSharedNameProjects(recovered.NewSnapshotId, "RunAgain");
+    }
+
+    private void AssertBothSharedNameProjects(string snapshotId, string callerMethod = "Run")
+    {
+        using var store = OpenStore(DbPath);
+        var excluded = store.LoadExcludedSymbolsByProject(snapshotId)["SharedName"];
+        var declared = store.GetSymbolIdsInSnapshot(snapshotId).ToList();
+        foreach (var ns in new[] { "One", "Two" })
+        {
+            Assert.Contains(excluded, id => id.StartsWith($"M:{ns}.Generated.Value", StringComparison.Ordinal));
+            Assert.Contains(declared, id => id.StartsWith($"M:{ns}.Caller.{callerMethod}", StringComparison.Ordinal));
+        }
+    }
+
+    private void WriteSharedNameProject(string folder, string ns)
+    {
+        var projectDir = Path.Combine(TestDir, "src", folder);
+        Directory.CreateDirectory(Path.Combine(projectDir, "obj"));
+        File.WriteAllText(Path.Combine(projectDir, "SharedName.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <AssemblyName>SharedName{ns}</AssemblyName>
+              </PropertyGroup>
+              <ItemGroup>
+                <Compile Include="obj/Generated.cs" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(projectDir, "Caller.cs"),
+            $"namespace {ns}; public static class Caller {{ public static int Run() => Generated.Value(); }}");
+        File.WriteAllText(Path.Combine(projectDir, "obj", "Generated.cs"),
+            $"namespace {ns}; public static class Generated {{ public static int Value() => 1; }}");
+
+        var slnx = File.Exists(SolutionPath) ? File.ReadAllText(SolutionPath) : "<Solution>\n</Solution>";
+        File.WriteAllText(SolutionPath, slnx.Replace("</Solution>",
+            $"  <Folder Name=\"/{folder}/\">\n    <Project Path=\"src/{folder}/SharedName.csproj\" />\n  </Folder>\n</Solution>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DuplicateProjectRows_WithConflictingFingerprints_RecomputeExcludedSymbols()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Anchor.cs"] = "namespace Lib; public static class Anchor { public static int Value() => 1; }"
+        });
+        var libDir = Path.Combine(TestDir, "src", "Lib");
+        Directory.CreateDirectory(Path.Combine(libDir, "obj"));
+        File.WriteAllText(Path.Combine(libDir, "obj", "GenC.cs"),
+            "namespace Lib; public static class GenC { public static int Hidden() => 3; }");
+        var libCsproj = Path.Combine(libDir, "Lib.csproj");
+        File.WriteAllText(libCsproj, File.ReadAllText(libCsproj).Replace("</Project>",
+            "<ItemGroup><Compile Include=\"obj/GenC.cs\" /></ItemGroup></Project>", StringComparison.Ordinal));
+        CreateProject("Bystander", new Dictionary<string, string>
+        {
+            ["Bystander.cs"] = "namespace Bystander; public static class Entry { public static int Run() => 1; }"
+        });
+        RestoreSolution();
+
+        var previousSnapshot = await RunFullIndexAsync(DbPath);
+        using (var connection = TestDatabase.Open(DbPath))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO projects (snapshot_id, name, target_framework, excluded_documents_fingerprint)
+                SELECT snapshot_id, name, target_framework, 'conflicting' FROM projects WHERE snapshot_id = @id AND name = 'Lib';
+                DELETE FROM snapshot_excluded_symbols WHERE snapshot_id = @id;
+                """;
+            command.Parameters.AddWithValue("@id", previousSnapshot);
+            command.ExecuteNonQuery();
+        }
+
+        using (var store = OpenStore(DbPath))
+        {
+            var manifest = SnapshotManifest.FromStorageManifest(store.LoadSnapshot(previousSnapshot)!);
+            Assert.Null(manifest.ExcludedDocumentsFingerprints["Lib"]);
+        }
+
+        WriteFile("Bystander", "Bystander.cs", "namespace Bystander; public static class Entry { public static int Run() => 2; }");
+        Touch(Path.Combine(TestDir, "src", "Bystander", "Bystander.cs"));
+
+        var result = await RunIncrementalIndexWithResultAsync();
+
+        using var after = OpenStore(DbPath);
+        Assert.Contains(after.LoadExcludedSymbolsByProject(result.NewSnapshotId)["Lib"],
+            id => id.StartsWith("M:Lib.GenC.Hidden", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ExcludedDocumentSymbols_TwoProjectsWithSameName_CollectsFromBothWithoutThrowing()
     {
         var dirA = Path.Combine(TestDir, "a");

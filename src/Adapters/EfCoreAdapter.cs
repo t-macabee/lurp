@@ -437,6 +437,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     continue;
                 var onContextInstance = body.OnContextInstance &&
                     (IsThisReference(reference.Instance) || target is { MethodKind: MethodKind.LocalFunction, IsStatic: false });
+                // Roslyn leaves IMethodReferenceOperation.IsVirtual true for `base.` method groups.
                 if (reference.IsVirtual && IsThisReference(reference.Instance) &&
                     reference.Syntax is not MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax })
                     target = MostDerivedOverride(body.DispatchType, target);

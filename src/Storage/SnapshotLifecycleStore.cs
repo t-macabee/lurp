@@ -209,6 +209,47 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
+    internal void SaveExcludedSymbols(string snapshotId, IReadOnlyDictionary<string, HashSet<string>> excludedByProject)
+    {
+        if (excludedByProject.Values.All(static symbols => symbols.Count == 0))
+            return;
+
+        using var transaction = _connection.BeginTransaction();
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO snapshot_excluded_symbols (snapshot_id, project_name, symbol_id) VALUES (@snapshot, @project, @symbol)";
+        command.Parameters.AddWithValue("@snapshot", snapshotId);
+        var projectParameter = command.Parameters.Add("@project", SqliteType.Text);
+        var symbolParameter = command.Parameters.Add("@symbol", SqliteType.Text);
+        foreach (var (project, symbols) in excludedByProject)
+        {
+            projectParameter.Value = project;
+            foreach (var symbol in symbols)
+            {
+                symbolParameter.Value = symbol;
+                command.ExecuteNonQuery();
+            }
+        }
+        transaction.Commit();
+    }
+
+    internal Dictionary<string, HashSet<string>> LoadExcludedSymbolsByProject(string snapshotId)
+    {
+        var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        using var command = _connection.CreateCommand();
+        command.CommandText = "SELECT project_name, symbol_id FROM snapshot_excluded_symbols WHERE snapshot_id = @snapshot";
+        command.Parameters.AddWithValue("@snapshot", snapshotId);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var name = reader.GetString(0);
+            if (!result.TryGetValue(name, out var symbols))
+                result[name] = symbols = new HashSet<string>(StringComparer.Ordinal);
+            symbols.Add(reader.GetString(1));
+        }
+        return result;
+    }
+
     internal Dictionary<string, string> LoadBuildInputs(string snapshotId)
     {
         using var command = _connection.CreateCommand();

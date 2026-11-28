@@ -38,6 +38,16 @@ public sealed class SnapshotLifecycleTests : IntegrationTestBase
         """;
 
     [Fact]
+    public void ExcludedSymbolMethods_OnAnUnopenedStore_ThrowInvalidOperation()
+    {
+        using var store = new SqliteIndexStore(DbPath);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            store.SaveExcludedSymbols("snapshot", new Dictionary<string, HashSet<string>>()));
+        Assert.Throws<InvalidOperationException>(() => store.LoadExcludedSymbolsByProject("snapshot"));
+    }
+
+    [Fact]
     public async Task RevertToAnIndexedState_MakesTheReusedSnapshotTheLatest()
     {
         CreateProject("P", new Dictionary<string, string> { ["Svc.cs"] = StateA });

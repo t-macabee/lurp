@@ -252,24 +252,29 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             // Step 7: Orphan cleanup + FTS Rebuild + Diff + Complete
             cancellationToken.ThrowIfCancellationRequested();
             var previousExcluded = _store.LoadExcludedSymbolsByProject(previousSnapshotId);
-            var previousFingerprints = previousManifest.Projects.ToDictionary(p => p.Name, p => p.ExcludedDocumentsFingerprint, StringComparer.Ordinal);
+            var previousFingerprints = previousRichManifest.ExcludedDocumentsFingerprints;
+            // A name shared by several projects has one stored bucket and fingerprint, so it is never reused.
+            var sharedNames = solution.Projects.GroupBy(static p => p.Name, StringComparer.Ordinal)
+                .Where(static g => g.Count() > 1)
+                .Select(static g => g.Key)
+                .ToHashSet(StringComparer.Ordinal);
             var excludedByProject = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             foreach (var project in solution.Projects)
             {
                 if (!workspaceInfo.ExcludedDocuments.ContainsKey(project.Id)) continue;
                 previousFingerprints.TryGetValue(project.Name, out var previousFingerprint);
                 workspaceInfo.ExcludedDocumentsFingerprints.TryGetValue(project.Name, out var currentFingerprint);
-                if (!affectedProjects.Contains(project.Name) && previousFingerprint != null && currentFingerprint != null &&
+                if (!sharedNames.Contains(project.Name) && !affectedProjects.Contains(project.Name) && previousFingerprint != null && currentFingerprint != null &&
                     string.Equals(previousFingerprint, currentFingerprint, StringComparison.Ordinal))
                 {
                     excludedByProject[project.Name] = previousExcluded.GetValueOrDefault(project.Name) ?? new HashSet<string>(StringComparer.Ordinal);
                     continue;
                 }
-                var compilation = affectedCompilations.TryGetValue(project.Name, out var affected)
+                var compilation = affectedCompilations.TryGetValue(project.Id, out var affected)
                     ? affected.Compilation
                     : await CompilationHelper.GetCompilationAsync(project, cancellationToken);
                 if (compilation != null)
-                    excludedByProject[project.Name] = await ExcludedDocumentSymbols.CollectForProjectAsync(project, compilation, workspaceInfo, cancellationToken);
+                    await ExcludedDocumentSymbols.CollectIntoAsync(excludedByProject, project, compilation, workspaceInfo, cancellationToken);
             }
             _store.SaveExcludedSymbols(buildSnapshotId, excludedByProject);
             var excludedSymbolIds = excludedByProject.Values.SelectMany(static symbols => symbols).ToHashSet(StringComparer.Ordinal);
@@ -317,17 +322,17 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         };
     }
 
-    private async Task<Dictionary<string, (Project Project, Compilation Compilation)>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
+    private async Task<Dictionary<ProjectId, (Project Project, Compilation Compilation)>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
     {
         _output.Write("Loading compilations for affected projects... ");
-        var result = new Dictionary<string, (Project Project, Compilation Compilation)>(StringComparer.Ordinal);
+        var result = new Dictionary<ProjectId, (Project Project, Compilation Compilation)>();
         await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(
                            solution,
                            msg => _output.WriteErrorLine($"WARNING: {msg}"),
                            project => affectedProjects.Contains(project.Name),
                            cancellationToken))
         {
-            result[project.Name] = (project, compilation);
+            result[project.Id] = (project, compilation);
         }
 
         _output.WriteLine($"done ({result.Count} compilations).");
@@ -383,16 +388,16 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
     }
 
     private (int Declarations, int Edges, int Diagnostics) ExtractReplacementFacts(
-        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, (Project Project, Compilation Compilation)> affectedCompilations,
+        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<ProjectId, (Project Project, Compilation Compilation)> affectedCompilations,
         IReadOnlySet<string> extractionScopeAbsolutePaths,
         IReadOnlySet<string> extractionScopeRelativePaths)
     {
         _output.WriteLine("Extracting replacement facts for affected projects...");
         int totalDecl = 0, totalEdge = 0, totalDiag = 0;
 
-        foreach (var (projectName, entry) in affectedCompilations)
+        foreach (var (project, compilation) in affectedCompilations.Values)
         {
-            var (project, compilation) = entry;
+            var projectName = project.Name;
             _output.Write($"  [{projectName}] ");
 
             if (WorkspaceLoadGate.Classify(compilation) == CompilationReadability.Blind)
@@ -485,9 +490,13 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         (string FromSnapshotId, IReadOnlyList<SemanticChange> Changes)? pendingChanges = null;
         if (!skipDiff)
         {
-            var changes = SemanticDiffStep.ComputeAndPersist(_store, _output, context.Snapshots.FromSnapshotId,
-                context.Snapshots.ToSnapshotId, (HashSet<string>)context.Changes.DiffAndSearchSymbolIds, timings, rebuildTargetId);
-            if (rebuildTargetId != null) pendingChanges = (context.Snapshots.FromSnapshotId, changes);
+            var (fromSnapshotId, toSnapshotId) = (context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId);
+            var changedSymbolIds = (HashSet<string>)context.Changes.DiffAndSearchSymbolIds;
+            if (rebuildTargetId is null)
+                SemanticDiffStep.ComputeAndPersist(_store, _output, fromSnapshotId, toSnapshotId, changedSymbolIds, timings);
+            else
+                pendingChanges = (fromSnapshotId, SemanticDiffStep.ComputeForRebuild(
+                    _store, _output, fromSnapshotId, toSnapshotId, rebuildTargetId, changedSymbolIds, timings));
         }
 
         // Completion must be last : all preceding phases must succeed.

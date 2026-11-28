@@ -9,43 +9,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     private BindingIncompletenessStore? _bindingIncompletenessStore;
     private SqliteConnection? _connection;
 
-    public void SaveExcludedSymbols(string snapshotId, IReadOnlyDictionary<string, HashSet<string>> excludedByProject)
-    {
-        using var transaction = _connection!.BeginTransaction();
-        using var command = _connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "INSERT INTO snapshot_excluded_symbols (snapshot_id, project_name, symbol_id) VALUES (@snapshot, @project, @symbol)";
-        command.Parameters.AddWithValue("@snapshot", snapshotId);
-        var projectParameter = command.Parameters.Add("@project", Microsoft.Data.Sqlite.SqliteType.Text);
-        var symbolParameter = command.Parameters.Add("@symbol", Microsoft.Data.Sqlite.SqliteType.Text);
-        foreach (var (project, symbols) in excludedByProject)
-        {
-            projectParameter.Value = project;
-            foreach (var symbol in symbols)
-            {
-                symbolParameter.Value = symbol;
-                command.ExecuteNonQuery();
-            }
-        }
-        transaction.Commit();
-    }
-
-    public Dictionary<string, HashSet<string>> LoadExcludedSymbolsByProject(string snapshotId)
-    {
-        var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        using var command = _connection!.CreateCommand();
-        command.CommandText = "SELECT project_name, symbol_id FROM snapshot_excluded_symbols WHERE snapshot_id = @snapshot";
-        command.Parameters.AddWithValue("@snapshot", snapshotId);
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            var name = reader.GetString(0);
-            if (!result.TryGetValue(name, out var symbols))
-                result[name] = symbols = new HashSet<string>(StringComparer.Ordinal);
-            symbols.Add(reader.GetString(1));
-        }
-        return result;
-    }
     private DeclarationMaintenanceStore? _declMaintenance;
     private DeclarationReadStore? _declReader;
     private DeclarationWriteStore? _declWriter;
@@ -294,6 +257,18 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         return _lifecycle!.LoadBuildInputs(snapshotId);
+    }
+
+    public void SaveExcludedSymbols(string snapshotId, IReadOnlyDictionary<string, HashSet<string>> excludedByProject)
+    {
+        EnsureOpen();
+        _lifecycle!.SaveExcludedSymbols(snapshotId, excludedByProject);
+    }
+
+    public Dictionary<string, HashSet<string>> LoadExcludedSymbolsByProject(string snapshotId)
+    {
+        EnsureOpen();
+        return _lifecycle!.LoadExcludedSymbolsByProject(snapshotId);
     }
 
     public void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message) =>

@@ -207,13 +207,18 @@ public sealed class IncrementalPerformanceTests : IntegrationTestBase
                 """
         }, projectReferences: ["ProjB"]);
 
+        foreach (var project in new[] { "ProjA", "ProjC" })
+        {
+            var directory = Path.Combine(TestDir, "src", project);
+            Directory.CreateDirectory(Path.Combine(directory, "obj"));
+            File.WriteAllText(Path.Combine(directory, "obj", "Generated.cs"),
+                $"namespace {project}; public static class GeneratedHelper {{ public static int Value() => 1; }}");
+            var projectPath = Path.Combine(directory, $"{project}.csproj");
+            File.WriteAllText(projectPath, File.ReadAllText(projectPath).Replace("</Project>",
+                "<ItemGroup><Compile Include=\"obj/Generated.cs\" /></ItemGroup></Project>", StringComparison.Ordinal));
+        }
+
         var projectDir = Path.Combine(TestDir, "src", "ProjC");
-        Directory.CreateDirectory(Path.Combine(projectDir, "obj"));
-        File.WriteAllText(Path.Combine(projectDir, "obj", "Generated.cs"),
-            "namespace ProjC; public static class GeneratedHelper { public static int Value() => 1; }");
-        var projectPath = Path.Combine(projectDir, "ProjC.csproj");
-        File.WriteAllText(projectPath, File.ReadAllText(projectPath).Replace("</Project>",
-            "<ItemGroup><Compile Include=\"obj/Generated.cs\" /></ItemGroup></Project>", StringComparison.Ordinal));
 
         var previousSnapshot = await RunFullIndexAsync(DbPath);
         if (scenario == 1)
@@ -235,7 +240,7 @@ public sealed class IncrementalPerformanceTests : IntegrationTestBase
                 public int Run(int x)
                 {
                     var y = new ProjA.BaseService().Compute(x);
-                    return y + 2;
+                    return y + ProjA.GeneratedHelper.Value();
                 }
             }
             """);
@@ -252,6 +257,13 @@ public sealed class IncrementalPerformanceTests : IntegrationTestBase
         {
             CompilationHelper.CompilationRequestObserver.Value = null;
         }
+
+        // The new call emits Calls (method) and References (containing type); both
+        // targets are known only through ProjA's reused excluded symbols.
+        Assert.Contains("excluded_document=2, other=0)", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("[ProjA]", output, StringComparison.Ordinal);
+        if (scenario == 0)
+            Assert.DoesNotContain("ProjA", requested);
 
         // ProjC must not be loaded or re-extracted.
         Assert.DoesNotContain("[ProjC]", output, StringComparison.Ordinal);

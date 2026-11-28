@@ -3,21 +3,50 @@ using System.Diagnostics;
 namespace Lurp.Workspace;
 
 /// <summary>
-///     Shared semantic-diff-and-persist step used by both the full-rebuild
+///     Shared semantic-diff step used by both the full-rebuild
 ///     (<see cref="IndexRunner" />) and incremental (<see cref="IncrementalIndexer" />) pipelines.
 ///     Only the block itself is shared — each pipeline keeps its own phase order and decides
 ///     when to call this.
 /// </summary>
 internal static class SemanticDiffStep
 {
-    public static IReadOnlyList<SemanticChange> ComputeAndPersist(
+    public static void ComputeAndPersist(
         SqliteIndexStore store,
         IOutputSink output,
         string fromSnapshotId,
         string toSnapshotId,
         HashSet<string>? changedSymbolIds,
+        List<SnapshotTimingRow> timings)
+    {
+        Run(store, output, fromSnapshotId, toSnapshotId, targetToSnapshotId: null, changedSymbolIds, timings,
+            changes => store.SaveSemanticChanges(fromSnapshotId, toSnapshotId, changes));
+    }
+
+    /// <summary>
+    ///     Diffs a staged rebuild as its target snapshot. The caller passes the result to
+    ///     <see cref="SqliteIndexStore.PromoteAndCompleteIndex" />, which writes it.
+    /// </summary>
+    public static IReadOnlyList<SemanticChange> ComputeForRebuild(
+        SqliteIndexStore store,
+        IOutputSink output,
+        string fromSnapshotId,
+        string stagingSnapshotId,
+        string targetToSnapshotId,
+        HashSet<string>? changedSymbolIds,
+        List<SnapshotTimingRow> timings)
+    {
+        return Run(store, output, fromSnapshotId, stagingSnapshotId, targetToSnapshotId, changedSymbolIds, timings, persist: null);
+    }
+
+    private static List<SemanticChange> Run(
+        SqliteIndexStore store,
+        IOutputSink output,
+        string fromSnapshotId,
+        string toSnapshotId,
+        string? targetToSnapshotId,
+        HashSet<string>? changedSymbolIds,
         List<SnapshotTimingRow> timings,
-        string? targetToSnapshotId = null)
+        Action<IReadOnlyList<SemanticChange>>? persist)
     {
         var sw = Stopwatch.StartNew();
         output.Write("Computing semantic diff from previous snapshot... ");
@@ -27,8 +56,7 @@ internal static class SemanticDiffStep
             ? differ.ComputeDiff(fromSnapshotId, toSnapshotId, changedSymbolIds, targetToSnapshotId)
             : differ.ComputeDiff(fromSnapshotId, toSnapshotId, targetToSnapshotId);
 
-        if (targetToSnapshotId == null)
-            store.SaveSemanticChanges(fromSnapshotId, toSnapshotId, diffChanges);
+        persist?.Invoke(diffChanges);
 
         output.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
         sw.Stop();
