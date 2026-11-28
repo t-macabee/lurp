@@ -324,8 +324,15 @@ public sealed class BindingIncompletenessScopingTests : IntegrationTestBase
         Assert.Equal(["a/obj/GenA.cs"], workspaceInfo.GetExcludedDocuments(solution.GetProject(projectAId), "SharedName"));
         Assert.Equal(["b/obj/GenB.cs"], workspaceInfo.GetExcludedDocuments(solution.GetProject(projectBId), "SharedName"));
 
-        var excludedIds = await ExcludedDocumentSymbols.CollectAsync(solution, workspaceInfo, CancellationToken.None);
+        var excludedByProject = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            var compilation = (await project.GetCompilationAsync())!;
+            await ExcludedDocumentSymbols.CollectIntoAsync(
+                excludedByProject, project, compilation, workspaceInfo, CancellationToken.None);
+        }
 
+        var excludedIds = excludedByProject["SharedName"];
         Assert.Contains(excludedIds, id => id.StartsWith("T:A.GenA|", StringComparison.Ordinal));
         Assert.Contains(excludedIds, id => id.StartsWith("M:A.GenA.One|", StringComparison.Ordinal));
         Assert.Contains(excludedIds, id => id.StartsWith("T:B.GenB|", StringComparison.Ordinal));

@@ -1,4 +1,3 @@
-using Lurp.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -13,19 +12,6 @@ namespace Lurp.Workspace;
 /// </summary>
 internal static class ExcludedDocumentSymbols
 {
-    public static async Task<HashSet<string>> CollectAsync(Solution solution, WorkspaceInfo workspaceInfo, CancellationToken cancellationToken)
-    {
-        var result = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var project in solution.Projects)
-        {
-            if (!workspaceInfo.ExcludedDocuments.ContainsKey(project.Id)) continue;
-            var compilation = await CompilationHelper.GetCompilationAsync(project, cancellationToken);
-            if (compilation != null)
-                result.UnionWith(await CollectForProjectAsync(project, compilation, workspaceInfo, cancellationToken));
-        }
-        return result;
-    }
-
     /// <summary>Unions one project's excluded symbols into its name bucket; projects can share a name.</summary>
     public static async Task CollectIntoAsync(
         Dictionary<string, HashSet<string>> excludedByProject, Project project, Compilation compilation,
